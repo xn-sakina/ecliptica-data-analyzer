@@ -23,6 +23,9 @@ const PREGAME_LOBBY_GRACE_SECONDS: i64 = 12;
 /// dilute effective DPS while short gaps inside a combo still count.
 const EFFECTIVE_OUTPUT_GRACE_SECONDS: i64 = 3;
 const BURST_WINDOW_SECONDS: i64 = 10;
+// Model contract, assumptions, confidence gates, and tuning procedure:
+// resources/rules/step-estimator.md. Keep that specification and its
+// regression baselines in sync whenever changing the constants below.
 /// The phase modifier grows faster later in a run.  This small linear term is
 /// fitted from the bundled complete-run fixtures; the learned intercept is
 /// still taken from the current room so different play speeds can correct it.
@@ -31,6 +34,11 @@ const MIN_STEP_PHASE_DELTA: f64 = 0.025;
 const MAX_STEP_PHASE_DELTA: f64 = 0.16;
 const MIN_STEP_CYCLE_SECONDS: i64 = 180;
 const MAX_STEP_CYCLE_SECONDS: i64 = 1_800;
+/// Time may regularize the learned phase curve when it agrees with the room's
+/// observed phase deltas.  Once the implied intercept differs by this much,
+/// the duration prior is treated as incompatible and receives zero weight.
+const STEP_TIME_PRIOR_REJECTION_DELTA: f64 = 0.025;
+const MAX_STEP_TIME_PRIOR_WEIGHT: f64 = 0.2;
 /// A full run is normally a little over two hours.  Reserve twenty minutes
 /// for Jim and use the remaining time only as a weak prior for the number of
 /// pre-Jim stage transitions.  This is never interpreted as time played since
@@ -417,8 +425,10 @@ impl StepEstimator {
                 ((MIN_STEP_CYCLE_SECONDS..=MAX_STEP_CYCLE_SECONDS).contains(&elapsed)
                     && (MIN_STEP_PHASE_DELTA..=MAX_STEP_PHASE_DELTA).contains(&delta))
                 .then(|| {
-                    let midpoint = (pair[0].phase + pair[1].phase) * 0.5;
-                    (delta - STEP_PHASE_ACCELERATION * midpoint, elapsed as f64)
+                    (
+                        delta - STEP_PHASE_ACCELERATION * pair[0].phase,
+                        elapsed as f64,
+                    )
                 })
             })
             .collect();
@@ -443,14 +453,18 @@ impl StepEstimator {
         }
 
         // The two-hour prior describes a complete run, not this user's local
-        // session.  Convert it to a weak expected transition count using only
-        // observed stage-to-stage cycle duration, then blend it lightly with
-        // the directly observed phase deltas.
+        // session. Convert it to an expected transition count using only
+        // observed stage-to-stage cycle duration. It remains useful only while
+        // its implied phase curve agrees with the directly observed deltas;
+        // extreme fast/slow rooms automatically reduce its weight to zero.
         let prior_transitions = ((FULL_RUN_PRIOR_SECONDS - FINAL_BOSS_PRIOR_SECONDS) / mean_cycle)
             .round()
             .clamp(8.0, 16.0) as u32;
         let prior_intercept = intercept_for_transitions(prior_transitions);
-        let intercept = (mean_intercept * 0.8 + prior_intercept * 0.2).clamp(0.035, 0.095);
+        let time_prior_weight = step_time_prior_weight(mean_intercept, prior_intercept);
+        let intercept = (mean_intercept * (1.0 - time_prior_weight)
+            + prior_intercept * time_prior_weight)
+            .clamp(0.035, 0.095);
 
         let current = if self.saw_run_origin {
             // All stages since phase zero are present, so this ordinal is
@@ -487,6 +501,13 @@ fn intercept_for_transitions(transitions: u32) -> f64 {
         }
     }
     (low + high) * 0.5
+}
+
+fn step_time_prior_weight(observed_intercept: f64, prior_intercept: f64) -> f64 {
+    let compatibility = (1.0
+        - (observed_intercept - prior_intercept).abs() / STEP_TIME_PRIOR_REJECTION_DELTA)
+        .clamp(0.0, 1.0);
+    MAX_STEP_TIME_PRIOR_WEIGHT * compatibility
 }
 
 fn nearest_step_for_phase(target: f64, intercept: f64) -> u32 {
@@ -1226,6 +1247,124 @@ mod tests {
             "must locate by phase, not local uptime"
         );
         assert_eq!(estimate.until_boss, 1);
+    }
+
+    #[test]
+    fn extreme_cycle_time_does_not_override_phase_path_for_late_join() {
+        for cycle_seconds in [240, 600, 1_500] {
+            let mut estimator = StepEstimator::default();
+            estimator.observe_stage(10_000, Some(0.608_929_6));
+            estimator.observe_stage(10_000 + cycle_seconds, Some(0.709_211_9));
+            estimator.observe_stage(10_000 + cycle_seconds * 2, Some(0.804_672_5));
+
+            let before_jim = estimator.estimate().expect("estimate before Jim");
+            assert_eq!(
+                (before_jim.current, before_jim.until_boss),
+                (11, 1),
+                "phase evidence was overridden at {cycle_seconds}s per cycle"
+            );
+
+            estimator.observe_stage(10_000 + cycle_seconds * 3, Some(0.913_315_8));
+            let jim_lobby = estimator.estimate().expect("estimate in Jim lobby");
+            assert_eq!(
+                (jim_lobby.current, jim_lobby.until_boss),
+                (12, 0),
+                "phase evidence was overridden at {cycle_seconds}s per cycle"
+            );
+        }
+    }
+
+    #[test]
+    fn extreme_full_run_duration_keeps_jim_boundary_stable() {
+        let phases = [
+            0.0,
+            0.059_993_23,
+            0.121_846_1,
+            0.184_059_2,
+            0.247_373,
+            0.331_366_9,
+            0.418_190_5,
+            0.513_472_8,
+            0.608_929_6,
+            0.709_211_9,
+            0.804_672_5,
+            0.913_315_8,
+        ];
+
+        // 11 * 480s = 88 minutes to the Jim preparation lobby; 11 * 900s =
+        // 165 minutes. Once the origin is observed, both durations must preserve
+        // the exact observed round number and the same Jim boundary.
+        for cycle_seconds in [480, 900] {
+            let mut estimator = StepEstimator::default();
+            for (index, phase) in phases.into_iter().enumerate() {
+                estimator.observe_stage(index as i64 * cycle_seconds, Some(phase));
+                if index == 10 {
+                    let estimate = estimator.estimate().expect("estimate before Jim");
+                    assert_eq!((estimate.current, estimate.until_boss), (11, 1));
+                }
+            }
+
+            let estimate = estimator.estimate().expect("estimate in Jim lobby");
+            assert_eq!((estimate.current, estimate.until_boss), (12, 0));
+        }
+    }
+
+    #[test]
+    fn slow_run_can_add_rounds_without_time_prior_erasing_them() {
+        // A rule-compatible lower-intercept path takes 16 ordinary stages and
+        // reaches the Jim preparation lobby after 150 minutes. The denser
+        // phase trajectory, rather than the nominal 135-minute duration, is
+        // the evidence that the run contains more rounds.
+        let phases = [
+            0.0,
+            0.042_058_558,
+            0.086_220_045,
+            0.132_589_605,
+            0.181_277_644,
+            0.232_400_085,
+            0.286_078_647,
+            0.342_441_138,
+            0.401_621_754,
+            0.463_761_4,
+            0.529_008_028,
+            0.597_516_988,
+            0.669_451_396,
+            0.744_982_524,
+            0.824_290_209,
+            0.907_563_277,
+        ];
+
+        let mut full_run = StepEstimator::default();
+        for (index, phase) in phases.into_iter().enumerate() {
+            full_run.observe_stage(index as i64 * 600, Some(phase));
+            if index == 14 {
+                let estimate = full_run.estimate().expect("estimate before Jim");
+                assert_eq!((estimate.current, estimate.until_boss), (15, 1));
+            }
+        }
+        let estimate = full_run.estimate().expect("estimate in Jim lobby");
+        assert_eq!((estimate.current, estimate.until_boss), (16, 0));
+
+        let mut late_join = StepEstimator::default();
+        late_join.observe_stage(0, Some(phases[12]));
+        late_join.observe_stage(600, Some(phases[13]));
+        late_join.observe_stage(1_200, Some(phases[14]));
+        let estimate = late_join.estimate().expect("late join estimate before Jim");
+        assert_eq!((estimate.current, estimate.until_boss), (15, 1));
+
+        late_join.observe_stage(1_800, Some(phases[15]));
+        let estimate = late_join
+            .estimate()
+            .expect("late join estimate in Jim lobby");
+        assert_eq!((estimate.current, estimate.until_boss), (16, 0));
+    }
+
+    #[test]
+    fn incompatible_time_prior_loses_all_weight() {
+        assert_eq!(step_time_prior_weight(0.06, 0.06), 0.2);
+        assert!((step_time_prior_weight(0.06, 0.0725) - 0.1).abs() < 1e-12);
+        assert_eq!(step_time_prior_weight(0.06, 0.085), 0.0);
+        assert_eq!(step_time_prior_weight(0.06, 0.10), 0.0);
     }
 
     #[test]

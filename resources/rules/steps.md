@@ -1,4 +1,9 @@
 == Phases ==
+
+> 分析器如何根据本规则估算 `current_step`、`until_boss_step` 和
+> `has_step_estimate`，见 [回合启发式估计模型](step-estimator.md)。该文档同时记录了
+> 当前参数、置信条件、已知限制和后续调参方法。
+
 The game is split into 5 phases, with the final boss at the end:
 
 * Primal

@@ -11,7 +11,7 @@
 
 ## Download
 
-[Download the latest release]()
+[Download the latest release](https://github.com/xn-sakina/ecliptica-data-analyzer/releases)
 
 Download the Windows executable and open it. That is it. There is no installer, no setup wizard, and no bundled browser runtime. Delete the file whenever you no longer need it.
 

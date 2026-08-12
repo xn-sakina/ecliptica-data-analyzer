@@ -1,0 +1,17 @@
+[package]
+name = "egui_flex"
+version = "0.5.0-vendored"
+edition = "2024"
+description = "Audited, vendored egui_flex snapshot for Ecliptica Data Analyzer"
+license = "MIT"
+publish = false
+
+[lib]
+name = "egui_flex"
+path = "src/lib.rs"
+
+[dependencies]
+egui = { version = "=0.32.3", default-features = false }
+
+[lints.rust]
+unsafe_code = "forbid"

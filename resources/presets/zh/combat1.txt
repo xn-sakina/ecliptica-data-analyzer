@@ -1,0 +1,15 @@
+{{#if is_self_boss_locked}}
+【我被锁了 救救喵】
+{{/if}}
+{{#if rapid_damage_danger}}
+【被草飞了 救救喵】
+{{/if}}
+{{#if no_wasd_for_10s}}
+【有点似了 牢大】
+{{/if}}
+{{#if no_dps_for_10s}}
+【摸鱼中】
+{{/if}}
+{{#if has_latest_dps}}
+DPS: {{latest_dps}}
+{{/if}}

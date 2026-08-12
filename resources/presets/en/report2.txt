@@ -1,0 +1,6 @@
+【Round Report】
+Time {{round_duration}} | Damage taken {{round_report_damage_taken}}
+Longest standstill {{round_longest_standstill}}s
+{{#if has_step_estimate}}
+About {{until_boss_step}} rounds until Jim
+{{/if}}

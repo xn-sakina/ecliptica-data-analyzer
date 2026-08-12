@@ -1,0 +1,19 @@
+[package]
+name = "egui-shadcn"
+version = "0.1.0-vendored"
+edition = "2024"
+authors = ["Pawel Jankiewicz <pjankiewicz@gmail.com>"]
+description = "Audited, vendored egui-shadcn snapshot for Ecliptica Data Analyzer"
+license = "MIT"
+publish = false
+
+[lib]
+name = "egui_shadcn"
+path = "src/lib.rs"
+
+[dependencies]
+egui = { version = "=0.32.3", default-features = false }
+egui_flex = { path = "../egui_flex" }
+
+[lints.rust]
+unsafe_code = "forbid"

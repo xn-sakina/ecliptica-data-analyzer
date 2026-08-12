@@ -1,0 +1,53 @@
+[package]
+name = "ecliptica-data-analyzer"
+version = "0.3.0"
+edition = "2024"
+description = "Live Ecliptica combat analyzer with a VRChat OSC overlay"
+license = "MIT"
+
+[dependencies]
+anyhow = "1.0"
+arboard = { version = "3.6", default-features = false }
+chrono = { version = "0.4", features = ["clock", "serde"] }
+crossbeam-channel = "0.5"
+ctrlc = "3.4"
+directories = "6.0"
+file-id = "0.2"
+handlebars = "6.3"
+parking_lot = "0.12"
+regex = "1.11"
+rodio = { version = "0.20", default-features = false }
+rosc = "0.11"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+single-instance = "0.3"
+sys-locale = "0.3"
+tempfile = "3.20"
+thiserror = "2.0"
+tracing = "0.1"
+tracing-appender = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+unicode-normalization = "0.1"
+eframe = { version = "=0.32.3", default-features = false, features = ["default_fonts", "glow"] }
+egui_plot = "=0.33.0"
+egui-shadcn = { path = "third_party/egui-shadcn" }
+
+[build-dependencies]
+embed-resource = "3.0"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_LibraryLoader", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
+
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+keytap = "0.4"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+panic = "abort"
+
+[package.metadata.bundle]
+name = "Ecliptica Data Analyzer"
+identifier = "com.ecliptica.data-analyzer"
+icon = ["assets/app-icon.png"]

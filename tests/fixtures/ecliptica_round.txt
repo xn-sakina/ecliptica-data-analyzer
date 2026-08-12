@@ -1,0 +1,10 @@
+2026.08.03 01:02:00 Debug      -  [Behaviour] Entering Room: Ecliptica - Demo Playtest
+2026.08.03 01:02:00 Debug      -  ECLIPTICA - now in intermission
+2026.08.03 01:02:01 Debug      -  ECLIPTICA - now in stage: Stage_ProtoColony on phase: 0.1 as class: Twinmage
+2026.08.03 01:02:05 Debug      -  Dealing 30 STRIKE damage
+2026.08.03 01:02:05 Debug      -  Dealing 12 NON-STRIKE damage
+2026.08.03 01:02:06 Debug      -  ECLIPTICA - now fighting boss: Maxipuss(Clone) on phase: 0.1
+2026.08.03 01:02:07 Debug      -  ownership of Fly transferred to Nobody
+2026.08.03 01:02:07 Debug      -  ownership of Maxipuss transferred to Alice
+2026.08.03 01:02:08 Debug      -  Boss Maxipuss dead, personal damage dealt:
+2026.08.03 01:02:09 Debug      -  ECLIPTICA - now in lobby

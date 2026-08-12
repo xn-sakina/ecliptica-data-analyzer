@@ -1,0 +1,6 @@
+【Round Report】
+Time {{round_duration}} | Damage {{round_total_damage}}
+Average {{round_report_effective_dps}} DPS | Peak {{round_max_dps}} DPS
+{{#if has_step_estimate}}
+About {{until_boss_step}} rounds until Jim
+{{/if}}

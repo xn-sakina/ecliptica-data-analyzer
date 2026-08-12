@@ -115,6 +115,16 @@ impl egui::Widget for super::textarea::Textarea<'_> {
                 ui.add(text_edit)
             });
 
+        // Keep wheel gestures inside the textarea, including when its scroll
+        // position is already at an edge. egui normally lets an unconsumed
+        // delta fall through to an enclosing ScrollArea, which makes both the
+        // editor and the settings page move during the same gesture.
+        if outer_hovered {
+            ui.ctx().input_mut(|input| {
+                input.smooth_scroll_delta = egui::Vec2::ZERO;
+            });
+        }
+
         let response = scroll_resp.inner;
 
         // Focus ring

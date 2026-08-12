@@ -3565,7 +3565,7 @@ fn self_lock_transition(
     display_name: &str,
 ) -> Option<SelfLockTransition> {
     if display_name.trim().is_empty()
-        || previous.status != DataStatus::Live
+        || !matches!(previous.status, DataStatus::Live | DataStatus::Stale)
         || current.status != DataStatus::Live
     {
         return None;
@@ -3896,6 +3896,31 @@ mod tests {
             self_lock_transition(&me, &other, "Alice"),
             Some(SelfLockTransition::Unlocked)
         );
+    }
+
+    #[test]
+    fn detects_first_lock_when_new_log_activity_recovers_from_stale() {
+        let stale = GameSnapshot {
+            status: DataStatus::Stale,
+            ..GameSnapshot::default()
+        };
+        let me = live_boss("Jim", Some("Alice"));
+
+        assert_eq!(
+            self_lock_transition(&stale, &me, "Alice"),
+            Some(SelfLockTransition::Locked)
+        );
+    }
+
+    #[test]
+    fn startup_recovery_does_not_treat_replayed_lock_as_new() {
+        let recovering = GameSnapshot {
+            status: DataStatus::Recovering,
+            ..GameSnapshot::default()
+        };
+        let me = live_boss("Jim", Some("Alice"));
+
+        assert_eq!(self_lock_transition(&recovering, &me, "Alice"), None);
     }
 
     #[test]

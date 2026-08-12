@@ -58,6 +58,7 @@ const SETTINGS_CHART_AXIS: egui::Color32 = egui::Color32::from_rgb(229, 222, 248
 const SETTINGS_CHART_CURSOR: egui::Color32 = egui::Color32::from_rgb(221, 207, 255);
 const DPS_CHART_AUTO_FIT_IDLE: Duration = Duration::from_secs(5);
 const DPS_CHART_AUTO_FIT_INTERVAL: Duration = Duration::from_secs(5);
+const DPS_CHART_RECENT_WINDOW_SECONDS: f64 = 5.0 * 60.0;
 const DPS_CHART_X_MARGIN_FRACTION: f64 = 0.025;
 const DPS_CHART_Y_MARGIN_FRACTION: f64 = 0.10;
 const SETTINGS_TEXT: egui::Color32 = egui::Color32::from_rgb(246, 243, 255);
@@ -2226,7 +2227,7 @@ fn dps_history_chart(
                     .show_grid([false, false])
                     .allow_drag([true, true])
                     .allow_zoom([true, true])
-                    .allow_axis_zoom_drag(false)
+                    .allow_axis_zoom_drag([true, true])
                     // Leave ordinary wheel scrolling to the outer settings
                     // page. Axis ranges are adjusted through axis dragging or
                     // explicit zoom gestures, never by scrolling the chart.
@@ -2306,7 +2307,18 @@ fn dps_history_chart(
                         );
                     }
                 }
-                if response.inner {
+                // Axis widgets live just outside the central plot response, so
+                // include their surrounding bands when detecting manual
+                // range changes.
+                let complete_chart_rect = response.response.rect.expand2(egui::vec2(64.0, 48.0));
+                let axis_or_plot_dragging = ui.input(|input| {
+                    input.pointer.is_decidedly_dragging()
+                        && input
+                            .pointer
+                            .interact_pos()
+                            .is_some_and(|position| complete_chart_rect.contains(position))
+                });
+                if response.inner || axis_or_plot_dragging {
                     view.record_user_interaction(now);
                 } else if auto_fit_due {
                     view.record_auto_fit(now);
@@ -2455,29 +2467,37 @@ fn chart_round_at(seconds: f64, markers: &[ChartRoundMarker]) -> Option<u32> {
 }
 
 fn chart_best_view_bounds(points: &[[f64; 2]]) -> ((f64, f64), (f64, f64)) {
-    let mut x_min = f64::INFINITY;
+    let data_x_min = points
+        .iter()
+        .filter_map(|[x, y]| (x.is_finite() && y.is_finite()).then_some(*x))
+        .fold(f64::INFINITY, f64::min);
+    let x_max = points
+        .iter()
+        .filter_map(|[x, y]| (x.is_finite() && y.is_finite()).then_some(*x))
+        .fold(f64::NEG_INFINITY, f64::max);
+    if !data_x_min.is_finite() || !x_max.is_finite() {
+        return ((0.0, 10.0), (0.0, 1.0));
+    }
+
+    let recent_start = (x_max - DPS_CHART_RECENT_WINDOW_SECONDS).max(data_x_min);
     let mut x_max = f64::NEG_INFINITY;
     let mut y_min = f64::INFINITY;
     let mut y_max = f64::NEG_INFINITY;
     for [x, y] in points.iter().copied() {
-        if x.is_finite() && y.is_finite() {
-            x_min = x_min.min(x);
+        if x.is_finite() && y.is_finite() && x >= recent_start {
             x_max = x_max.max(x);
             y_min = y_min.min(y);
             y_max = y_max.max(y);
         }
     }
-    if !x_min.is_finite() || !y_min.is_finite() {
-        return ((0.0, 10.0), (0.0, 1.0));
-    }
 
-    let x_span = x_max - x_min;
+    let x_span = x_max - recent_start;
     let x_padding = if x_span > f64::EPSILON {
         (x_span * DPS_CHART_X_MARGIN_FRACTION).max(1.0)
     } else {
         5.0
     };
-    let x_bounds = ((x_min - x_padding).max(0.0), x_max + x_padding);
+    let x_bounds = ((recent_start - x_padding).max(0.0), x_max + x_padding);
 
     let y_span = y_max - y_min;
     let y_padding = if y_span > f64::EPSILON {
@@ -4186,6 +4206,23 @@ mod tests {
         assert!(x.0 < 65.0 && x.1 > 125.0);
         assert!(y.0 > 0.0 && y.0 < 100.0);
         assert!(y.1 > 200.0);
+    }
+
+    #[test]
+    fn chart_best_view_uses_only_the_recent_five_minutes() {
+        let points = [
+            [0.0, 10_000.0],
+            [399.0, 9_000.0],
+            [400.0, 100.0],
+            [550.0, 200.0],
+            [700.0, 150.0],
+        ];
+        let (x, y) = chart_best_view_bounds(&points);
+
+        assert!(x.0 <= 400.0 && x.0 > 390.0);
+        assert!(x.1 > 700.0);
+        assert!(y.0 < 100.0);
+        assert!(y.1 > 200.0 && y.1 < 1_000.0);
     }
 
     #[test]

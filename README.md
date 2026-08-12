@@ -9,15 +9,15 @@
   See the numbers that matter, including your DPS, damage taken, and who the Boss is targeting.
 </p>
 
-<p align="center">
-  <img src="assets/readme-preview.png" alt="Ecliptica Data Analyzer dashboard and in game overlay preview" width="50%">
-</p>
-
 ## Download
 
 [Download the latest release](https://github.com/xn-sakina/ecliptica-data-analyzer/releases)
 
 Download the Windows executable and open it. That is it. There is no installer, no setup wizard, and no bundled browser runtime. Delete the file whenever you no longer need it.
+
+## Preview
+
+<img src="assets/readme-preview.png" alt="Ecliptica Data Analyzer dashboard and in game overlay preview" width="70%">
 
 ## What it shows
 

@@ -63,7 +63,7 @@ pub enum ParsedEvent {
     Stage { second: i64, phase: Option<f64> },
     Intermission { second: i64 },
     Boss { second: i64, name: String },
-    BossDefeated(String),
+    BossDefeated { second: i64, name: String },
     Ownership { object: String, player: String },
     Damage { second: i64, amount: u64 },
     DamageTaken { second: i64, amount: u64 },
@@ -201,17 +201,18 @@ impl LogParser {
             return ParsedLine::event(ParsedEvent::Boss { second, name });
         }
         if line.contains(BOSS_DEFEATED_PREFIX) && line.contains(BOSS_DEFEATED_SUFFIX) {
-            return capture_text(self.boss_defeated.as_ref(), line, "name")
-                .map(ParsedEvent::BossDefeated)
-                .map_or_else(
-                    || {
-                        ParsedLine::malformed(
-                            "boss_defeated",
-                            "Boss 击败日志格式已变化，锁定状态会等待后续事件清理",
-                        )
-                    },
-                    ParsedLine::event,
-                );
+            let Some(second) = self.parse_second(line) else {
+                return Self::timestamp_failure("boss_defeated");
+            };
+            return capture_text(self.boss_defeated.as_ref(), line, "name").map_or_else(
+                || {
+                    ParsedLine::malformed(
+                        "boss_defeated",
+                        "Boss 击败日志格式已变化，锁定状态会等待后续事件清理",
+                    )
+                },
+                |name| ParsedLine::event(ParsedEvent::BossDefeated { second, name }),
+            );
         }
         if line.contains(DAMAGE_MARKER) && line.contains(DAMAGE_SUFFIX_MARKER) {
             return self.timed_capture_u64(
@@ -327,5 +328,16 @@ mod tests {
         let parsed = LogParser::default()
             .parse("2026.08.12 12:00:00 Debug - [Behaviour] Entering Room: Another World");
         assert!(matches!(parsed.event, Some(ParsedEvent::LeaveRoom { .. })));
+    }
+
+    #[test]
+    fn boss_defeat_keeps_its_timestamp_for_round_boundaries() {
+        let parsed = LogParser::default().parse(
+            "2026.08.12 07:49:28 Debug - Boss JimBringerPhase3 dead, personal damage dealt:",
+        );
+        assert!(matches!(
+            parsed.event,
+            Some(ParsedEvent::BossDefeated { name, .. }) if name == "JimBringerPhase3"
+        ));
     }
 }

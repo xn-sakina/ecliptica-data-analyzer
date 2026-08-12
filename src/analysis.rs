@@ -587,11 +587,16 @@ impl Analyzer {
             }
             ParsedEvent::Intermission { second } => {
                 self.update_dps_history(second.saturating_sub(1));
-                self.finish_round(second);
-                if let Some(estimate) = self.step_estimator.estimate() {
-                    self.snapshot.has_step_estimate = true;
-                    self.snapshot.current_step = estimate.current;
-                    self.snapshot.until_boss_step = estimate.until_boss;
+                // Repeated lobby markers are common after Jim. Preserve the
+                // report already archived by the final-boss death marker and
+                // do not reactivate its completed step estimate.
+                if self.snapshot.phase == RoundPhase::Combat {
+                    self.finish_round(second);
+                    if let Some(estimate) = self.step_estimator.estimate() {
+                        self.snapshot.has_step_estimate = true;
+                        self.snapshot.current_step = estimate.current;
+                        self.snapshot.until_boss_step = estimate.until_boss;
+                    }
                 }
                 self.snapshot.in_ecliptica = true;
                 self.snapshot.phase = RoundPhase::Lobby;
@@ -612,7 +617,22 @@ impl Analyzer {
                     self.snapshot.boss = Some(name);
                 }
             }
-            ParsedEvent::BossDefeated(name) => {
+            ParsedEvent::BossDefeated { second, name } => {
+                // Jim Phase 3 is the actual end of the run. The game's lobby
+                // marker arrives much later, while the party is already in the
+                // ending/gathering scene, so publish the report immediately.
+                if self.snapshot.phase == RoundPhase::Combat && is_jim_final_phase(&name) {
+                    self.update_dps_history(second.saturating_sub(1));
+                    self.finish_round(second);
+                    self.snapshot.phase = RoundPhase::Lobby;
+                    self.snapshot.has_step_estimate = false;
+                    self.snapshot.current_step = 0;
+                    self.snapshot.until_boss_step = 0;
+                    self.awaiting_join_phase = false;
+                    self.assumed_pregame_lobby = false;
+                    self.joined_second = None;
+                    return;
+                }
                 if self
                     .snapshot
                     .boss
@@ -1019,6 +1039,10 @@ fn effective_dps_growth_rate(previous: Option<f64>, current: f64) -> Option<f64>
         .then_some((current - previous) / previous * 100.0)
 }
 
+fn is_jim_final_phase(name: &str) -> bool {
+    normalized_name(name) == normalized_name("JimBringerPhase3")
+}
+
 impl GameSnapshot {
     pub fn realtime_dps_text(&self) -> String {
         if self.has_realtime_dps_data {
@@ -1161,7 +1185,7 @@ fn format_duration(total_seconds: u64) -> String {
 }
 
 fn format_seconds(total_seconds: u64) -> String {
-    format!("{total_seconds} 秒")
+    total_seconds.to_string()
 }
 
 pub fn normalized_name(value: &str) -> String {
@@ -1425,8 +1449,8 @@ mod tests {
 
     #[test]
     fn standstill_duration_is_displayed_as_total_seconds() {
-        assert_eq!(format_seconds(12), "12 秒");
-        assert_eq!(format_seconds(74), "74 秒");
+        assert_eq!(format_seconds(12), "12");
+        assert_eq!(format_seconds(74), "74");
     }
 
     #[test]
@@ -1708,6 +1732,79 @@ mod tests {
         assert!(combat.round_report.is_none());
         assert_eq!(combat.combat_round_epoch, completed_epoch + 1);
         assert!(!combat.waiting_for_next_round);
+    }
+
+    #[test]
+    fn jim_phase_three_death_immediately_archives_report_and_hides_step_estimate() {
+        let mut analyzer = Analyzer::default();
+        analyzer.process_line(&line(
+            0,
+            "[Behaviour] Entering Room: Ecliptica - Demo Playtest",
+        ));
+        analyzer.process_line(&line(1, "ECLIPTICA - now in lobby"));
+        analyzer.process_line(&line(
+            2,
+            "ECLIPTICA - now in stage: Stage_Bringer on phase: 1 as class: Twinmage",
+        ));
+        analyzer.snapshot.has_step_estimate = true;
+        analyzer.snapshot.current_step = 12;
+        analyzer.snapshot.until_boss_step = 0;
+        analyzer.process_line(&line(5, "Dealing 120 STRIKE damage"));
+        analyzer.process_line(&line(
+            6,
+            "ECLIPTICA - now fighting boss: JimBringerPhase3(Clone) on phase: 1",
+        ));
+        analyzer.process_line(&line(
+            10,
+            "Boss JimBringerPhase3 dead, personal damage dealt:",
+        ));
+
+        let ending_scene = analyzer.snapshot_at(timestamp(10));
+        assert_eq!(ending_scene.phase, RoundPhase::Lobby);
+        assert_eq!(
+            ending_scene
+                .round_report
+                .as_ref()
+                .map(|report| report.total_damage),
+            Some(120)
+        );
+        assert!(!ending_scene.has_step_estimate);
+        assert_eq!(ending_scene.current_step, 0);
+        assert_eq!(ending_scene.until_boss_step, 0);
+
+        // The real logs repeat the Phase 3 death line and emit the initial
+        // lobby marker about a minute later. Neither may replace the report or
+        // turn "0 rounds until Jim" back on.
+        analyzer.process_line(&line(
+            11,
+            "Boss JimBringerPhase3 dead, personal damage dealt:",
+        ));
+        analyzer.process_line(&line(58, "ECLIPTICA - now in lobby"));
+        let initial_lobby = analyzer.snapshot_at(timestamp(58));
+        assert_eq!(
+            initial_lobby
+                .round_report
+                .as_ref()
+                .map(|report| report.total_damage),
+            Some(120)
+        );
+        assert!(!initial_lobby.has_step_estimate);
+    }
+
+    #[test]
+    fn earlier_jim_phase_death_does_not_end_the_round() {
+        let mut analyzer = Analyzer::default();
+        analyzer.process_line(&line(1, "ECLIPTICA - now in stage: Stage_Bringer"));
+        analyzer.process_line(&line(2, "Dealing 40 STRIKE damage"));
+        analyzer.process_line(&line(
+            3,
+            "Boss JimBringerPhase2 dead, personal damage dealt:",
+        ));
+
+        let snapshot = analyzer.snapshot_at(timestamp(3));
+        assert_eq!(snapshot.phase, RoundPhase::Combat);
+        assert!(snapshot.round_report.is_none());
+        assert!(snapshot.has_damage_data);
     }
 
     #[test]

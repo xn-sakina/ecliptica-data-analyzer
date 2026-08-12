@@ -1263,8 +1263,8 @@ pub const REPORT_VARIABLE_GROUPS: &[VariableCopyGroup] = &[
                 "Value",
                 "数值",
                 "round_longest_standstill",
-                "Longest period without pressing W, A, S, or D in the completed round.",
-                "刚结束这回合中，最长有多久没按 W、A、S、D。"
+                "Longest period without pressing W, A, S, or D in the completed round, as a number of seconds without a unit.",
+                "刚结束这回合中，最长有多久没按 W、A、S、D；只显示秒数，不带单位。"
             ),
             variable!(
                 "Condition",

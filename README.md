@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/app-icon.png" alt="Ecliptica Data Analyzer logo" width="120">
+  <img src="assets/app-icon.png" alt="Ecliptica Data Analyzer logo" width="100">
 </p>
 
 <h1 align="center">Ecliptica Data Analyzer</h1>

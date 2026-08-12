@@ -12,7 +12,9 @@ use anyhow::Context;
 use arboard::Clipboard;
 use ecliptica_data_analyzer::{
     APP_ID, APP_NAME,
-    analysis::{DataStatus, GameSnapshot, RoundPhase, RoundReport, normalized_name},
+    analysis::{
+        DataStatus, DpsHistoryPoint, GameSnapshot, RoundPhase, RoundReport, normalized_name,
+    },
     audio::SoundCommand,
     config::{self, AlertSoundStyle, AppConfig, SendInterval},
     i18n::{Language, format_pattern, format_seconds_pattern, text},
@@ -261,6 +263,12 @@ struct OverlayPositionState {
 struct DpsChartViewState {
     selected_epoch: Option<u64>,
     reset_bounds: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ChartRoundMarker {
+    start_seconds: f64,
+    step: u32,
 }
 
 impl Default for DpsChartViewState {
@@ -2123,14 +2131,17 @@ fn dps_history_chart(
         .show(ui);
     ui.add_space(6.0);
 
-    let raw = selected_points
-        .into_iter()
+    let raw = snapshot
+        .dps_history
+        .iter()
         .map(|point| [point.elapsed_seconds as f64, point.dps as f64])
         .collect::<Vec<_>>();
     let trend = dps_trend_points(&raw);
     let reduced = downsample_dps_trend(&trend, 600);
     let smooth = smooth_chart_points(&reduced, 4);
-    let round_start_seconds = raw.first().map_or(0.0, |point| point[0]);
+    let round_start_seconds = selected_points
+        .first()
+        .map_or(0.0, |point| point.elapsed_seconds as f64);
     let default_x = chart_round_x_bounds(round_start_seconds);
     let default_y = chart_y_bounds_for_range(&smooth, default_x);
     let glow = Line::new(
@@ -2144,7 +2155,10 @@ fn dps_history_chart(
         .color(egui::Color32::from_rgb(207, 190, 255))
         .width(2.4)
         .allow_hover(false);
-    let x_axis_step = estimated_step;
+    let round_markers = chart_round_markers(
+        &snapshot.dps_history,
+        estimated_step.map(|step| (selected_epoch, step)),
+    );
 
     egui::Frame::NONE
         .fill(SETTINGS_CHART_BG)
@@ -2177,7 +2191,7 @@ fn dps_history_chart(
                     .x_axis_label(text::SESSION_TIME.get(language))
                     .y_axis_label("DPS")
                     .x_axis_formatter(move |mark, range| {
-                        format_chart_x_tick_localized(mark.value, range, x_axis_step, language)
+                        format_chart_x_tick_localized(mark.value, range, &round_markers, language)
                     })
                     .y_axis_formatter(|mark, _| format_compact_number(mark.value))
                     .show_x(false)
@@ -2313,15 +2327,15 @@ fn chart_point_at_x(points: &[[f64; 2]], x: f64) -> Option<[f64; 2]> {
 fn format_chart_x_tick(
     seconds: f64,
     visible_range: &std::ops::RangeInclusive<f64>,
-    estimated_step: Option<u32>,
+    round_markers: &[ChartRoundMarker],
 ) -> String {
-    format_chart_x_tick_localized(seconds, visible_range, estimated_step, Language::Chinese)
+    format_chart_x_tick_localized(seconds, visible_range, round_markers, Language::Chinese)
 }
 
 fn format_chart_x_tick_localized(
     seconds: f64,
     visible_range: &std::ops::RangeInclusive<f64>,
-    estimated_step: Option<u32>,
+    round_markers: &[ChartRoundMarker],
     language: Language,
 ) -> String {
     let span = (*visible_range.end() - *visible_range.start()).abs();
@@ -2337,12 +2351,54 @@ fn format_chart_x_tick_localized(
         return String::new();
     }
     let elapsed = format_chart_elapsed(seconds);
-    estimated_step.map_or(elapsed.clone(), |step| {
+    chart_round_at(seconds, round_markers).map_or(elapsed.clone(), |step| {
         format!(
             "{elapsed} · {}",
             format_pattern(text::ROUND_TICK, language, &[("step", step.to_string())])
         )
     })
+}
+
+fn chart_round_markers(
+    history: &[DpsHistoryPoint],
+    current_anchor: Option<(u64, u32)>,
+) -> Vec<ChartRoundMarker> {
+    let anchor = current_anchor.or_else(|| {
+        history.iter().rev().find_map(|point| {
+            point
+                .estimated_step
+                .map(|step| (point.combat_round_epoch, step))
+        })
+    });
+    let Some((anchor_epoch, anchor_step)) = anchor else {
+        return Vec::new();
+    };
+
+    let mut previous_epoch = 0;
+    history
+        .iter()
+        .filter_map(|point| {
+            let epoch = point.combat_round_epoch;
+            if epoch == 0 || epoch == previous_epoch {
+                return None;
+            }
+            previous_epoch = epoch;
+            let relative_step =
+                i128::from(anchor_step) + i128::from(epoch) - i128::from(anchor_epoch);
+            let step = u32::try_from(relative_step).ok().filter(|step| *step > 0)?;
+            Some(ChartRoundMarker {
+                start_seconds: point.elapsed_seconds as f64,
+                step,
+            })
+        })
+        .collect()
+}
+
+fn chart_round_at(seconds: f64, markers: &[ChartRoundMarker]) -> Option<u32> {
+    markers
+        .partition_point(|marker| marker.start_seconds <= seconds)
+        .checked_sub(1)
+        .map(|index| markers[index].step)
 }
 
 fn chart_round_x_bounds(round_start_seconds: f64) -> (f64, f64) {
@@ -4093,10 +4149,69 @@ mod tests {
     #[test]
     fn chart_x_ticks_add_reliable_round_and_hide_overflowing_edges() {
         let range = 0.0..=300.0;
-        assert_eq!(format_chart_x_tick(0.0, &range, Some(8)), "0s · 8轮");
-        assert_eq!(format_chart_x_tick(300.0, &range, Some(8)), "");
-        assert_eq!(format_chart_x_tick(60.0, &range, Some(8)), "1min · 8轮");
-        assert_eq!(format_chart_x_tick(60.0, &range, None), "1min");
+        let markers = [
+            ChartRoundMarker {
+                start_seconds: 0.0,
+                step: 7,
+            },
+            ChartRoundMarker {
+                start_seconds: 60.0,
+                step: 8,
+            },
+        ];
+        assert_eq!(format_chart_x_tick(0.0, &range, &markers), "0s · 7轮");
+        assert_eq!(format_chart_x_tick(300.0, &range, &markers), "");
+        assert_eq!(format_chart_x_tick(60.0, &range, &markers), "1min · 8轮");
+        assert_eq!(format_chart_x_tick(30.0, &range, &[]), "30s");
+    }
+
+    #[test]
+    fn chart_round_labels_advance_with_recorded_combat_epochs() {
+        let history = [
+            DpsHistoryPoint {
+                elapsed_seconds: 0,
+                dps: 0,
+                combat_round_epoch: 0,
+                estimated_step: None,
+            },
+            DpsHistoryPoint {
+                elapsed_seconds: 10,
+                dps: 100,
+                combat_round_epoch: 3,
+                estimated_step: None,
+            },
+            DpsHistoryPoint {
+                elapsed_seconds: 20,
+                dps: 0,
+                combat_round_epoch: 0,
+                estimated_step: None,
+            },
+            DpsHistoryPoint {
+                elapsed_seconds: 30,
+                dps: 200,
+                combat_round_epoch: 4,
+                estimated_step: Some(9),
+            },
+        ];
+
+        let markers = chart_round_markers(&history, Some((4, 9)));
+        assert_eq!(
+            markers,
+            vec![
+                ChartRoundMarker {
+                    start_seconds: 10.0,
+                    step: 8,
+                },
+                ChartRoundMarker {
+                    start_seconds: 30.0,
+                    step: 9,
+                },
+            ]
+        );
+        assert_eq!(chart_round_at(9.0, &markers), None);
+        assert_eq!(chart_round_at(10.0, &markers), Some(8));
+        assert_eq!(chart_round_at(29.0, &markers), Some(8));
+        assert_eq!(chart_round_at(30.0, &markers), Some(9));
     }
 
     #[test]
@@ -4108,7 +4223,7 @@ mod tests {
 
         assert_eq!(smooth.len(), 1);
         assert_eq!(chart_point_at_x(&smooth, 12.0), Some(smooth[0]));
-        assert_eq!(format_chart_x_tick(60.0, &(0.0..=300.0), None), "1min");
+        assert_eq!(format_chart_x_tick(60.0, &(0.0..=300.0), &[]), "1min");
     }
 
     #[test]

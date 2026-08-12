@@ -605,11 +605,13 @@ impl Analyzer {
                 self.joined_second = None;
             }
             ParsedEvent::Boss { second, name } => {
-                // Lobby is an authoritative lifecycle state. Combat-adjacent
-                // logs can be delayed or produced by lobby targets, so only a
-                // Stage event may move an established lobby into combat.
-                if self.snapshot.phase != RoundPhase::Lobby {
-                    self.resolve_joined_combat_signal(second);
+                // An explicit intermission/lobby marker is authoritative, but
+                // the quiet-room timeout only *guesses* that the player is in
+                // the pre-game lobby. A real boss signal must be allowed to
+                // correct that guess; otherwise the first boss and every one
+                // of its ownership updates are discarded after a late join.
+                if self.snapshot.phase != RoundPhase::Lobby || self.assumed_pregame_lobby {
+                    self.resolve_boss_signal(second);
                     self.snapshot.in_ecliptica = true;
                     self.snapshot.phase = RoundPhase::Combat;
                     self.snapshot.boss_active = true;
@@ -962,6 +964,21 @@ impl Analyzer {
             self.mark_waiting_for_next_round();
             self.awaiting_join_phase = false;
             self.joined_second = None;
+        }
+    }
+
+    fn resolve_boss_signal(&mut self, second: i64) {
+        if self.assumed_pregame_lobby {
+            // This is the first authoritative lifecycle signal after the
+            // timeout guess. Treat it as the beginning of active combat so
+            // the immediately following ownership line can set Boss Lock.
+            self.start_round(second);
+            self.snapshot.in_ecliptica = true;
+            self.snapshot.phase = RoundPhase::Combat;
+            self.assumed_pregame_lobby = false;
+            self.joined_second = None;
+        } else {
+            self.resolve_joined_combat_signal(second);
         }
     }
 
@@ -2087,7 +2104,7 @@ mod tests {
     }
 
     #[test]
-    fn combat_noise_does_not_override_an_inferred_pregame_lobby() {
+    fn first_boss_corrects_an_inferred_pregame_lobby_and_tracks_its_lock() {
         let mut analyzer = Analyzer::default();
         analyzer.process_line(&line(
             0,
@@ -2099,18 +2116,33 @@ mod tests {
             20,
             "ECLIPTICA - now fighting boss: Maxipuss(Clone) on phase: 1",
         ));
-        analyzer.process_line(&line(20, "Dealing 999 STRIKE damage"));
-        let waiting = analyzer.snapshot_at(timestamp(20));
-        assert_eq!(waiting.phase, RoundPhase::Lobby);
-        assert!(!waiting.has_damage_data);
-        assert!(waiting.boss.is_none());
+        analyzer.process_line(&line(20, "ownership of Maxipuss transferred to Player One"));
+        let combat = analyzer.snapshot_at(timestamp(20));
+        assert_eq!(combat.phase, RoundPhase::Combat);
+        assert_eq!(combat.boss.as_deref(), Some("Maxipuss"));
+        assert_eq!(combat.boss_lock.as_deref(), Some("Player One"));
+        assert!(!combat.waiting_for_next_round);
+        assert!(combat.round_report.is_none());
+    }
 
-        analyzer.process_line(&line(21, "ECLIPTICA - now in stage: Stage_First"));
-        let snapshot = analyzer.snapshot_at(timestamp(21));
-        assert_eq!(snapshot.phase, RoundPhase::Combat);
-        assert!(!snapshot.waiting_for_next_round);
-        assert!(snapshot.data_quality.degraded);
-        assert_eq!(snapshot.data_quality.issues[0].code, "room_phase_missing");
+    #[test]
+    fn explicit_lobby_still_ignores_training_boss_noise() {
+        let mut analyzer = Analyzer::default();
+        analyzer.process_line(&line(
+            0,
+            "[Behaviour] Entering Room: Ecliptica - Waiting Instance",
+        ));
+        analyzer.process_line(&line(1, "ECLIPTICA - now in lobby"));
+        analyzer.process_line(&line(
+            20,
+            "ECLIPTICA - now fighting boss: Maxipuss(Clone) on phase: 1",
+        ));
+        analyzer.process_line(&line(20, "ownership of Maxipuss transferred to Player One"));
+
+        let lobby = analyzer.snapshot_at(timestamp(20));
+        assert_eq!(lobby.phase, RoundPhase::Lobby);
+        assert!(lobby.boss.is_none());
+        assert!(lobby.boss_lock.is_none());
     }
 
     #[test]

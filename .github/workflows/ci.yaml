@@ -101,5 +101,5 @@ jobs:
             "${release_flags[@]}" \
             --target "${GITHUB_SHA}" \
             --title "v${VERSION}" \
-            --generate-notes \
+            --notes "" \
             "release-assets/ecliptica-data-analyzer-v${VERSION}-windows-x64.exe"

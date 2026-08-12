@@ -9,6 +9,10 @@
   See the numbers that matter, including your DPS, damage taken, and who the Boss is targeting.
 </p>
 
+<p align="center">
+  <img src="assets/readme-preview.png" alt="Ecliptica Data Analyzer dashboard and in game overlay preview" width="50%">
+</p>
+
 ## Download
 
 [Download the latest release](https://github.com/xn-sakina/ecliptica-data-analyzer/releases)

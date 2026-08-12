@@ -56,7 +56,10 @@ const SETTINGS_PREVIEW_BORDER: egui::Color32 = egui::Color32::from_rgb(94, 81, 1
 const SETTINGS_CHART_BG: egui::Color32 = egui::Color32::from_rgb(29, 23, 43);
 const SETTINGS_CHART_AXIS: egui::Color32 = egui::Color32::from_rgb(229, 222, 248);
 const SETTINGS_CHART_CURSOR: egui::Color32 = egui::Color32::from_rgb(221, 207, 255);
-const DPS_CHART_DEFAULT_ROUND_SECONDS: f64 = 5.0 * 60.0;
+const DPS_CHART_AUTO_FIT_IDLE: Duration = Duration::from_secs(5);
+const DPS_CHART_AUTO_FIT_INTERVAL: Duration = Duration::from_secs(5);
+const DPS_CHART_X_MARGIN_FRACTION: f64 = 0.025;
+const DPS_CHART_Y_MARGIN_FRACTION: f64 = 0.10;
 const SETTINGS_TEXT: egui::Color32 = egui::Color32::from_rgb(246, 243, 255);
 const SETTINGS_HEADING: egui::Color32 = egui::Color32::from_rgb(225, 218, 255);
 const SETTINGS_TEXT_SECONDARY: egui::Color32 = egui::Color32::from_rgb(190, 183, 204);
@@ -262,7 +265,8 @@ struct OverlayPositionState {
 #[derive(Debug, Clone, Copy)]
 struct DpsChartViewState {
     selected_epoch: Option<u64>,
-    reset_bounds: bool,
+    last_user_interaction: Option<Instant>,
+    last_auto_fit: Option<Instant>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -275,8 +279,51 @@ impl Default for DpsChartViewState {
     fn default() -> Self {
         Self {
             selected_epoch: None,
-            reset_bounds: true,
+            last_user_interaction: None,
+            last_auto_fit: None,
         }
+    }
+}
+
+impl DpsChartViewState {
+    fn record_user_interaction(&mut self, now: Instant) {
+        self.last_user_interaction = Some(now);
+    }
+
+    fn should_auto_fit(&self, now: Instant) -> bool {
+        if let Some(last_user_interaction) = self.last_user_interaction {
+            if now.saturating_duration_since(last_user_interaction) < DPS_CHART_AUTO_FIT_IDLE {
+                return false;
+            }
+            if self
+                .last_auto_fit
+                .is_none_or(|last_auto_fit| last_auto_fit < last_user_interaction)
+            {
+                return true;
+            }
+        }
+        self.last_auto_fit.is_none_or(|last_auto_fit| {
+            now.saturating_duration_since(last_auto_fit) >= DPS_CHART_AUTO_FIT_INTERVAL
+        })
+    }
+
+    fn record_auto_fit(&mut self, now: Instant) {
+        self.last_auto_fit = Some(now);
+    }
+
+    fn next_auto_fit_in(&self, now: Instant) -> Duration {
+        if let Some(last_user_interaction) = self.last_user_interaction {
+            if self
+                .last_auto_fit
+                .is_none_or(|last_auto_fit| last_auto_fit < last_user_interaction)
+            {
+                return DPS_CHART_AUTO_FIT_IDLE
+                    .saturating_sub(now.saturating_duration_since(last_user_interaction));
+            }
+        }
+        self.last_auto_fit.map_or(Duration::ZERO, |last_auto_fit| {
+            DPS_CHART_AUTO_FIT_INTERVAL.saturating_sub(now.saturating_duration_since(last_auto_fit))
+        })
     }
 }
 
@@ -2075,7 +2122,6 @@ fn dps_history_chart(
     let target_epoch = active_epoch.or(latest_epoch);
     if target_epoch != view.selected_epoch {
         view.selected_epoch = target_epoch;
-        view.reset_bounds = true;
     }
 
     let Some(selected_epoch) = target_epoch else {
@@ -2139,11 +2185,9 @@ fn dps_history_chart(
     let trend = dps_trend_points(&raw);
     let reduced = downsample_dps_trend(&trend, 600);
     let smooth = smooth_chart_points(&reduced, 4);
-    let round_start_seconds = selected_points
-        .first()
-        .map_or(0.0, |point| point.elapsed_seconds as f64);
-    let default_x = chart_round_x_bounds(round_start_seconds);
-    let default_y = chart_y_bounds_for_range(&smooth, default_x);
+    let best_view = chart_best_view_bounds(&smooth);
+    let now = Instant::now();
+    let auto_fit_due = view.should_auto_fit(now);
     let glow = Line::new(
         text::DPS_TREND.get(language),
         PlotPoints::new(smooth.clone()),
@@ -2182,6 +2226,7 @@ fn dps_history_chart(
                     .show_grid([false, false])
                     .allow_drag([true, true])
                     .allow_zoom([true, true])
+                    .allow_axis_zoom_drag(false)
                     // Leave ordinary wheel scrolling to the outer settings
                     // page. Axis ranges are adjusted through axis dragging or
                     // explicit zoom gestures, never by scrolling the chart.
@@ -2198,9 +2243,14 @@ fn dps_history_chart(
                     .show_y(false)
                     .cursor_color(SETTINGS_CHART_CURSOR)
                     .show(ui, |plot_ui| {
-                        if view.reset_bounds {
-                            plot_ui.set_plot_bounds_x(default_x.0..=default_x.1);
-                            plot_ui.set_plot_bounds_y(default_y.0..=default_y.1);
+                        let zooming = plot_ui.response().contains_pointer()
+                            && plot_ui
+                                .ctx()
+                                .input(|input| input.zoom_delta_2d() != egui::Vec2::splat(1.0));
+                        let user_interacting = plot_ui.response().dragged() || zooming;
+                        if auto_fit_due && !user_interacting {
+                            plot_ui.set_plot_bounds_x(best_view.0.0..=best_view.0.1);
+                            plot_ui.set_plot_bounds_y(best_view.1.0..=best_view.1.1);
                         }
                         plot_ui.line(glow);
                         plot_ui.line(line);
@@ -2237,6 +2287,7 @@ fn dps_history_chart(
                                 );
                             }
                         }
+                        user_interacting
                     });
                 if response.response.hovered() && !response.response.dragged() {
                     let hovered_point = response.response.hover_pos().and_then(|pointer_pos| {
@@ -2255,13 +2306,15 @@ fn dps_history_chart(
                         );
                     }
                 }
-                if view.reset_bounds {
-                    view.reset_bounds = false;
+                if response.inner {
+                    view.record_user_interaction(now);
+                } else if auto_fit_due {
+                    view.record_auto_fit(now);
                 }
-                // No code changes the X bounds again until a different combat
-                // epoch is selected, so dragging and zooming remain entirely
-                // under the user's control throughout this round.
-                let _ = response;
+                let next_auto_fit = view.next_auto_fit_in(now);
+                if !next_auto_fit.is_zero() {
+                    ui.ctx().request_repaint_after(next_auto_fit);
+                }
             });
         });
 }
@@ -2401,31 +2454,40 @@ fn chart_round_at(seconds: f64, markers: &[ChartRoundMarker]) -> Option<u32> {
         .map(|index| markers[index].step)
 }
 
-fn chart_round_x_bounds(round_start_seconds: f64) -> (f64, f64) {
-    let start = round_start_seconds.max(0.0);
-    (start, start + DPS_CHART_DEFAULT_ROUND_SECONDS)
-}
+fn chart_best_view_bounds(points: &[[f64; 2]]) -> ((f64, f64), (f64, f64)) {
+    let mut x_min = f64::INFINITY;
+    let mut x_max = f64::NEG_INFINITY;
+    let mut y_min = f64::INFINITY;
+    let mut y_max = f64::NEG_INFINITY;
+    for [x, y] in points.iter().copied() {
+        if x.is_finite() && y.is_finite() {
+            x_min = x_min.min(x);
+            x_max = x_max.max(x);
+            y_min = y_min.min(y);
+            y_max = y_max.max(y);
+        }
+    }
+    if !x_min.is_finite() || !y_min.is_finite() {
+        return ((0.0, 10.0), (0.0, 1.0));
+    }
 
-fn chart_y_bounds_for_range(points: &[[f64; 2]], x_bounds: (f64, f64)) -> (f64, f64) {
-    let mut minimum = f64::INFINITY;
-    let mut maximum = f64::NEG_INFINITY;
-    for point in points
-        .iter()
-        .filter(|point| point[0] >= x_bounds.0 && point[0] <= x_bounds.1)
-    {
-        minimum = minimum.min(point[1]);
-        maximum = maximum.max(point[1]);
-    }
-    if !minimum.is_finite() || !maximum.is_finite() {
-        return (0.0, 1.0);
-    }
-    let span = maximum - minimum;
-    let padding = if span > f64::EPSILON {
-        span * 0.12
+    let x_span = x_max - x_min;
+    let x_padding = if x_span > f64::EPSILON {
+        (x_span * DPS_CHART_X_MARGIN_FRACTION).max(1.0)
     } else {
-        maximum.abs().max(1.0) * 0.08
+        5.0
     };
-    (minimum - padding, maximum + padding)
+    let x_bounds = ((x_min - x_padding).max(0.0), x_max + x_padding);
+
+    let y_span = y_max - y_min;
+    let y_padding = if y_span > f64::EPSILON {
+        (y_span * DPS_CHART_Y_MARGIN_FRACTION).max(1.0)
+    } else {
+        (y_max.abs() * DPS_CHART_Y_MARGIN_FRACTION).max(1.0)
+    };
+    let y_bounds = ((y_min - y_padding).max(0.0), y_max + y_padding);
+
+    (x_bounds, y_bounds)
 }
 
 fn dps_trend_points(points: &[[f64; 2]]) -> Vec<[f64; 2]> {
@@ -4118,15 +4180,45 @@ mod tests {
     }
 
     #[test]
-    fn chart_uses_a_stable_round_window_without_forcing_zero_into_y_bounds() {
-        assert_eq!(chart_round_x_bounds(30.0), (30.0, 330.0));
-        assert_eq!(chart_round_x_bounds(125.0), (125.0, 425.0));
-
+    fn chart_best_view_contains_the_full_line_with_padding() {
         let points = [[65.0, 100.0], [90.0, 150.0], [125.0, 200.0]];
-        let bounds = chart_y_bounds_for_range(&points, (65.0, 125.0));
-        assert!(bounds.0 > 0.0);
-        assert!(bounds.0 < 100.0);
-        assert!(bounds.1 > 200.0);
+        let (x, y) = chart_best_view_bounds(&points);
+        assert!(x.0 < 65.0 && x.1 > 125.0);
+        assert!(y.0 > 0.0 && y.0 < 100.0);
+        assert!(y.1 > 200.0);
+    }
+
+    #[test]
+    fn chart_best_view_handles_zero_and_single_point_lines() {
+        assert_eq!(chart_best_view_bounds(&[]), ((0.0, 10.0), (0.0, 1.0)));
+
+        let (x, y) = chart_best_view_bounds(&[[0.0, 0.0]]);
+        assert_eq!(x, (0.0, 5.0));
+        assert_eq!(y, (0.0, 1.0));
+
+        let (x, y) = chart_best_view_bounds(&[[12.0, 250.0]]);
+        assert_eq!(x, (7.0, 17.0));
+        assert_eq!(y, (225.0, 275.0));
+    }
+
+    #[test]
+    fn chart_auto_fit_waits_after_user_input_and_between_adjustments() {
+        let start = Instant::now();
+        let mut view = DpsChartViewState::default();
+        assert!(view.should_auto_fit(start));
+        view.record_auto_fit(start);
+        assert!(!view.should_auto_fit(start + Duration::from_secs(4)));
+        assert!(view.should_auto_fit(start + DPS_CHART_AUTO_FIT_INTERVAL));
+
+        let interaction = start + Duration::from_secs(6);
+        view.record_user_interaction(interaction);
+        assert!(!view.should_auto_fit(interaction + Duration::from_secs(4)));
+        assert!(view.should_auto_fit(interaction + DPS_CHART_AUTO_FIT_IDLE));
+
+        let resumed = interaction + DPS_CHART_AUTO_FIT_IDLE;
+        view.record_auto_fit(resumed);
+        assert!(!view.should_auto_fit(resumed + Duration::from_secs(4)));
+        assert!(view.should_auto_fit(resumed + DPS_CHART_AUTO_FIT_INTERVAL));
     }
 
     #[test]

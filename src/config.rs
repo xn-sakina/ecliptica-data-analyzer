@@ -16,7 +16,7 @@ use tempfile::NamedTempFile;
 use crate::APP_ID;
 use crate::i18n::Language;
 
-pub const CONFIG_VERSION: u32 = 18;
+pub const CONFIG_VERSION: u32 = 20;
 pub const MESSAGE_TEMPLATE_PRESET_COUNT: usize = 3;
 pub const ROUND_REPORT_TEMPLATE_PRESET_COUNT: usize = 3;
 pub const TEMPLATE_PRESET_NAME_MAX_CHARS: usize = 24;
@@ -513,6 +513,53 @@ impl AppConfig {
                 self.round_report_template.clone_from(template);
             }
         }
+        if self.version < 19 {
+            self.message_template = migrate_removed_report_variables(&self.message_template, false);
+            self.round_report_template =
+                migrate_removed_report_variables(&self.round_report_template, true);
+            for template in &mut self.message_template_presets {
+                *template = migrate_removed_report_variables(template, false);
+            }
+            for template in &mut self.round_report_template_presets {
+                *template = migrate_removed_report_variables(template, true);
+            }
+            if let Some(template) = self
+                .message_template_presets
+                .get(self.active_message_template_preset)
+            {
+                self.message_template.clone_from(template);
+            }
+            if let Some(template) = self
+                .round_report_template_presets
+                .get(self.active_round_report_template_preset)
+            {
+                self.round_report_template.clone_from(template);
+            }
+        }
+        if self.version < 20 {
+            self.message_template =
+                migrate_removed_context_variables(&self.message_template, "COMBAT");
+            self.round_report_template =
+                migrate_removed_context_variables(&self.round_report_template, "LOBBY");
+            for template in &mut self.message_template_presets {
+                *template = migrate_removed_context_variables(template, "COMBAT");
+            }
+            for template in &mut self.round_report_template_presets {
+                *template = migrate_removed_context_variables(template, "LOBBY");
+            }
+            if let Some(template) = self
+                .message_template_presets
+                .get(self.active_message_template_preset)
+            {
+                self.message_template.clone_from(template);
+            }
+            if let Some(template) = self
+                .round_report_template_presets
+                .get(self.active_round_report_template_preset)
+            {
+                self.round_report_template.clone_from(template);
+            }
+        }
         self.version = CONFIG_VERSION;
         self.alert_volume = self.alert_volume.clamp(0.0, 1.0);
         if !self.overlay_scale.is_finite() {
@@ -643,6 +690,62 @@ fn migrate_redundant_presence_flags(template: &str) -> String {
     })
 }
 
+fn migrate_removed_report_variables(template: &str, report_context: bool) -> String {
+    // Template selection already supplies the report presence: always false
+    // for combat templates and always true for report templates. Word
+    // boundaries avoid touching useful variables such as
+    // `has_round_report_effective_dps`.
+    let without_report_flag = regex::Regex::new(r"\bhas_round_report\b")
+        .expect("built-in report flag migration regex must compile")
+        .replace_all(template, report_context.to_string());
+    // These values have deliberately been removed. Strip their simplest
+    // interpolation form so upgraded custom templates remain valid.
+    let without_interpolations =
+        regex::Regex::new(r"\{\{\s*(?:has_round_combat_duration|round_combat_duration)\s*\}\}")
+            .expect("built-in combat-duration migration regex must compile")
+            .replace_all(&without_report_flag, "")
+            .into_owned();
+    regex::Regex::new(r"\b(?:has_round_combat_duration|round_combat_duration)\b")
+        .expect("built-in removed-variable migration regex must compile")
+        .replace_all(&without_interpolations, "false")
+        .into_owned()
+}
+
+fn migrate_removed_context_variables(template: &str, phase: &str) -> String {
+    let expression = regex::Regex::new(r"\{\{[^}]*\}\}")
+        .expect("built-in template-expression migration regex must compile");
+    let phase_reference =
+        regex::Regex::new(r"\bphase\b").expect("built-in phase migration regex must compile");
+    let status_reference =
+        regex::Regex::new(r"\bstatus\b").expect("built-in status migration regex must compile");
+    let waiting_reference = regex::Regex::new(r"\bwaiting_for_next_round\b")
+        .expect("built-in waiting migration regex must compile");
+
+    expression
+        .replace_all(template, |captures: &regex::Captures<'_>| {
+            let source = captures.get(0).expect("whole expression exists").as_str();
+            if regex::Regex::new(r"^\{\{\s*(?:phase|status|waiting_for_next_round)\s*\}\}$")
+                .expect("built-in direct interpolation regex must compile")
+                .is_match(source)
+            {
+                return match source
+                    .trim_matches(|character| character == '{' || character == '}')
+                    .trim()
+                {
+                    "phase" => phase.to_owned(),
+                    "status" => "LIVE".to_owned(),
+                    _ => String::new(),
+                };
+            }
+            let migrated = phase_reference.replace_all(source, format!(r#""{phase}""#));
+            let migrated = status_reference.replace_all(&migrated, r#""LIVE""#);
+            waiting_reference
+                .replace_all(&migrated, "false")
+                .into_owned()
+        })
+        .into_owned()
+}
+
 fn upgrade_builtin_round_report_template(template: &mut String, new_default: &str) {
     if template == VERSION_10_DEFAULT_ROUND_REPORT_TEMPLATE {
         *template = new_default.to_owned();
@@ -678,7 +781,6 @@ pub fn validate_template(source: &str, language: Language) -> Result<()> {
         "max_dps": "-",
         "boss_lock": "",
         "boss": "",
-        "status": "SEARCHING",
         "has_latest_dps": false,
         "has_avg_dps": false,
         "has_round_avg_dps": false,
@@ -690,11 +792,7 @@ pub fn validate_template(source: &str, language: Language) -> Result<()> {
         "rapid_damage_danger": false,
         "no_dps_for_10s": false,
         "no_wasd_for_10s": false,
-        "waiting_for_next_round": false,
-        "phase": "OUTSIDE",
-        "has_round_report": false,
         "has_round_duration": false,
-        "has_round_combat_duration": false,
         "has_round_report_avg_dps": false,
         "has_round_max_dps": false,
         "has_round_report_effective_dps": false,
@@ -706,7 +804,6 @@ pub fn validate_template(source: &str, language: Language) -> Result<()> {
         "current_step": "-",
         "until_boss_step": "-",
         "round_duration": "-",
-        "round_combat_duration": "-",
         "round_total_damage": "-",
         "round_report_avg_dps": "-",
         "round_max_dps": "-",
@@ -1136,7 +1233,69 @@ mod tests {
         );
         assert_eq!(
             migrated.round_report_template,
-            "{{#if has_round_report}}{{round_total_damage}}{{/if}}|{{#if has_round_report}}{{round_report_damage_taken}}{{/if}}"
+            "{{#if true}}{{round_total_damage}}{{/if}}|{{#if true}}{{round_report_damage_taken}}{{/if}}"
+        );
+        validate_template(&migrated.message_template, migrated.language).unwrap();
+        validate_template(&migrated.round_report_template, migrated.language).unwrap();
+    }
+
+    #[test]
+    fn version_eighteen_templates_remove_redundant_report_and_combat_duration_variables() {
+        let old_template = "{{#if has_round_report}}report{{/if}}|{{round_combat_duration}}|{{#if has_round_combat_duration}}timed{{else}}no-time{{/if}}";
+        let migrated = AppConfig {
+            version: 18,
+            message_template: "{{#if has_round_report}}wrong-context{{/if}}".to_owned(),
+            message_template_presets: std::array::from_fn(|_| {
+                "{{#if has_round_report}}wrong-context{{/if}}".to_owned()
+            }),
+            round_report_template: old_template.to_owned(),
+            round_report_template_presets: std::array::from_fn(|_| old_template.to_owned()),
+            active_round_report_template_preset: 0,
+            ..AppConfig::default()
+        }
+        .migrated();
+
+        assert_eq!(
+            migrated.message_template,
+            "{{#if false}}wrong-context{{/if}}"
+        );
+        assert_eq!(
+            migrated.round_report_template,
+            "{{#if true}}report{{/if}}||{{#if false}}timed{{else}}no-time{{/if}}"
+        );
+        assert!(
+            migrated
+                .round_report_template_presets
+                .iter()
+                .all(|template| template
+                    == "{{#if true}}report{{/if}}||{{#if false}}timed{{else}}no-time{{/if}}")
+        );
+        validate_template(&migrated.round_report_template, migrated.language).unwrap();
+    }
+
+    #[test]
+    fn version_nineteen_templates_remove_unreachable_context_variables() {
+        let combat = "{{phase}}|{{status}}|{{waiting_for_next_round}}|{{#if (and (eq phase \"COMBAT\") (eq status \"LIVE\") (not waiting_for_next_round))}}ok{{/if}}";
+        let report = "{{phase}}|{{status}}|{{#if (eq phase \"LOBBY\")}}report{{/if}}";
+        let migrated = AppConfig {
+            version: 19,
+            message_template: combat.to_owned(),
+            message_template_presets: std::array::from_fn(|_| combat.to_owned()),
+            active_message_template_preset: 0,
+            round_report_template: report.to_owned(),
+            round_report_template_presets: std::array::from_fn(|_| report.to_owned()),
+            active_round_report_template_preset: 0,
+            ..AppConfig::default()
+        }
+        .migrated();
+
+        assert_eq!(
+            migrated.message_template,
+            "COMBAT|LIVE||{{#if (and (eq \"COMBAT\" \"COMBAT\") (eq \"LIVE\" \"LIVE\") (not false))}}ok{{/if}}"
+        );
+        assert_eq!(
+            migrated.round_report_template,
+            "LOBBY|LIVE|{{#if (eq \"LOBBY\" \"LOBBY\")}}report{{/if}}"
         );
         validate_template(&migrated.message_template, migrated.language).unwrap();
         validate_template(&migrated.round_report_template, migrated.language).unwrap();

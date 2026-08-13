@@ -187,7 +187,6 @@ enum SelfLockTransition {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TemplatePreviewState {
     Normal,
-    WaitingNextRound,
     RoundReport,
 }
 
@@ -1092,10 +1091,10 @@ impl AnalyzerApp {
                 detail_row(
                     ui,
                     text::SYNC_STATUS.get(language),
-                    if snapshot.waiting_for_next_round {
-                        text::JOINED_MID_SESSION.get(language)
-                    } else {
+                    if snapshot.round_metrics_active {
                         text::ROUND_DATA_AVAILABLE.get(language)
+                    } else {
+                        text::ROUND_DATA_UNAVAILABLE.get(language)
                     },
                 );
                 log_source_row(ui, snapshot.source.as_deref(), &self.runtime, language);
@@ -1314,12 +1313,10 @@ impl AnalyzerApp {
                     .show(ui, |ui| {
                         let mut selected = match self.template_preview_state {
                             TemplatePreviewState::Normal => 0,
-                            TemplatePreviewState::WaitingNextRound => 1,
-                            TemplatePreviewState::RoundReport => 2,
+                            TemplatePreviewState::RoundReport => 1,
                         };
                         ToggleGroup::new(vec![
                             text::PREVIEW_NORMAL.get(language).to_owned(),
-                            text::PREVIEW_MID_SESSION.get(language).to_owned(),
                             text::PREVIEW_ROUND_REPORT.get(language).to_owned(),
                         ])
                         .variant(ToggleVariant::Outline)
@@ -1327,8 +1324,7 @@ impl AnalyzerApp {
                         .selection_markers(false)
                         .show(ui, &mut selected);
                         self.template_preview_state = match selected {
-                            1 => TemplatePreviewState::WaitingNextRound,
-                            2 => TemplatePreviewState::RoundReport,
+                            1 => TemplatePreviewState::RoundReport,
                             _ => TemplatePreviewState::Normal,
                         };
                     });
@@ -1944,7 +1940,7 @@ fn preview_snapshot_for_state(
     match state {
         TemplatePreviewState::Normal => {
             preview.phase = RoundPhase::Combat;
-            preview.waiting_for_next_round = false;
+            preview.round_metrics_active = true;
             // The preview is useful before VRChat produces any live data too.
             if !preview.has_damage_data {
                 preview.has_damage_data = true;
@@ -1958,26 +1954,15 @@ fn preview_snapshot_for_state(
                 preview.has_max_dps_data = true;
             }
         }
-        TemplatePreviewState::WaitingNextRound => {
-            preview.phase = RoundPhase::Combat;
-            preview.waiting_for_next_round = true;
-            preview.has_damage_data = false;
-            preview.has_max_dps_data = false;
-            preview.round_burst_10s_dps = None;
-            preview.round_damage_taken = 0;
-            preview.rapid_damage_danger = false;
-            preview.no_dps_for_10s = false;
-        }
         TemplatePreviewState::RoundReport => {
             // Template selection gives Combat precedence over round_report, so
             // a report preview must explicitly simulate the upgrade lobby.
             preview.phase = RoundPhase::Lobby;
-            preview.waiting_for_next_round = false;
+            preview.round_metrics_active = false;
             preview.round_report = snapshot.round_report.clone().or(Some(RoundReport {
                 has_duration_data: true,
                 has_output_data: true,
                 duration_seconds: 367,
-                combat_duration_seconds: 328,
                 total_damage: 12_480,
                 average_dps: 38.0,
                 max_dps: 146,
@@ -3975,7 +3960,6 @@ mod tests {
                 has_duration_data: true,
                 has_output_data: true,
                 duration_seconds: 10,
-                combat_duration_seconds: 8,
                 total_damage: 999,
                 average_dps: 10.0,
                 max_dps: 20,
@@ -3990,34 +3974,23 @@ mod tests {
             ..GameSnapshot::default()
         };
         let config = AppConfig {
-            message_template:
-                "{{#if waiting_for_next_round}}WAITING{{else}}COMBAT {{latest_dps}}{{/if}}"
-                    .to_owned(),
+            message_template: "COMBAT {{latest_dps}}".to_owned(),
             round_report_template: "REPORT {{round_total_damage}}".to_owned(),
             ..AppConfig::default()
         };
 
         let normal = preview_snapshot_for_state(&runtime_snapshot, TemplatePreviewState::Normal);
-        let waiting =
-            preview_snapshot_for_state(&runtime_snapshot, TemplatePreviewState::WaitingNextRound);
         let report =
             preview_snapshot_for_state(&runtime_snapshot, TemplatePreviewState::RoundReport);
 
         assert_eq!(normal.phase, RoundPhase::Combat);
-        assert!(!normal.waiting_for_next_round);
+        assert!(normal.round_metrics_active);
         assert!(normal.round_report.is_none());
-        assert_eq!(waiting.phase, RoundPhase::Combat);
-        assert!(waiting.waiting_for_next_round);
-        assert!(waiting.round_report.is_none());
         assert_eq!(report.phase, RoundPhase::Lobby);
         assert!(report.round_report.is_some());
         assert_eq!(
             ecliptica_data_analyzer::osc::render_configured_message(&config, &normal).unwrap(),
             "COMBAT 128"
-        );
-        assert_eq!(
-            ecliptica_data_analyzer::osc::render_configured_message(&config, &waiting).unwrap(),
-            "WAITING"
         );
         assert_eq!(
             ecliptica_data_analyzer::osc::render_configured_message(&config, &report).unwrap(),

@@ -88,30 +88,30 @@ texts plus both selected slots for the next launch. Down-state detection and ded
 first-down/second-down messages are intentionally unsupported because Ecliptica logs
 do not expose a reliable event across sessions.
 
-Room entry has an explicit synchronization phase. If the first synchronized phase
-is lobby/intermission, the player starts the next stage normally. If it is an active
-stage (or another combat-only signal arrives first), personal combat data remains
-paused until the next lobby. OSC remains paused while
-the room phase is unknown and in an initial lobby that has no report. Templates can
-use `phase` and `waiting_for_next_round`.
+Room entry begins in an explicit unknown/synchronizing phase. The log proves that
+VRChat entered Ecliptica, but it does not expose whether the local player is alive,
+downed, or waiting to respawn. Stage, Boss, and Lobby records describe world state,
+not local-player state. The analyzer therefore does not infer a pre-game lobby after
+a timeout and does not expose a mid-session/death flag.
 
-If a new room produces no phase or combat-only signal for 12 seconds, the analyzer
-heuristically treats it as the pre-game gathering lobby. A stage or combat signal
-after that wait begins the first round alive; a signal inside the initial grace
-window still means the player joined a round already in progress.
+Personal round metrics start only after an explicit Lobby/Intermission marker followed
+by an explicit Stage marker. Stage or Boss restoration records seen immediately after
+joining may update the displayed world phase and Boss, but cannot start personal round
+metrics or OSC combat messages. This intentionally waits for the next authoritative
+round boundary instead of guessing participation.
 
 When an intermission/lobby marker ends a round with personal output or incoming damage, the analyzer
 archives a report until the next stage begins. Report variables are `round_duration`
-(stage to lobby), `round_combat_duration` (first hit to lobby), `round_total_damage`,
+(stage to lobby), `round_total_damage`,
 `round_report_avg_dps`, `round_max_dps`, `round_report_effective_dps`,
-`round_report_burst_10s`, `round_report_damage_taken`, and `has_round_report`.
+`round_report_burst_10s`, and `round_report_damage_taken`.
 `round_longest_standstill` is the longest continuous no-WASD time observed in the
 round; use `has_round_longest_standstill` because the value is unavailable when the
 global keyboard listener did not observe that round.
-Use `has_round_report` for values that always exist with a report, including total
-damage and damage taken. Metrics that can still be unavailable have dedicated flags.
-In particular, `has_round_combat_duration` and `has_round_report_avg_dps` require personal
-output records. `has_round_max_dps` and `has_round_report_effective_dps` have
+The report template is selected only while a report exists, so total damage and
+damage taken need no presence flag. Metrics that can still be unavailable have
+dedicated flags. In particular, `has_round_report_avg_dps` requires personal output
+records. `has_round_max_dps` and `has_round_report_effective_dps` have
 the same requirement, while `has_round_report_burst_10s` additionally requires
 a complete ten-second window.
 The default compact report remains comfortably below the VRChat Chatbox limit for

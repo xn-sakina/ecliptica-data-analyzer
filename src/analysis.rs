@@ -15,9 +15,6 @@ const RAPID_DAMAGE_DANGER_THRESHOLD: u64 = 50;
 /// Mark an active player as idle after this many seconds without any
 /// outgoing damage. The timer starts at the round marker when no hit exists.
 const NO_DPS_WINDOW_SECONDS: i64 = 10;
-/// When a newly joined Ecliptica instance emits no phase or combat signal for
-/// this long, assume the world has not started yet and players are gathering.
-const PREGAME_LOBBY_GRACE_SECONDS: i64 = 12;
 /// A hit keeps its surrounding output segment active for this many seconds.
 /// Overlapping grace intervals are merged, so walking and long waits do not
 /// dilute effective DPS while short gaps inside a combo still count.
@@ -107,8 +104,6 @@ pub struct RoundReport {
     pub has_output_data: bool,
     /// Full stage duration, from the stage marker to intermission/lobby.
     pub duration_seconds: u64,
-    /// Damage duration, from the first outgoing hit to intermission/lobby.
-    pub combat_duration_seconds: u64,
     pub total_damage: u64,
     pub average_dps: f64,
     pub max_dps: u64,
@@ -135,14 +130,6 @@ impl RoundReport {
     pub fn duration_text(&self) -> String {
         if self.has_duration_data {
             format_duration(self.duration_seconds)
-        } else {
-            "-".to_owned()
-        }
-    }
-
-    pub fn combat_duration_text(&self) -> String {
-        if self.has_output_data {
-            format_duration(self.combat_duration_seconds)
         } else {
             "-".to_owned()
         }
@@ -233,9 +220,11 @@ pub struct GameSnapshot {
     /// Whether a damage record has ever been observed during this Ecliptica
     /// visit. Unlike `max_dps > 0`, this preserves a real zero as valid data.
     pub has_max_dps_data: bool,
-    /// A player joining an already active stage waits for the next lobby before
-    /// personal combat statistics become eligible.
-    pub waiting_for_next_round: bool,
+    /// Personal round metrics are valid only after an explicit lobby marker
+    /// followed by an explicit stage marker. World combat signals alone cannot
+    /// prove that the local player is alive or participating.
+    #[serde(default)]
+    pub round_metrics_active: bool,
     /// The completed round retained while the player is back in the upgrade
     /// lobby. It is cleared as soon as the next stage starts.
     pub round_report: Option<RoundReport>,
@@ -308,7 +297,7 @@ impl Default for GameSnapshot {
             round_damage_taken: 0,
             max_dps: 0,
             has_max_dps_data: false,
-            waiting_for_next_round: false,
+            round_metrics_active: false,
             round_report: None,
             has_step_estimate: false,
             current_step: 0,
@@ -346,9 +335,10 @@ pub struct Analyzer {
     round_damage_total: u64,
     round_damage_taken_total: u64,
     round_max_dps: u64,
-    awaiting_join_phase: bool,
-    assumed_pregame_lobby: bool,
-    joined_second: Option<i64>,
+    /// Set only by an explicit lobby/intermission marker and consumed by the
+    /// next stage marker. This deliberately avoids inferring local player state
+    /// from world-level Stage/Boss restoration logs.
+    round_baseline_ready: bool,
     visit_started_second: Option<i64>,
     history_through_second: Option<i64>,
     previous_round_effective_dps: Option<f64>,
@@ -551,8 +541,6 @@ impl Analyzer {
                 self.reset_all();
                 self.snapshot.in_ecliptica = true;
                 self.snapshot.phase = RoundPhase::Syncing;
-                self.awaiting_join_phase = true;
-                self.joined_second = Some(second);
                 self.visit_started_second = Some(second);
             }
             ParsedEvent::LeaveRoom { second } => {
@@ -567,10 +555,16 @@ impl Analyzer {
                         message: "战斗中直接观察到下一阶段，未观察到 intermission/lobby 日志；上一回合按不完整数据丢弃并安全开始新回合".to_owned(),
                     });
                 }
-                let joined_active_stage =
-                    self.awaiting_join_phase || self.snapshot.waiting_for_next_round;
                 self.step_estimator.observe_stage(second, phase);
-                self.start_round(second);
+                if self.round_baseline_ready {
+                    self.start_round(second);
+                } else {
+                    // A Stage emitted during room restoration is
+                    // indistinguishable from a newly started Stage. Expose the
+                    // world phase, but wait for an explicit lobby -> stage
+                    // boundary before collecting personal round metrics.
+                    self.start_untracked_round();
+                }
                 if let Some(estimate) = self.step_estimator.estimate() {
                     self.snapshot.has_step_estimate = true;
                     self.snapshot.current_step = estimate.current;
@@ -578,40 +572,32 @@ impl Analyzer {
                 }
                 self.snapshot.in_ecliptica = true;
                 self.snapshot.phase = RoundPhase::Combat;
-                self.awaiting_join_phase = false;
-                self.assumed_pregame_lobby = false;
-                self.joined_second = None;
-                if joined_active_stage {
-                    self.mark_waiting_for_next_round();
-                }
+                self.round_baseline_ready = false;
             }
             ParsedEvent::Intermission { second } => {
                 self.update_dps_history(second.saturating_sub(1));
                 // Repeated lobby markers are common after Jim. Preserve the
                 // report already archived by the final-boss death marker and
                 // do not reactivate its completed step estimate.
-                if self.snapshot.phase == RoundPhase::Combat {
+                if self.snapshot.round_metrics_active {
                     self.finish_round(second);
                     if let Some(estimate) = self.step_estimator.estimate() {
                         self.snapshot.has_step_estimate = true;
                         self.snapshot.current_step = estimate.current;
                         self.snapshot.until_boss_step = estimate.until_boss;
                     }
+                } else {
+                    self.reset_combat();
                 }
                 self.snapshot.in_ecliptica = true;
                 self.snapshot.phase = RoundPhase::Lobby;
-                self.awaiting_join_phase = false;
-                self.assumed_pregame_lobby = false;
-                self.joined_second = None;
+                self.round_baseline_ready = true;
             }
-            ParsedEvent::Boss { second, name } => {
-                // An explicit intermission/lobby marker is authoritative, but
-                // the quiet-room timeout only *guesses* that the player is in
-                // the pre-game lobby. A real boss signal must be allowed to
-                // correct that guess; otherwise the first boss and every one
-                // of its ownership updates are discarded after a late join.
-                if self.snapshot.phase != RoundPhase::Lobby || self.assumed_pregame_lobby {
-                    self.resolve_boss_signal(second);
+            ParsedEvent::Boss { second: _, name } => {
+                // Boss is a world-state signal, not evidence that the local
+                // player is alive. It may refine an already known/unknown
+                // combat phase, but it never starts personal round metrics.
+                if self.snapshot.phase != RoundPhase::Lobby {
                     self.snapshot.in_ecliptica = true;
                     self.snapshot.phase = RoundPhase::Combat;
                     self.snapshot.boss_active = true;
@@ -625,14 +611,16 @@ impl Analyzer {
                 // ending/gathering scene, so publish the report immediately.
                 if self.snapshot.phase == RoundPhase::Combat && is_jim_final_phase(&name) {
                     self.update_dps_history(second.saturating_sub(1));
-                    self.finish_round(second);
+                    if self.snapshot.round_metrics_active {
+                        self.finish_round(second);
+                    } else {
+                        self.reset_combat();
+                    }
                     self.snapshot.phase = RoundPhase::Lobby;
                     self.snapshot.has_step_estimate = false;
                     self.snapshot.current_step = 0;
                     self.snapshot.until_boss_step = 0;
-                    self.awaiting_join_phase = false;
-                    self.assumed_pregame_lobby = false;
-                    self.joined_second = None;
+                    self.round_baseline_ready = true;
                     return;
                 }
                 if self
@@ -660,16 +648,12 @@ impl Analyzer {
                 // classify a just-joined room that is still Syncing, but must
                 // never override an already-known Lobby phase (for example
                 // when the player attacks the lobby training dummy).
-                self.resolve_joined_combat_signal(second);
                 if self.snapshot.in_ecliptica {
                     self.snapshot.has_realtime_dps_data = true;
                     let realtime_total = self.realtime_damage_by_second.entry(second).or_default();
                     *realtime_total = realtime_total.saturating_add(amount);
                 }
-                if self.snapshot.in_ecliptica
-                    && self.snapshot.phase == RoundPhase::Combat
-                    && !self.snapshot.waiting_for_next_round
-                {
+                if self.snapshot.in_ecliptica && self.snapshot.round_metrics_active {
                     self.dps_idle_since = Some(second);
                     self.snapshot.has_damage_data = true;
                     self.snapshot.has_max_dps_data = true;
@@ -684,11 +668,7 @@ impl Analyzer {
                 }
             }
             ParsedEvent::DamageTaken { second, amount } => {
-                self.resolve_joined_combat_signal(second);
-                if self.snapshot.in_ecliptica
-                    && self.snapshot.phase == RoundPhase::Combat
-                    && !self.snapshot.waiting_for_next_round
-                {
+                if self.snapshot.in_ecliptica && self.snapshot.round_metrics_active {
                     let second_total = self.damage_taken_by_second.entry(second).or_default();
                     *second_total = second_total.saturating_add(amount);
                     self.round_damage_taken_total =
@@ -700,7 +680,6 @@ impl Analyzer {
     }
 
     pub fn snapshot_at(&mut self, now_second: i64) -> GameSnapshot {
-        self.update_join_heuristic(now_second);
         let rapid_damage_first = now_second.saturating_sub(RAPID_DAMAGE_WINDOW_SECONDS);
         self.damage_taken_by_second
             .retain(|second, _| *second >= rapid_damage_first);
@@ -709,8 +688,7 @@ impl Analyzer {
             .range(rapid_damage_first..=now_second)
             .fold(0_u64, |total, (_, damage)| total.saturating_add(*damage));
         self.snapshot.rapid_damage_danger = recent_damage_taken > RAPID_DAMAGE_DANGER_THRESHOLD;
-        self.snapshot.no_dps_for_10s = self.snapshot.phase == RoundPhase::Combat
-            && !self.snapshot.waiting_for_next_round
+        self.snapshot.no_dps_for_10s = self.snapshot.round_metrics_active
             && self
                 .dps_idle_since
                 .is_some_and(|second| now_second.saturating_sub(second) >= NO_DPS_WINDOW_SECONDS);
@@ -798,9 +776,7 @@ impl Analyzer {
         self.snapshot.round_report = None;
         self.snapshot.in_ecliptica = false;
         self.snapshot.phase = RoundPhase::Outside;
-        self.awaiting_join_phase = false;
-        self.assumed_pregame_lobby = false;
-        self.joined_second = None;
+        self.round_baseline_ready = false;
         self.visit_started_second = None;
         self.history_through_second = None;
         self.previous_round_effective_dps = None;
@@ -852,8 +828,15 @@ impl Analyzer {
         self.reset_combat();
         self.snapshot.combat_round_epoch = self.snapshot.combat_round_epoch.wrapping_add(1).max(1);
         self.snapshot.round_report = None;
+        self.snapshot.round_metrics_active = true;
         self.round_started_second = Some(second);
         self.dps_idle_since = Some(second);
+    }
+
+    fn start_untracked_round(&mut self) {
+        self.reset_combat();
+        self.snapshot.combat_round_epoch = self.snapshot.combat_round_epoch.wrapping_add(1).max(1);
+        self.snapshot.round_report = None;
     }
 
     fn finish_round(&mut self, second: i64) {
@@ -862,7 +845,9 @@ impl Analyzer {
                 .round_started_second
                 .map(|start| second.saturating_sub(start).max(1) as u64)
                 .unwrap_or(1);
-            let combat_duration_seconds = self
+            // Average DPS still uses the elapsed output span, but that
+            // implementation detail is no longer exposed as a report metric.
+            let output_elapsed_seconds = self
                 .round_first_damage_second
                 .map(|start| second.saturating_sub(start).max(1) as u64)
                 .unwrap_or(1);
@@ -886,9 +871,8 @@ impl Analyzer {
                 has_duration_data: self.round_started_second.is_some(),
                 has_output_data: self.round_first_damage_second.is_some(),
                 duration_seconds,
-                combat_duration_seconds,
                 total_damage: self.round_damage_total,
-                average_dps: self.round_damage_total as f64 / combat_duration_seconds as f64,
+                average_dps: self.round_damage_total as f64 / output_elapsed_seconds as f64,
                 max_dps: self.round_max_dps,
                 effective_dps,
                 burst_10s_dps,
@@ -943,60 +927,11 @@ impl Analyzer {
         self.snapshot.has_damage_data = false;
         self.snapshot.rapid_damage_danger = false;
         self.snapshot.no_dps_for_10s = false;
-        self.snapshot.waiting_for_next_round = false;
+        self.snapshot.round_metrics_active = false;
         self.snapshot.has_step_estimate = false;
         self.snapshot.current_step = 0;
         self.snapshot.until_boss_step = 0;
         self.clear_boss();
-    }
-
-    fn mark_waiting_for_next_round(&mut self) {
-        self.snapshot.waiting_for_next_round = true;
-    }
-
-    fn resolve_joined_combat_signal(&mut self, second: i64) {
-        if self.awaiting_join_phase {
-            // Combat arrived during the initial sync window: this room was
-            // already in progress before the local player joined.
-            self.start_round(second);
-            self.snapshot.in_ecliptica = true;
-            self.snapshot.phase = RoundPhase::Combat;
-            self.mark_waiting_for_next_round();
-            self.awaiting_join_phase = false;
-            self.joined_second = None;
-        }
-    }
-
-    fn resolve_boss_signal(&mut self, second: i64) {
-        if self.assumed_pregame_lobby {
-            // This is the first authoritative lifecycle signal after the
-            // timeout guess. Treat it as the beginning of active combat so
-            // the immediately following ownership line can set Boss Lock.
-            self.start_round(second);
-            self.snapshot.in_ecliptica = true;
-            self.snapshot.phase = RoundPhase::Combat;
-            self.assumed_pregame_lobby = false;
-            self.joined_second = None;
-        } else {
-            self.resolve_joined_combat_signal(second);
-        }
-    }
-
-    fn update_join_heuristic(&mut self, now_second: i64) {
-        let phase_signal_missing = self.awaiting_join_phase
-            && self.joined_second.is_some_and(|joined| {
-                now_second.saturating_sub(joined) >= PREGAME_LOBBY_GRACE_SECONDS
-            });
-        if phase_signal_missing {
-            self.awaiting_join_phase = false;
-            self.assumed_pregame_lobby = true;
-            self.snapshot.phase = RoundPhase::Lobby;
-            self.snapshot.waiting_for_next_round = false;
-            self.record_protocol_diagnostic(ProtocolDiagnostic {
-                code: "room_phase_missing",
-                message: "进入 Ecliptica 后未观察到 stage/intermission/boss/damage 阶段信号；已安全降级为大厅，数值保持 0/未知".to_owned(),
-            });
-        }
     }
 
     fn clear_boss(&mut self) {
@@ -1637,7 +1572,7 @@ mod tests {
 
         let snapshot = analyzer.snapshot_at(timestamp(30));
         assert_eq!(snapshot.phase, RoundPhase::Combat);
-        assert!(snapshot.waiting_for_next_round);
+        assert!(!snapshot.round_metrics_active);
         assert!(!snapshot.no_dps_for_10s);
     }
 
@@ -1695,7 +1630,6 @@ mod tests {
             .round_report
             .expect("completed round should be archived");
         assert_eq!(report.duration_seconds, 49);
-        assert_eq!(report.combat_duration_seconds, 45);
         assert_eq!(report.duration_text(), "00:49");
         assert_eq!(report.total_damage, 42);
         assert!((report.average_dps - 42.0 / 45.0).abs() < f64::EPSILON);
@@ -1748,7 +1682,7 @@ mod tests {
         assert_eq!(combat.phase, RoundPhase::Combat);
         assert!(combat.round_report.is_none());
         assert_eq!(combat.combat_round_epoch, completed_epoch + 1);
-        assert!(!combat.waiting_for_next_round);
+        assert!(combat.round_metrics_active);
     }
 
     #[test]
@@ -1811,6 +1745,7 @@ mod tests {
     #[test]
     fn earlier_jim_phase_death_does_not_end_the_round() {
         let mut analyzer = Analyzer::default();
+        analyzer.process_line(&line(0, "ECLIPTICA - now in intermission"));
         analyzer.process_line(&line(1, "ECLIPTICA - now in stage: Stage_Bringer"));
         analyzer.process_line(&line(2, "Dealing 40 STRIKE damage"));
         analyzer.process_line(&line(
@@ -2036,7 +1971,7 @@ mod tests {
     }
 
     #[test]
-    fn joining_an_active_stage_waits_for_next_round() {
+    fn joining_an_active_stage_waits_for_an_explicit_round_boundary() {
         let mut analyzer = Analyzer::default();
         analyzer.process_line(&line(
             0,
@@ -2050,19 +1985,19 @@ mod tests {
         analyzer.process_line(&line(1, "ECLIPTICA - now in stage: Stage_Active"));
         let snapshot = analyzer.snapshot_at(i64::MAX);
         assert_eq!(snapshot.phase, RoundPhase::Combat);
-        assert!(snapshot.waiting_for_next_round);
+        assert!(!snapshot.round_metrics_active);
 
         // Late-join activity is ignored until the next lobby.
         analyzer.process_line(&line(8, "Dealing 999 STRIKE damage"));
         analyzer.process_line(&line(9, "damage has been taken: 4, from source: Boss"));
         let snapshot = analyzer.snapshot_at(i64::MAX);
-        assert!(snapshot.waiting_for_next_round);
+        assert!(!snapshot.round_metrics_active);
         assert!(!snapshot.has_damage_data);
 
         analyzer.process_line(&line(10, "ECLIPTICA - now in intermission"));
         let snapshot = analyzer.snapshot_at(i64::MAX);
         assert_eq!(snapshot.phase, RoundPhase::Lobby);
-        assert!(!snapshot.waiting_for_next_round);
+        assert!(!snapshot.round_metrics_active);
         assert!(snapshot.round_report.is_none());
 
         analyzer.process_line(&line(12, "ECLIPTICA - now in stage: Stage_Next"));
@@ -2073,11 +2008,12 @@ mod tests {
             .unwrap()
             .timestamp();
         let snapshot = analyzer.snapshot_at(base + 16);
+        assert!(snapshot.round_metrics_active);
         assert_eq!(snapshot.latest_dps, 30);
     }
 
     #[test]
-    fn a_quiet_new_room_is_assumed_to_be_waiting_for_the_first_round() {
+    fn a_quiet_new_room_remains_syncing_without_an_explicit_phase_signal() {
         let mut analyzer = Analyzer::default();
         analyzer.process_line(&line(
             0,
@@ -2088,40 +2024,43 @@ mod tests {
             RoundPhase::Syncing
         );
 
-        let waiting = analyzer.snapshot_at(timestamp(12));
-        assert_eq!(waiting.phase, RoundPhase::Lobby);
-        assert!(!waiting.waiting_for_next_round);
-        assert!(waiting.round_report.is_none());
+        let unknown = analyzer.snapshot_at(timeline_timestamp(120));
+        assert_eq!(unknown.phase, RoundPhase::Syncing);
+        assert!(!unknown.round_metrics_active);
+        assert!(unknown.round_report.is_none());
 
-        // A later stage is the first round beginning, not evidence that the
-        // player joined an already-running round.
+        // A Stage alone identifies world combat, but cannot prove local
+        // participation, so personal round metrics remain disabled.
         analyzer.process_line(&line(30, "ECLIPTICA - now in stage: Stage_First"));
         analyzer.process_line(&line(35, "Dealing 25 STRIKE damage"));
         let playing = analyzer.snapshot_at(timestamp(36));
         assert_eq!(playing.phase, RoundPhase::Combat);
-        assert!(!playing.waiting_for_next_round);
-        assert_eq!(playing.latest_dps, 25);
+        assert!(!playing.round_metrics_active);
+        assert_eq!(playing.latest_dps, 0);
     }
 
     #[test]
-    fn first_boss_corrects_an_inferred_pregame_lobby_and_tracks_its_lock() {
+    fn first_boss_exposes_world_combat_without_claiming_local_participation() {
         let mut analyzer = Analyzer::default();
         analyzer.process_line(&line(
             0,
             "[Behaviour] Entering Room: Ecliptica - Waiting Instance",
         ));
-        assert_eq!(analyzer.snapshot_at(timestamp(12)).phase, RoundPhase::Lobby);
+        assert_eq!(
+            analyzer.snapshot_at(timestamp(12)).phase,
+            RoundPhase::Syncing
+        );
 
         analyzer.process_line(&line(
-            20,
+            13,
             "ECLIPTICA - now fighting boss: Maxipuss(Clone) on phase: 1",
         ));
-        analyzer.process_line(&line(20, "ownership of Maxipuss transferred to Player One"));
-        let combat = analyzer.snapshot_at(timestamp(20));
+        analyzer.process_line(&line(13, "ownership of Maxipuss transferred to Player One"));
+        let combat = analyzer.snapshot_at(timestamp(13));
         assert_eq!(combat.phase, RoundPhase::Combat);
         assert_eq!(combat.boss.as_deref(), Some("Maxipuss"));
         assert_eq!(combat.boss_lock.as_deref(), Some("Player One"));
-        assert!(!combat.waiting_for_next_round);
+        assert!(!combat.round_metrics_active);
         assert!(combat.round_report.is_none());
     }
 
@@ -2206,17 +2145,17 @@ mod tests {
         assert_eq!(syncing.max_dps, 0);
         assert!(syncing.round_report.is_none());
 
-        // The new room is already fighting, so only the new room's initial
-        // phase determines the forced spectator state.
+        // World combat is visible, but personal participation is not inferred.
         analyzer.process_line(&line(21, "ECLIPTICA - now in stage: Stage_AlreadyActive"));
         let new_room = analyzer.snapshot_at(i64::MAX);
-        assert!(new_room.waiting_for_next_round);
+        assert!(!new_room.round_metrics_active);
         assert_eq!(new_room.max_dps, 0);
     }
 
     #[test]
     fn a_new_ecliptica_entry_clears_active_state_even_without_leave_event() {
         let mut analyzer = Analyzer::default();
+        analyzer.process_line(&line(0, "ECLIPTICA - now in intermission"));
         analyzer.process_line(&line(1, "ECLIPTICA - now in stage: Stage_Old"));
         analyzer.process_line(&line(5, "Dealing 75 STRIKE damage"));
         analyzer.process_line(&line(
@@ -2235,7 +2174,7 @@ mod tests {
         let replacement = analyzer.snapshot_at(timestamp(20));
         assert_eq!(replacement.phase, RoundPhase::Syncing);
         assert!(replacement.in_ecliptica);
-        assert!(!replacement.waiting_for_next_round);
+        assert!(!replacement.round_metrics_active);
         assert!(!replacement.has_damage_data);
         assert_eq!(replacement.max_dps, 0);
         assert!(replacement.round_report.is_none());

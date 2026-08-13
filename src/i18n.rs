@@ -255,11 +255,11 @@ pub mod text {
     pair!(CURRENT_BOSS, "Current Boss", "当前 Boss");
     pair!(NO_CURRENT_BOSS, "No current Boss", "当前无 Boss");
     pair!(CURRENT_PHASE, "Current phase", "当前阶段");
-    pair!(SYNC_STATUS, "Sync status", "同步状态");
+    pair!(SYNC_STATUS, "Round metrics", "回合指标");
     pair!(
-        JOINED_MID_SESSION,
-        "Joined mid-session · waiting for next round",
-        "中途加入 · 等待下一回合"
+        ROUND_DATA_UNAVAILABLE,
+        "Waiting for an explicit lobby → stage boundary",
+        "等待明确的大厅 → 战斗边界"
     );
     pair!(
         ROUND_DATA_AVAILABLE,
@@ -419,7 +419,6 @@ pub mod text {
     );
     pair!(SIMULATED_STATE, "Simulated state", "模拟状态");
     pair!(PREVIEW_NORMAL, "Normal", "普通");
-    pair!(PREVIEW_MID_SESSION, "Joined mid-session", "中途加入");
     pair!(PREVIEW_ROUND_REPORT, "Round report", "回合战报");
     pair!(
         EMPTY_MESSAGE,
@@ -1115,20 +1114,6 @@ pub const LIVE_VARIABLE_GROUPS: &[VariableCopyGroup] = &[
                 "Current Boss name; empty in the lobby or before detection.",
                 "当前 Boss 的名字。大厅或还没识别到时为空。"
             ),
-            variable!(
-                "Status",
-                "状态",
-                "status",
-                "Whether the analyzer is searching for, reading, or waiting for game data.",
-                "分析器当前是否正在找到、读取或等待游戏数据。"
-            ),
-            variable!(
-                "Status",
-                "状态",
-                "phase",
-                "Whether you are outside the game, syncing, in the lobby, or in combat.",
-                "当前在游戏外、同步中、大厅还是战斗中。"
-            ),
         ],
     },
     VariableCopyGroup {
@@ -1161,13 +1146,6 @@ pub const LIVE_VARIABLE_GROUPS: &[VariableCopyGroup] = &[
                 "no_wasd_for_10s",
                 "Enabled after 10 continuous seconds without pressing W, A, S, or D.",
                 "连续 10 秒没有按 W、A、S、D 时开启。"
-            ),
-            variable!(
-                "Condition",
-                "条件",
-                "waiting_for_next_round",
-                "Enabled after joining mid-session while waiting for the next round.",
-                "中途加入、正在等下一回合时开启。"
             ),
         ],
     },
@@ -1216,25 +1194,6 @@ pub const REPORT_VARIABLE_GROUPS: &[VariableCopyGroup] = &[
                 "has_round_duration",
                 "Enabled when a complete round duration is available.",
                 "有完整回合时间可显示时开启。"
-            ),
-        ],
-    },
-    VariableCopyGroup {
-        title: p("Combat duration", "实际战斗用时"),
-        variables: &[
-            variable!(
-                "Value",
-                "数值",
-                "round_combat_duration",
-                "Time from your first damage until returning to the lobby.",
-                "从你第一次打出伤害到回到大厅，用了多久。"
-            ),
-            variable!(
-                "Condition",
-                "条件",
-                "has_round_combat_duration",
-                "Enabled when the round contains damage and combat duration is available.",
-                "本回合打出过伤害、有战斗时间可显示时开启。"
             ),
         ],
     },
@@ -1356,13 +1315,6 @@ pub const REPORT_VARIABLE_GROUPS: &[VariableCopyGroup] = &[
         title: p("Round summary", "回合汇总"),
         variables: &[
             variable!(
-                "Condition",
-                "条件",
-                "has_round_report",
-                "Enabled immediately after a round ends and a report can be displayed.",
-                "刚刚有一回合结束、可以显示战报时开启。"
-            ),
-            variable!(
                 "Value",
                 "数值",
                 "round_total_damage",
@@ -1426,14 +1378,14 @@ pub const BASIC_SYNTAX_HELP: &[SyntaxCopy] = &[
         ),
     },
     SyntaxCopy {
-        title: p("5 · Check nested conditions", "5 · 同时检查两层条件"),
+        title: p("5 · Check a report condition", "5 · 检查战报条件"),
         description: p(
-            "First check for a report, then for a reliable round estimate. Close the most recently opened if first.",
-            "先确认有战报，再确认回合估计可靠。后打开的 if 要先结束。",
+            "The report template already runs only when a report exists. Check only whether the round estimate is reliable.",
+            "战报模板本身只会在战报存在时运行，只需判断回合估计是否可靠。",
         ),
         code: p(
-            "{{#if has_round_report}}\nRound DPS: {{round_report_effective_dps}}\n{{#if has_step_estimate}}About {{until_boss_step}} rounds until Jim{{/if}}\n{{/if}}",
-            "{{#if has_round_report}}\n回合 DPS: {{round_report_effective_dps}}\n{{#if has_step_estimate}}预计还剩 {{until_boss_step}} 回合到 Jim{{/if}}\n{{/if}}",
+            "Round DPS: {{round_report_effective_dps}}\n{{#if has_step_estimate}}About {{until_boss_step}} rounds until Jim{{/if}}",
+            "回合 DPS: {{round_report_effective_dps}}\n{{#if has_step_estimate}}预计还剩 {{until_boss_step}} 回合到 Jim{{/if}}",
         ),
     },
     SyntaxCopy {

@@ -291,7 +291,7 @@ impl PublishedChatboxState {
 }
 
 fn broadcast_context(snapshot: &GameSnapshot) -> Option<BroadcastContext> {
-    if snapshot.phase == RoundPhase::Combat {
+    if snapshot.phase == RoundPhase::Combat && snapshot.round_metrics_active {
         Some(BroadcastContext::Combat(snapshot.combat_round_epoch))
     } else if snapshot.round_report.is_some() {
         Some(BroadcastContext::RoundReport(snapshot.combat_round_epoch))
@@ -410,7 +410,6 @@ fn render_message_with_display_name(
         "max_dps": snapshot.max_dps_text(),
         "boss_lock": snapshot.boss_lock.as_deref().unwrap_or(""),
         "boss": snapshot.boss.as_deref().unwrap_or(""),
-        "status": snapshot.status.label(),
         "has_latest_dps": snapshot.has_damage_data,
         "has_avg_dps": snapshot.has_damage_data,
         "has_round_avg_dps": snapshot.has_damage_data,
@@ -422,11 +421,7 @@ fn render_message_with_display_name(
         "rapid_damage_danger": snapshot.rapid_damage_danger,
         "no_dps_for_10s": snapshot.no_dps_for_10s,
         "no_wasd_for_10s": snapshot.no_wasd_for_10s,
-        "waiting_for_next_round": snapshot.waiting_for_next_round,
-        "phase": snapshot.phase.label(),
-        "has_round_report": report.is_some(),
         "has_round_duration": report.is_some_and(|value| value.has_duration_data),
-        "has_round_combat_duration": report_has_output,
         "has_round_report_avg_dps": report_has_output,
         "has_round_max_dps": report_has_output,
         "has_round_report_effective_dps": report_has_output,
@@ -438,7 +433,6 @@ fn render_message_with_display_name(
         "current_step": if snapshot.has_step_estimate { snapshot.current_step.to_string() } else { "-".to_owned() },
         "until_boss_step": if snapshot.has_step_estimate { snapshot.until_boss_step.to_string() } else { "-".to_owned() },
         "round_duration": report.map(|value| value.duration_text()).unwrap_or_else(|| "-".to_owned()),
-        "round_combat_duration": report.map(|value| value.combat_duration_text()).unwrap_or_else(|| "-".to_owned()),
         "round_total_damage": report.map(|value| value.total_damage.to_string()).unwrap_or_else(|| "-".to_owned()),
         "round_report_avg_dps": report.map(|value| value.average_dps_text()).unwrap_or_else(|| "-".to_owned()),
         "round_max_dps": report.map(|value| value.max_dps_text()).unwrap_or_else(|| "-".to_owned()),
@@ -608,11 +602,11 @@ mod tests {
             ..GameSnapshot::default()
         };
 
-        let template = "{{#unless boss_lock}}NO LOCK{{/unless}}|{{#if (eq phase \"COMBAT\")}}COMBAT{{/if}}|{{#if (ne status \"ERROR\")}}OK{{/if}}|{{#if (gt round_damage_taken 50)}}HURT{{/if}}|{{#if (and has_latest_dps (or rapid_damage_danger no_dps_for_10s))}}ALERT{{/if}}|{{#if (not waiting_for_next_round)}}PLAYING{{/if}}|{{! hidden comment }}DPS: {{latest_dps}}";
+        let template = "{{#unless boss_lock}}NO LOCK{{/unless}}|{{#if (gt round_damage_taken 50)}}HURT{{/if}}|{{#if (and has_latest_dps (or rapid_damage_danger no_dps_for_10s))}}ALERT{{/if}}|{{! hidden comment }}DPS: {{latest_dps}}";
 
         assert_eq!(
             render_message(template, &snapshot).unwrap(),
-            "NO LOCK|COMBAT|OK|HURT|ALERT|PLAYING|DPS: 42"
+            "NO LOCK|HURT|ALERT|DPS: 42"
         );
         assert!(crate::config::validate_template(template, crate::i18n::Language::English).is_ok());
     }
@@ -702,7 +696,6 @@ mod tests {
                 has_duration_data: true,
                 has_output_data: false,
                 duration_seconds: 20,
-                combat_duration_seconds: 1,
                 total_damage: 0,
                 average_dps: 0.0,
                 max_dps: 0,
@@ -716,11 +709,11 @@ mod tests {
             }),
             ..GameSnapshot::default()
         };
-        let template = "{{#if has_round_duration}}duration={{round_duration}}{{/if}}|{{#if has_round_combat_duration}}{{round_combat_duration}}{{else}}no-combat-duration{{/if}}|{{#if has_round_report_avg_dps}}{{round_report_avg_dps}}{{else}}no-average{{/if}}|{{#if has_round_max_dps}}max={{round_max_dps}}{{else}}no-max{{/if}}|{{#if has_round_report_effective_dps}}effective={{round_report_effective_dps}}{{else}}no-effective{{/if}}|{{#if has_round_report_burst_10s}}{{round_report_burst_10s}}{{else}}no-burst{{/if}}|{{#if has_round_report}}taken={{round_report_damage_taken}}{{/if}}";
+        let template = "{{#if has_round_duration}}duration={{round_duration}}{{/if}}|{{#if has_round_report_avg_dps}}{{round_report_avg_dps}}{{else}}no-average{{/if}}|{{#if has_round_max_dps}}max={{round_max_dps}}{{else}}no-max{{/if}}|{{#if has_round_report_effective_dps}}effective={{round_report_effective_dps}}{{else}}no-effective{{/if}}|{{#if has_round_report_burst_10s}}{{round_report_burst_10s}}{{else}}no-burst{{/if}}|taken={{round_report_damage_taken}}";
 
         assert_eq!(
             render_message(template, &snapshot).unwrap(),
-            "duration=00:20|no-combat-duration|no-average|no-max|no-effective|no-burst|taken=23"
+            "duration=00:20|no-average|no-max|no-effective|no-burst|taken=23"
         );
     }
 
@@ -771,7 +764,6 @@ mod tests {
                 has_duration_data: true,
                 has_output_data: true,
                 duration_seconds: 367,
-                combat_duration_seconds: 328,
                 total_damage: 12_480,
                 average_dps: 38.0,
                 max_dps: 146,
@@ -801,7 +793,6 @@ mod tests {
                 has_duration_data: true,
                 has_output_data: true,
                 duration_seconds: 60,
-                combat_duration_seconds: 50,
                 total_damage: 100,
                 average_dps: 2.0,
                 max_dps: 10,
@@ -841,7 +832,6 @@ mod tests {
                 has_duration_data: true,
                 has_output_data: true,
                 duration_seconds: 60,
-                combat_duration_seconds: 50,
                 total_damage: 100,
                 average_dps: 2.0,
                 max_dps: 10,
@@ -867,7 +857,6 @@ mod tests {
                 has_duration_data: true,
                 has_output_data: true,
                 duration_seconds: 60,
-                combat_duration_seconds: 50,
                 total_damage: 100,
                 average_dps: 2.0,
                 max_dps: 10,
@@ -1082,6 +1071,7 @@ mod tests {
         };
         let snapshot = GameSnapshot {
             phase: RoundPhase::Combat,
+            round_metrics_active: true,
             combat_round_epoch: 5,
             // Even a malformed transition snapshot retaining its archived
             // report must render the authoritative Combat template.
@@ -1089,7 +1079,6 @@ mod tests {
                 has_duration_data: true,
                 has_output_data: true,
                 duration_seconds: 60,
-                combat_duration_seconds: 50,
                 total_damage: 100,
                 average_dps: 2.0,
                 max_dps: 10,
@@ -1209,7 +1198,6 @@ mod tests {
             has_duration_data: true,
             has_output_data: true,
             duration_seconds: 125,
-            combat_duration_seconds: 100,
             total_damage: 12_345,
             average_dps: 123.45,
             max_dps: 999,
@@ -1249,6 +1237,7 @@ mod tests {
         assert!(!broadcast_context_ready(&snapshot));
 
         snapshot.phase = RoundPhase::Combat;
+        snapshot.round_metrics_active = true;
         assert!(broadcast_context_ready(&snapshot));
 
         snapshot.phase = RoundPhase::Lobby;
@@ -1256,7 +1245,6 @@ mod tests {
             has_duration_data: true,
             has_output_data: true,
             duration_seconds: 60,
-            combat_duration_seconds: 50,
             total_damage: 100,
             average_dps: 2.0,
             max_dps: 10,

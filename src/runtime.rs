@@ -10,7 +10,7 @@ use crossbeam_channel::{Receiver, Sender, bounded};
 use parking_lot::RwLock;
 
 use crate::{
-    analysis::{GameSnapshot, RoundPhase},
+    analysis::GameSnapshot,
     audio::{self, SoundCommand},
     config::AppConfig,
     i18n::TextPair,
@@ -111,7 +111,8 @@ impl SharedState {
 }
 
 pub(crate) fn wasd_window_round(snapshot: &GameSnapshot) -> Option<u64> {
-    (snapshot.phase == RoundPhase::Combat && !snapshot.waiting_for_next_round)
+    snapshot
+        .round_metrics_active
         .then_some(snapshot.combat_round_epoch)
 }
 
@@ -173,6 +174,7 @@ impl Drop for Runtime {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::analysis::RoundPhase;
 
     #[test]
     fn idle_metric_cannot_cross_combat_rounds() {
@@ -208,6 +210,7 @@ mod tests {
         };
         let mut snapshot = GameSnapshot {
             phase: RoundPhase::Combat,
+            round_metrics_active: true,
             combat_round_epoch: 8,
             ..GameSnapshot::default()
         };
@@ -216,6 +219,7 @@ mod tests {
         assert!(snapshot.no_wasd_for_10s);
 
         snapshot.phase = RoundPhase::Lobby;
+        snapshot.round_metrics_active = false;
         current_round_idle.apply_to(&mut snapshot);
         assert!(!snapshot.no_wasd_for_10s);
     }
@@ -237,7 +241,6 @@ mod tests {
                 has_duration_data: true,
                 has_output_data: true,
                 duration_seconds: 60,
-                combat_duration_seconds: 50,
                 total_damage: 100,
                 average_dps: 2.0,
                 max_dps: 10,

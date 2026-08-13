@@ -263,6 +263,18 @@ impl AppConfig {
         }
     }
 
+    /// Restore only the selected message preset's content for the current language.
+    pub fn reset_active_message_template_to_default(&mut self) -> bool {
+        let preset = self.active_message_template_preset;
+        let Some(slot) = self.message_template_presets.get_mut(preset) else {
+            return false;
+        };
+        let default = default_message_template_presets(self.language)[preset].clone();
+        slot.clone_from(&default);
+        self.message_template = default;
+        true
+    }
+
     /// Store edits in the current slot and load another round-report preset.
     pub fn select_round_report_template_preset(&mut self, preset: usize) -> bool {
         if preset >= ROUND_REPORT_TEMPLATE_PRESET_COUNT {
@@ -281,6 +293,18 @@ impl AppConfig {
         {
             slot.clone_from(&self.round_report_template);
         }
+    }
+
+    /// Restore only the selected report preset's content for the current language.
+    pub fn reset_active_round_report_template_to_default(&mut self) -> bool {
+        let preset = self.active_round_report_template_preset;
+        let Some(slot) = self.round_report_template_presets.get_mut(preset) else {
+            return false;
+        };
+        let default = default_round_report_template_presets(self.language)[preset].clone();
+        slot.clone_from(&default);
+        self.round_report_template = default;
+        true
     }
 
     pub fn validate(&self) -> Result<()> {
@@ -995,6 +1019,60 @@ mod tests {
             ]
         );
         assert_eq!(config.alert_volume, 1.0);
+    }
+
+    #[test]
+    fn resetting_selected_message_preset_preserves_everything_else() {
+        let mut config = AppConfig::defaults_for_language(Language::English);
+        config.select_message_template_preset(1);
+        config.message_template = "unsaved message draft".to_owned();
+        config.message_template_preset_names[1] = "My message".to_owned();
+        config.message_template_presets[0] = "other message".to_owned();
+        config.round_report_template = "report draft".to_owned();
+        config.round_report_template_presets[0] = "other report".to_owned();
+        let names_before = config.message_template_preset_names.clone();
+        let reports_before = config.round_report_template_presets.clone();
+        let report_draft_before = config.round_report_template.clone();
+
+        assert!(config.reset_active_message_template_to_default());
+        assert_eq!(
+            config.message_template,
+            include_str!("../resources/presets/en/combat2.txt")
+        );
+        assert_eq!(config.message_template_presets[1], config.message_template);
+        assert_eq!(config.message_template_presets[0], "other message");
+        assert_eq!(config.message_template_preset_names, names_before);
+        assert_eq!(config.round_report_template_presets, reports_before);
+        assert_eq!(config.round_report_template, report_draft_before);
+        assert_eq!(config.active_message_template_preset, 1);
+    }
+
+    #[test]
+    fn resetting_selected_report_preset_uses_current_language() {
+        let mut config = AppConfig::defaults_for_language(Language::Chinese);
+        config.select_round_report_template_preset(2);
+        config.round_report_template = "未保存的战报草稿".to_owned();
+        config.round_report_template_preset_names[2] = "自定义名称".to_owned();
+        config.round_report_template_presets[0] = "另一份战报".to_owned();
+        config.message_template = "局内消息草稿".to_owned();
+        let names_before = config.round_report_template_preset_names.clone();
+        let messages_before = config.message_template_presets.clone();
+        let message_draft_before = config.message_template.clone();
+
+        assert!(config.reset_active_round_report_template_to_default());
+        assert_eq!(
+            config.round_report_template,
+            include_str!("../resources/presets/zh/report1.txt")
+        );
+        assert_eq!(
+            config.round_report_template_presets[2],
+            config.round_report_template
+        );
+        assert_eq!(config.round_report_template_presets[0], "另一份战报");
+        assert_eq!(config.round_report_template_preset_names, names_before);
+        assert_eq!(config.message_template_presets, messages_before);
+        assert_eq!(config.message_template, message_draft_before);
+        assert_eq!(config.active_round_report_template_preset, 2);
     }
 
     #[test]

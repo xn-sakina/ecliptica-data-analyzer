@@ -380,6 +380,47 @@ pub mod text {
     pair!(TEMPLATE_PRESET, "Template preset", "模板预设");
     pair!(PRESET_NAME, "Preset name", "预设名称");
     pair!(PRESET_FALLBACK, "Preset {index}", "预设 {index}");
+    pair!(RESET_SELECTED_PRESET, "Reset preset", "重置当前预设");
+    pair!(
+        RESET_MESSAGE_PRESET_HINT,
+        "Restore only the selected regular-message preset to its default content",
+        "仅将当前选中的局内消息预设恢复为默认内容"
+    );
+    pair!(
+        RESET_REPORT_PRESET_HINT,
+        "Restore only the selected report preset to its default content",
+        "仅将当前选中的战报预设恢复为默认内容"
+    );
+    pair!(
+        RESET_MESSAGE_PRESET_TITLE,
+        "Reset this message preset?",
+        "重置当前局内消息预设？"
+    );
+    pair!(
+        RESET_REPORT_PRESET_TITLE,
+        "Reset this report preset?",
+        "重置当前战报预设？"
+    );
+    pair!(
+        RESET_MESSAGE_PRESET_DESCRIPTION,
+        "Only the selected message preset “{name}” will be restored to the default content for the current language. Other message presets and all report presets will stay unchanged. Save and apply afterward to keep this change.",
+        "只会把当前选中的局内消息预设「{name}」恢复为当前语言的默认内容。其他局内消息预设和所有战报预设都不会改变；确认后仍需保存修改并应用。"
+    );
+    pair!(
+        RESET_REPORT_PRESET_DESCRIPTION,
+        "Only the selected report preset “{name}” will be restored to the default content for the current language. Other report presets and all message presets will stay unchanged. Save and apply afterward to keep this change.",
+        "只会把当前选中的战报预设「{name}」恢复为当前语言的默认内容。其他战报预设和所有局内消息预设都不会改变；确认后仍需保存修改并应用。"
+    );
+    pair!(
+        MESSAGE_PRESET_RESET,
+        "Message preset “{name}” restored; save to apply",
+        "局内消息预设「{name}」已恢复默认，保存后应用"
+    );
+    pair!(
+        REPORT_PRESET_RESET,
+        "Report preset “{name}” restored; save to apply",
+        "战报预设「{name}」已恢复默认，保存后应用"
+    );
     pair!(
         PRESET_SWITCHED,
         "Switched to “{name}”; save to apply",

@@ -66,6 +66,7 @@ const DPS_CHART_AUTO_FIT_INTERVAL: Duration = Duration::from_secs(5);
 const DPS_CHART_RECENT_WINDOW_SECONDS: f64 = 5.0 * 60.0;
 const DPS_CHART_X_MARGIN_FRACTION: f64 = 0.025;
 const DPS_CHART_Y_MARGIN_FRACTION: f64 = 0.10;
+const DPS_CHART_MIN_Y_SPAN: f64 = 10.0;
 const SETTINGS_TEXT: egui::Color32 = egui::Color32::from_rgb(246, 243, 255);
 const SETTINGS_HEADING: egui::Color32 = egui::Color32::from_rgb(225, 218, 255);
 const SETTINGS_TEXT_SECONDARY: egui::Color32 = egui::Color32::from_rgb(190, 183, 204);
@@ -254,6 +255,7 @@ struct AnalyzerApp {
     template_help_open: bool,
     page: SettingsPage,
     reset_confirm_open: bool,
+    template_preset_reset_confirm: Option<TemplatePresetResetKind>,
     window_always_on_top: bool,
     developer_mode: bool,
     developer_logs_open: bool,
@@ -273,6 +275,12 @@ struct DpsChartViewState {
     selected_epoch: Option<u64>,
     last_user_interaction: Option<Instant>,
     last_auto_fit: Option<Instant>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TemplatePresetResetKind {
+    Message,
+    Report,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -355,6 +363,7 @@ impl AnalyzerApp {
             template_help_open: false,
             page: SettingsPage::Overview,
             reset_confirm_open: false,
+            template_preset_reset_confirm: None,
             window_always_on_top: false,
             developer_mode: false,
             developer_logs_open: false,
@@ -856,6 +865,69 @@ impl AnalyzerApp {
             self.save_result = Some((text::DEFAULTS_RESTORED.get(language).to_owned(), true));
         }
 
+        if let Some(kind) = self.template_preset_reset_confirm {
+            let (title, description, notice) = match kind {
+                TemplatePresetResetKind::Message => {
+                    let active = self.draft.active_message_template_preset;
+                    let name = preset_display_name(
+                        &self.draft.message_template_preset_names[active],
+                        active,
+                        language,
+                    );
+                    (
+                        text::RESET_MESSAGE_PRESET_TITLE.get(language),
+                        format_pattern(
+                            text::RESET_MESSAGE_PRESET_DESCRIPTION,
+                            language,
+                            &[("name", name.clone())],
+                        ),
+                        format_pattern(text::MESSAGE_PRESET_RESET, language, &[("name", name)]),
+                    )
+                }
+                TemplatePresetResetKind::Report => {
+                    let active = self.draft.active_round_report_template_preset;
+                    let name = preset_display_name(
+                        &self.draft.round_report_template_preset_names[active],
+                        active,
+                        language,
+                    );
+                    (
+                        text::RESET_REPORT_PRESET_TITLE.get(language),
+                        format_pattern(
+                            text::RESET_REPORT_PRESET_DESCRIPTION,
+                            language,
+                            &[("name", name.clone())],
+                        ),
+                        format_pattern(text::REPORT_PRESET_RESET, language, &[("name", name)]),
+                    )
+                }
+            };
+            let mut open = true;
+            match AlertDialog::new(title, description)
+                .cancel_text(text::CANCEL.get(language))
+                .action_text(text::RESTORE.get(language))
+                .destructive()
+                .show(ctx, &mut open)
+            {
+                AlertDialogResult::Confirmed => {
+                    match kind {
+                        TemplatePresetResetKind::Message => {
+                            self.draft.reset_active_message_template_to_default();
+                        }
+                        TemplatePresetResetKind::Report => {
+                            self.draft.reset_active_round_report_template_to_default();
+                        }
+                    }
+                    self.save_result = Some((notice, true));
+                    self.template_preset_reset_confirm = None;
+                }
+                AlertDialogResult::Cancelled => {
+                    self.template_preset_reset_confirm = None;
+                }
+                AlertDialogResult::Open => {}
+            }
+        }
+
         #[allow(deprecated)]
         let template_help_height =
             (ctx.input(|input| input.screen_rect().height()) - 170.0).clamp(500.0, 640.0);
@@ -1181,6 +1253,18 @@ impl AnalyzerApp {
                         .applied_index(applied_message_preset)
                         .draft_changed(message_draft_changed)
                         .show(ui, &mut selected);
+                        ui.add_space(6.0);
+                        if ShadcnButton::new(text::RESET_SELECTED_PRESET.get(language))
+                            .icon(LucideIcon::RotateCcw)
+                            .variant(ButtonVariant::Ghost)
+                            .size(ComponentSize::Xs)
+                            .show(ui)
+                            .on_hover_text(text::RESET_MESSAGE_PRESET_HINT.get(language))
+                            .clicked()
+                        {
+                            self.template_preset_reset_confirm =
+                                Some(TemplatePresetResetKind::Message);
+                        }
                         if selected != self.draft.active_message_template_preset {
                             self.draft.select_message_template_preset(selected);
                             let name = preset_display_name(
@@ -1254,6 +1338,18 @@ impl AnalyzerApp {
                         .applied_index(applied_report_preset)
                         .draft_changed(report_draft_changed)
                         .show(ui, &mut selected);
+                        ui.add_space(6.0);
+                        if ShadcnButton::new(text::RESET_SELECTED_PRESET.get(language))
+                            .icon(LucideIcon::RotateCcw)
+                            .variant(ButtonVariant::Ghost)
+                            .size(ComponentSize::Xs)
+                            .show(ui)
+                            .on_hover_text(text::RESET_REPORT_PRESET_HINT.get(language))
+                            .clicked()
+                        {
+                            self.template_preset_reset_confirm =
+                                Some(TemplatePresetResetKind::Report);
+                        }
                         if selected != self.draft.active_round_report_template_preset {
                             self.draft.select_round_report_template_preset(selected);
                             let name = preset_display_name(
@@ -2238,7 +2334,9 @@ fn dps_history_chart(
                             x_axis_width,
                         )
                     })
-                    .y_axis_formatter(move |mark, _| format_compact_number(mark.value, language))
+                    .y_axis_formatter(move |mark, range| {
+                        format_chart_y_tick(mark.value, mark.step_size, range, language)
+                    })
                     .show_x(false)
                     .show_y(false)
                     .cursor_color(SETTINGS_CHART_CURSOR)
@@ -2517,9 +2615,47 @@ fn chart_best_view_bounds(points: &[[f64; 2]]) -> ((f64, f64), (f64, f64)) {
     } else {
         (y_max.abs() * DPS_CHART_Y_MARGIN_FRACTION).max(1.0)
     };
-    let y_bounds = ((y_min - y_padding).max(0.0), y_max + y_padding);
+    let mut y_bounds = ((y_min - y_padding).max(0.0), y_max + y_padding);
+    if y_bounds.1 - y_bounds.0 < DPS_CHART_MIN_Y_SPAN {
+        let center = (y_bounds.0 + y_bounds.1) / 2.0;
+        y_bounds = (
+            center - DPS_CHART_MIN_Y_SPAN / 2.0,
+            center + DPS_CHART_MIN_Y_SPAN / 2.0,
+        );
+        if y_bounds.0 < 0.0 {
+            y_bounds.1 -= y_bounds.0;
+            y_bounds.0 = 0.0;
+        }
+    }
 
     (x_bounds, y_bounds)
+}
+
+fn format_chart_y_tick(
+    value: f64,
+    step_size: f64,
+    visible_range: &std::ops::RangeInclusive<f64>,
+    language: Language,
+) -> String {
+    let span = (*visible_range.end() - *visible_range.start()).abs();
+    if span >= 100.0 && step_size >= 1.0 {
+        return format_compact_number(value, language);
+    }
+
+    let decimals = if step_size.is_finite() && step_size > 0.0 && step_size < 1.0 {
+        ((-step_size.log10()).ceil() as usize + 1).clamp(1, 4)
+    } else {
+        0
+    };
+    let formatted = format!("{value:.decimals$}");
+    if decimals == 0 {
+        formatted
+    } else {
+        formatted
+            .trim_end_matches('0')
+            .trim_end_matches('.')
+            .to_owned()
+    }
 }
 
 fn dps_trend_points(points: &[[f64; 2]]) -> Vec<[f64; 2]> {
@@ -4402,11 +4538,36 @@ mod tests {
 
         let (x, y) = chart_best_view_bounds(&[[0.0, 0.0]]);
         assert_eq!(x, (0.0, 5.0));
-        assert_eq!(y, (0.0, 1.0));
+        assert_eq!(y, (0.0, DPS_CHART_MIN_Y_SPAN));
 
         let (x, y) = chart_best_view_bounds(&[[12.0, 250.0]]);
         assert_eq!(x, (7.0, 17.0));
         assert_eq!(y, (225.0, 275.0));
+    }
+
+    #[test]
+    fn chart_y_ticks_keep_small_values_distinct() {
+        let range = 0.0..=1.0;
+        assert_eq!(
+            format_chart_y_tick(0.2, 0.1, &range, Language::Chinese),
+            "0.2"
+        );
+        assert_eq!(
+            format_chart_y_tick(0.75, 0.25, &range, Language::Chinese),
+            "0.75"
+        );
+        assert_eq!(
+            format_chart_y_tick(1.0, 0.1, &range, Language::Chinese),
+            "1"
+        );
+    }
+
+    #[test]
+    fn chart_auto_fit_never_collapses_valid_zero_data_to_one() {
+        let points = [[0.0, 0.0], [30.0, 0.0], [60.0, 0.0]];
+        let (_, y) = chart_best_view_bounds(&points);
+
+        assert_eq!(y, (0.0, DPS_CHART_MIN_Y_SPAN));
     }
 
     #[test]

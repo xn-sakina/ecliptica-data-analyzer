@@ -265,27 +265,18 @@ impl PublishedChatboxState {
     ) -> ChatboxUpdate {
         if !message.trim().is_empty() {
             ChatboxUpdate::Message(message)
-        } else if matches!(context, BroadcastContext::Combat(_))
-            || self.remote_may_have_visible_content
+        } else if matches!(context, BroadcastContext::RoundReport(_))
+            && self.remote_may_have_visible_content
         {
-            // A confirmed combat context must always produce visible output,
-            // including the first combat observed after application startup.
-            // Otherwise the built-in template is empty before the first
-            // personal sample and the sender silently skips the exact
-            // "waiting for data" state it is supposed to communicate.
-            //
-            // Round reports retain the previous-content condition: an empty
-            // report should only replace stale visible Chatbox content, not
-            // manufacture a report that has no data.
-            let replacement = match context {
-                BroadcastContext::Combat(_) => {
-                    crate::i18n::text::EMPTY_COMBAT_REPLACEMENT.get(language)
-                }
-                BroadcastContext::RoundReport(_) => {
-                    crate::i18n::text::EMPTY_REPORT_REPLACEMENT.get(language)
-                }
-            };
-            ChatboxUpdate::Message(replacement.to_owned())
+            // An empty report may replace stale visible combat content. An
+            // empty combat render, however, can be the intentional result of
+            // a conditions-only template, so it must remain empty instead of
+            // being turned into a recurring "waiting for data" message.
+            ChatboxUpdate::Message(
+                crate::i18n::text::EMPTY_REPORT_REPLACEMENT
+                    .get(language)
+                    .to_owned(),
+            )
         } else {
             ChatboxUpdate::SkipEmpty
         }
@@ -857,7 +848,7 @@ mod tests {
     }
 
     #[test]
-    fn entering_combat_replaces_a_published_report_when_live_template_is_empty() {
+    fn entering_combat_skips_an_empty_conditions_only_message() {
         let config = AppConfig::default();
         let report_snapshot = GameSnapshot {
             phase: RoundPhase::Lobby,
@@ -895,35 +886,23 @@ mod tests {
         };
         let live_message = render_configured_message(&config, &combat_snapshot).unwrap();
         assert_eq!(live_message, "");
-        let replacement = published.next_update(
+        let update = published.next_update(
             live_message.clone(),
             BroadcastContext::Combat(5),
             config.language,
         );
-        assert_eq!(
-            replacement,
-            ChatboxUpdate::Message(
-                crate::i18n::text::EMPTY_COMBAT_REPLACEMENT
-                    .get(config.language)
-                    .to_owned()
-            )
-        );
-        published.complete(&replacement);
+        assert_eq!(update, ChatboxUpdate::SkipEmpty);
+        published.complete(&update);
 
-        // Keep the deterministic replacement present until actual combat data
-        // makes the user's selected template non-empty.
+        // Empty conditional output stays empty on later send cycles too.
         assert_eq!(
             published.next_update(live_message, BroadcastContext::Combat(5), config.language),
-            ChatboxUpdate::Message(
-                crate::i18n::text::EMPTY_COMBAT_REPLACEMENT
-                    .get(config.language)
-                    .to_owned()
-            )
+            ChatboxUpdate::SkipEmpty
         );
     }
 
     #[test]
-    fn first_empty_combat_message_sends_waiting_placeholder() {
+    fn first_empty_combat_message_is_skipped() {
         let published = PublishedChatboxState::default();
         assert_eq!(
             published.next_update(
@@ -931,12 +910,12 @@ mod tests {
                 BroadcastContext::Combat(1),
                 crate::i18n::Language::Chinese
             ),
-            ChatboxUpdate::Message("【战斗中】等待数据…".to_owned())
+            ChatboxUpdate::SkipEmpty
         );
     }
 
     #[test]
-    fn first_combat_waiting_message_is_replaced_by_personal_damage_data() {
+    fn non_empty_combat_message_is_sent_when_personal_damage_arrives() {
         let config = AppConfig::default();
         let mut published = PublishedChatboxState::default();
         let waiting_snapshot = GameSnapshot {
@@ -946,16 +925,13 @@ mod tests {
             combat_round_epoch: 1,
             ..GameSnapshot::default()
         };
-        let waiting = published.next_update(
+        let empty = published.next_update(
             render_configured_message(&config, &waiting_snapshot).unwrap(),
             BroadcastContext::Combat(1),
             config.language,
         );
-        assert_eq!(
-            waiting,
-            ChatboxUpdate::Message("【战斗中】等待数据…".to_owned())
-        );
-        published.complete(&waiting);
+        assert_eq!(empty, ChatboxUpdate::SkipEmpty);
+        published.complete(&empty);
 
         let damage_snapshot = GameSnapshot {
             has_damage_data: true,

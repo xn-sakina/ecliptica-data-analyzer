@@ -265,10 +265,18 @@ impl PublishedChatboxState {
     ) -> ChatboxUpdate {
         if !message.trim().is_empty() {
             ChatboxUpdate::Message(message)
-        } else if self.remote_may_have_visible_content {
-            // VRChat does not use an empty OSC message to replace persistent
-            // Chatbox content. Send an explicit state-appropriate placeholder
-            // until the selected template produces real data.
+        } else if matches!(context, BroadcastContext::Combat(_))
+            || self.remote_may_have_visible_content
+        {
+            // A confirmed combat context must always produce visible output,
+            // including the first combat observed after application startup.
+            // Otherwise the built-in template is empty before the first
+            // personal sample and the sender silently skips the exact
+            // "waiting for data" state it is supposed to communicate.
+            //
+            // Round reports retain the previous-content condition: an empty
+            // report should only replace stale visible Chatbox content, not
+            // manufacture a report that has no data.
             let replacement = match context {
                 BroadcastContext::Combat(_) => {
                     crate::i18n::text::EMPTY_COMBAT_REPLACEMENT.get(language)
@@ -915,7 +923,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_template_without_any_previously_published_text_sends_nothing() {
+    fn first_empty_combat_message_sends_waiting_placeholder() {
         let published = PublishedChatboxState::default();
         assert_eq!(
             published.next_update(
@@ -923,7 +931,44 @@ mod tests {
                 BroadcastContext::Combat(1),
                 crate::i18n::Language::Chinese
             ),
-            ChatboxUpdate::SkipEmpty
+            ChatboxUpdate::Message("【战斗中】等待数据…".to_owned())
+        );
+    }
+
+    #[test]
+    fn first_combat_waiting_message_is_replaced_by_personal_damage_data() {
+        let config = AppConfig::default();
+        let mut published = PublishedChatboxState::default();
+        let waiting_snapshot = GameSnapshot {
+            in_ecliptica: true,
+            status: DataStatus::Live,
+            phase: RoundPhase::Combat,
+            combat_round_epoch: 1,
+            ..GameSnapshot::default()
+        };
+        let waiting = published.next_update(
+            render_configured_message(&config, &waiting_snapshot).unwrap(),
+            BroadcastContext::Combat(1),
+            config.language,
+        );
+        assert_eq!(
+            waiting,
+            ChatboxUpdate::Message("【战斗中】等待数据…".to_owned())
+        );
+        published.complete(&waiting);
+
+        let damage_snapshot = GameSnapshot {
+            has_damage_data: true,
+            latest_dps: 25,
+            ..waiting_snapshot
+        };
+        assert_eq!(
+            published.next_update(
+                render_configured_message(&config, &damage_snapshot).unwrap(),
+                BroadcastContext::Combat(1),
+                config.language,
+            ),
+            ChatboxUpdate::Message("DPS: 25".to_owned())
         );
     }
 

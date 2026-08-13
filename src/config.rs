@@ -16,7 +16,7 @@ use tempfile::NamedTempFile;
 use crate::APP_ID;
 use crate::i18n::Language;
 
-pub const CONFIG_VERSION: u32 = 17;
+pub const CONFIG_VERSION: u32 = 18;
 pub const MESSAGE_TEMPLATE_PRESET_COUNT: usize = 3;
 pub const ROUND_REPORT_TEMPLATE_PRESET_COUNT: usize = 3;
 pub const TEMPLATE_PRESET_NAME_MAX_CHARS: usize = 24;
@@ -29,6 +29,7 @@ const VERSION_15_DEFAULT_ROUND_REPORT_TEMPLATE: &str = "【回合战报】\n用�
 const VERSION_15_DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2: &str = "【回合战报】\n用时 {{round_duration}}｜被草 {{round_report_damage_taken}}\n最长站桩 {{round_longest_standstill}}s";
 const VERSION_16_DEFAULT_TEMPLATE_ENGLISH: &str = "{{#if is_self_boss_locked}}\n【Boss is targeting me — help!】\n{{/if}}\n{{#if rapid_damage_danger}}\n【Taking heavy damage — help!】\n{{/if}}\n{{#if no_wasd_for_10s}}\n【I haven't moved for 10 seconds】\n{{/if}}\n{{#if no_dps_for_10s}}\n【No damage for 10 seconds】\n{{/if}}\n{{#if has_latest_dps}}\nDPS: {{latest_dps}}\n{{/if}}\n";
 const VERSION_16_DEFAULT_TEMPLATE_PRESET_2_ENGLISH: &str = "{{#if is_self_boss_locked}}\n【Boss is targeting me — attack it!】\n{{/if}}\n{{#if no_wasd_for_10s}}\n【I haven't moved for 10 seconds】\n{{/if}}\n{{#if no_dps_for_10s}}\n【No damage for 10 seconds】\n{{/if}}\n{{#if has_round_damage_taken}}\nDamage taken: {{round_damage_taken}}\n{{/if}}\n";
+const VERSION_17_DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2: &str = "【回合战报】\n用时 {{round_duration}}｜被草 {{round_report_damage_taken}}\n最长站桩 {{round_longest_standstill}}s\n{{#if has_step_estimate}}\n预计距 Jim 还有 {{until_boss_step}} 回合\n{{/if}}\n";
 const VERSION_13_DEFAULT_ALERT_VOLUME: f32 = 0.35;
 pub const DEFAULT_TEMPLATE: &str = include_str!("../resources/presets/zh/combat1.txt");
 pub const DEFAULT_TEMPLATE_PRESET_2: &str = include_str!("../resources/presets/zh/combat2.txt");
@@ -324,9 +325,9 @@ impl AppConfig {
                 )
             );
         }
-        validate_template(&self.message_template)?;
+        validate_template(&self.message_template, self.language)?;
         for (index, template) in self.message_template_presets.iter().enumerate() {
-            validate_template(template).with_context(|| {
+            validate_template(template, self.language).with_context(|| {
                 crate::i18n::format_pattern(
                     crate::i18n::text::MESSAGE_PRESET_INVALID,
                     self.language,
@@ -349,10 +350,10 @@ impl AppConfig {
                 )
             );
         }
-        validate_template(&self.round_report_template)
+        validate_template(&self.round_report_template, self.language)
             .context(crate::i18n::text::REPORT_TEMPLATE_INVALID.get(self.language))?;
         for (index, template) in self.round_report_template_presets.iter().enumerate() {
-            validate_template(template).with_context(|| {
+            validate_template(template, self.language).with_context(|| {
                 crate::i18n::format_pattern(
                     crate::i18n::text::REPORT_PRESET_INVALID,
                     self.language,
@@ -494,6 +495,22 @@ impl AppConfig {
                 .get(self.active_message_template_preset)
             {
                 self.message_template.clone_from(template);
+            }
+        }
+        if self.version < 18 {
+            if self.round_report_template == VERSION_17_DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2 {
+                self.round_report_template = DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2.to_owned();
+            }
+            for template in &mut self.round_report_template_presets {
+                if template == VERSION_17_DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2 {
+                    *template = DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2.to_owned();
+                }
+            }
+            if let Some(template) = self
+                .round_report_template_presets
+                .get(self.active_round_report_template_preset)
+            {
+                self.round_report_template.clone_from(template);
             }
         }
         self.version = CONFIG_VERSION;
@@ -645,12 +662,12 @@ fn upgrade_version_15_round_report_presets(
     }
 }
 
-pub fn validate_template(source: &str) -> Result<()> {
+pub fn validate_template(source: &str, language: Language) -> Result<()> {
     let mut handlebars = handlebars::Handlebars::new();
     handlebars.set_strict_mode(true);
     handlebars
         .register_template_string("message", source)
-        .context("消息模板语法错误")?;
+        .context(crate::i18n::text::TEMPLATE_SYNTAX_ERROR.get(language))?;
     let values = serde_json::json!({
         "latest_dps": "-",
         "avg_dps": "-",
@@ -702,14 +719,15 @@ pub fn validate_template(source: &str) -> Result<()> {
     });
     handlebars
         .render("message", &values)
-        .context("消息模板包含未知变量")?;
+        .context(crate::i18n::text::TEMPLATE_UNKNOWN_VARIABLE.get(language))?;
     Ok(())
 }
 
 pub fn config_dir() -> Result<PathBuf> {
+    let language = Language::system_default();
     ProjectDirs::from("com", "Ecliptica", APP_ID)
         .map(|dirs| dirs.config_dir().to_path_buf())
-        .context("无法确定系统配置目录")
+        .context(crate::i18n::text::CONFIG_DIR_UNAVAILABLE.get(language))
 }
 
 pub fn config_path() -> Result<PathBuf> {
@@ -717,14 +735,24 @@ pub fn config_path() -> Result<PathBuf> {
 }
 
 pub fn load_or_recover() -> Result<(AppConfig, Option<String>)> {
+    let language = Language::system_default();
     let path = config_path()?;
     if !path.exists() {
         return Ok((AppConfig::default(), None));
     }
 
     match fs::read(&path)
-        .with_context(|| format!("读取配置失败: {}", path.display()))
-        .and_then(|bytes| serde_json::from_slice::<AppConfig>(&bytes).context("配置 JSON 已损坏"))
+        .with_context(|| {
+            crate::i18n::format_pattern(
+                crate::i18n::text::CONFIG_READ_FAILED,
+                language,
+                &[("path", path.display().to_string())],
+            )
+        })
+        .and_then(|bytes| {
+            serde_json::from_slice::<AppConfig>(&bytes)
+                .context(crate::i18n::text::CONFIG_JSON_CORRUPT.get(language))
+        })
         .map(AppConfig::migrated)
         .and_then(|config| {
             config.validate()?;
@@ -734,13 +762,22 @@ pub fn load_or_recover() -> Result<(AppConfig, Option<String>)> {
         Err(error) => {
             let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
             let backup = path.with_file_name(format!("config.corrupt-{stamp}.json"));
-            fs::rename(&path, &backup)
-                .with_context(|| format!("配置损坏且无法备份到 {}", backup.display()))?;
+            fs::rename(&path, &backup).with_context(|| {
+                crate::i18n::format_pattern(
+                    crate::i18n::text::CONFIG_BACKUP_FAILED,
+                    language,
+                    &[("path", backup.display().to_string())],
+                )
+            })?;
             Ok((
-                AppConfig::default(),
+                AppConfig::defaults_for_language(language),
                 Some(format!(
-                    "配置损坏，已恢复默认值。原文件保存在 {}（{error:#}）",
-                    backup.display()
+                    "{} ({error:#})",
+                    crate::i18n::format_pattern(
+                        crate::i18n::text::CONFIG_RECOVERED,
+                        language,
+                        &[("path", backup.display().to_string())],
+                    )
                 )),
             ))
         }
@@ -750,15 +787,31 @@ pub fn load_or_recover() -> Result<(AppConfig, Option<String>)> {
 pub fn save_atomic(config: &AppConfig) -> Result<()> {
     config.validate()?;
     let dir = config_dir()?;
-    fs::create_dir_all(&dir).with_context(|| format!("创建配置目录失败: {}", dir.display()))?;
+    fs::create_dir_all(&dir).with_context(|| {
+        crate::i18n::format_pattern(
+            crate::i18n::text::CONFIG_DIR_CREATE_FAILED,
+            config.language,
+            &[("path", dir.display().to_string())],
+        )
+    })?;
     let path = dir.join("config.json");
-    let mut temp = NamedTempFile::new_in(&dir).context("创建配置临时文件失败")?;
-    serde_json::to_writer_pretty(&mut temp, config).context("序列化配置失败")?;
+    let mut temp = NamedTempFile::new_in(&dir)
+        .context(crate::i18n::text::CONFIG_TEMP_CREATE_FAILED.get(config.language))?;
+    serde_json::to_writer_pretty(&mut temp, config)
+        .context(crate::i18n::text::CONFIG_SERIALIZE_FAILED.get(config.language))?;
     temp.write_all(b"\n")?;
-    temp.as_file().sync_all().context("同步配置临时文件失败")?;
+    temp.as_file()
+        .sync_all()
+        .context(crate::i18n::text::CONFIG_TEMP_SYNC_FAILED.get(config.language))?;
     temp.persist(&path)
         .map_err(|error| error.error)
-        .with_context(|| format!("原子替换配置失败: {}", path.display()))?;
+        .with_context(|| {
+            crate::i18n::format_pattern(
+                crate::i18n::text::CONFIG_REPLACE_FAILED,
+                config.language,
+                &[("path", path.display().to_string())],
+            )
+        })?;
     sync_parent(&dir)?;
     Ok(())
 }
@@ -990,7 +1043,9 @@ mod tests {
 
     #[test]
     fn rejects_unknown_template_variable() {
-        let error = validate_template("{{unknown}}").unwrap_err().to_string();
+        let error = validate_template("{{unknown}}", Language::Chinese)
+            .unwrap_err()
+            .to_string();
         assert!(error.contains("未知变量"));
     }
 
@@ -1083,8 +1138,8 @@ mod tests {
             migrated.round_report_template,
             "{{#if has_round_report}}{{round_total_damage}}{{/if}}|{{#if has_round_report}}{{round_report_damage_taken}}{{/if}}"
         );
-        validate_template(&migrated.message_template).unwrap();
-        validate_template(&migrated.round_report_template).unwrap();
+        validate_template(&migrated.message_template, migrated.language).unwrap();
+        validate_template(&migrated.round_report_template, migrated.language).unwrap();
     }
 
     #[test]
@@ -1399,6 +1454,38 @@ mod tests {
         assert_eq!(migrated.message_template_presets[0], customized_first);
         assert_eq!(migrated.message_template_presets[1], customized_second);
         assert_eq!(migrated.message_template_presets[2], "CUSTOM MEME");
+    }
+
+    #[test]
+    fn version_seventeen_chinese_report_unit_is_localized_without_replacing_custom_text() {
+        let mut old = AppConfig::defaults_for_language(Language::Chinese);
+        old.version = 17;
+        old.round_report_template = VERSION_17_DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2.to_owned();
+        old.round_report_template_presets[1] =
+            VERSION_17_DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2.to_owned();
+        old.active_round_report_template_preset = 1;
+
+        let migrated = old.migrated();
+        assert_eq!(migrated.version, CONFIG_VERSION);
+        assert_eq!(
+            migrated.round_report_template,
+            DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2
+        );
+        assert_eq!(
+            migrated.round_report_template_presets[1],
+            DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2
+        );
+
+        let mut custom = AppConfig::defaults_for_language(Language::Chinese);
+        custom.version = 17;
+        custom.round_report_template_presets[1] =
+            format!("{VERSION_17_DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2} ");
+        custom.active_round_report_template_preset = 1;
+        custom.round_report_template = custom.round_report_template_presets[1].clone();
+        assert_eq!(
+            custom.migrated().round_report_template,
+            format!("{VERSION_17_DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2} ")
+        );
     }
 
     #[test]

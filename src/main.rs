@@ -748,7 +748,7 @@ impl AnalyzerApp {
                     &mut body_ui,
                     &mut self.page,
                     SettingsPage::Overlay,
-                    "Overlay",
+                    text::OVERLAY.get(language),
                     LucideIcon::Monitor,
                 );
                 nav_button(
@@ -994,7 +994,7 @@ impl AnalyzerApp {
             columns[2].add_space(10.0);
             dashboard_stat(
                 &mut columns[2],
-                "BOSS LOCK",
+                text::BOSS_LOCK.get(language),
                 snapshot.boss_lock.as_deref().unwrap_or("-"),
                 SETTINGS_WARNING,
             );
@@ -1058,7 +1058,7 @@ impl AnalyzerApp {
                         },
                         ReportStatItem {
                             label: text::LONGEST_STANDSTILL.get(language),
-                            value: report.longest_standstill_text(),
+                            value: localized_standstill(report, language),
                             color: SETTINGS_WARNING,
                         },
                     ];
@@ -1379,7 +1379,9 @@ impl AnalyzerApp {
             text::PLAYER_IDENTITY.get(self.draft.language),
             text::PLAYER_IDENTITY_DESCRIPTION.get(self.draft.language),
             |ui| {
-                ShadcnLabel::new("VRChat Display Name").muted().show(ui);
+                ShadcnLabel::new(text::VRCHAT_DISPLAY_NAME.get(self.draft.language))
+                    .muted()
+                    .show(ui);
                 let width = ui.available_width();
                 Input::new(&mut self.draft.display_name)
                     .placeholder(text::DISPLAY_NAME_PLACEHOLDER.get(self.draft.language))
@@ -1480,7 +1482,11 @@ impl AnalyzerApp {
 
     fn overlay_page(&mut self, ui: &mut egui::Ui) {
         let language = self.draft.language;
-        page_heading(ui, "Overlay", text::OVERLAY_SUBTITLE.get(language));
+        page_heading(
+            ui,
+            text::OVERLAY.get(language),
+            text::OVERLAY_SUBTITLE.get(language),
+        );
         section_card(
             ui,
             text::WINDOW_BEHAVIOR.get(language),
@@ -1542,7 +1548,7 @@ impl AnalyzerApp {
                         .speed(1.0)
                         .range(0.0..=10000.0)
                         .decimals(0)
-                        .suffix(" px")
+                        .suffix(text::PIXELS_SUFFIX.get(language))
                         .width(150.0)
                         .show(ui);
                     if response.changed() {
@@ -1555,7 +1561,7 @@ impl AnalyzerApp {
                         .speed(1.0)
                         .range(0.0..=10000.0)
                         .decimals(0)
-                        .suffix(" px")
+                        .suffix(text::PIXELS_SUFFIX.get(language))
                         .width(150.0)
                         .show(ui);
                     if response.changed() {
@@ -1720,7 +1726,7 @@ impl AnalyzerApp {
                                         .unwrap_or_else(|| burst_exact.clone());
                                     let taken_exact = report.damage_taken.to_string();
                                     let taken_compact = compact_u64(report.damage_taken, language);
-                                    let standstill = report.longest_standstill_text();
+                                    let standstill = localized_standstill(report, language);
                                     ui.columns(3, |columns| {
                                         overlay_report_stat(
                                             &mut columns[0],
@@ -1847,7 +1853,7 @@ impl AnalyzerApp {
                                     let lock = snapshot.boss_lock.as_deref().unwrap_or("-");
                                     let locked_self = !display_name.trim().is_empty()
                                         && normalized_name(lock) == normalized_name(&display_name);
-                                    lock_card(ui, lock, locked_self, overlay_scale);
+                                    lock_card(ui, lock, locked_self, overlay_scale, language);
                                 }
 
                                 if let Some((message, _, level)) = &alert {
@@ -2074,18 +2080,13 @@ fn settings_page_title(page: SettingsPage, language: Language) -> &'static str {
         SettingsPage::Overview => text::OVERVIEW.get(language),
         SettingsPage::Message => text::OSC_MESSAGES.get(language),
         SettingsPage::Player => text::PLAYER_ALERTS.get(language),
-        SettingsPage::Overlay => "Overlay",
+        SettingsPage::Overlay => text::OVERLAY.get(language),
         SettingsPage::Logs => text::SYSTEM_LOGS.get(language),
     }
 }
 
 fn phase_display_label(phase: RoundPhase, language: Language) -> &'static str {
-    match phase {
-        RoundPhase::Outside => text::PHASE_OUTSIDE.get(language),
-        RoundPhase::Syncing => text::PHASE_SYNCING.get(language),
-        RoundPhase::Lobby => text::PHASE_LOBBY.get(language),
-        RoundPhase::Combat => text::PHASE_COMBAT.get(language),
-    }
+    phase.display_label(language)
 }
 
 fn dps_history_chart(
@@ -2239,7 +2240,7 @@ fn dps_history_chart(
                     .x_axis_formatter(move |mark, range| {
                         format_chart_x_tick_localized(mark.value, range, &round_markers, language)
                     })
-                    .y_axis_formatter(|mark, _| format_compact_number(mark.value))
+                    .y_axis_formatter(move |mark, _| format_compact_number(mark.value, language))
                     .show_x(false)
                     .show_y(false)
                     .cursor_color(SETTINGS_CHART_CURSOR)
@@ -2301,8 +2302,8 @@ fn dps_history_chart(
                             &response.response,
                             format!(
                                 "{} · DPS {}",
-                                format_chart_elapsed(point[0]),
-                                format_compact_number(point[1])
+                                format_chart_elapsed(point[0], language),
+                                format_compact_number(point[1], language)
                             ),
                         );
                     }
@@ -2415,7 +2416,7 @@ fn format_chart_x_tick_localized(
     {
         return String::new();
     }
-    let elapsed = format_chart_elapsed(seconds);
+    let elapsed = format_chart_elapsed(seconds, language);
     chart_round_at(seconds, round_markers).map_or(elapsed.clone(), |step| {
         format!(
             "{elapsed} · {}",
@@ -2565,36 +2566,68 @@ fn smooth_chart_points(points: &[[f64; 2]], subdivisions: usize) -> Vec<[f64; 2]
     output
 }
 
-fn format_chart_elapsed(seconds: f64) -> String {
+fn format_chart_elapsed(seconds: f64, language: Language) -> String {
     let seconds = seconds.max(0.0).round() as u64;
     let hours = seconds / 3_600;
     let minutes = seconds % 3_600 / 60;
     let seconds = seconds % 60;
     if hours > 0 {
         if minutes > 0 {
-            format!("{hours}hour {minutes:02}min")
+            format_pattern(
+                text::ELAPSED_HOURS_MINUTES,
+                language,
+                &[
+                    ("hours", hours.to_string()),
+                    ("minutes", format!("{minutes:02}")),
+                ],
+            )
         } else {
-            format!("{hours}hour")
+            format_pattern(
+                text::ELAPSED_HOURS,
+                language,
+                &[("hours", hours.to_string())],
+            )
         }
     } else if minutes > 0 {
         if seconds > 0 {
-            format!("{minutes}min {seconds:02}s")
+            format_pattern(
+                text::ELAPSED_MINUTES_SECONDS,
+                language,
+                &[
+                    ("minutes", minutes.to_string()),
+                    ("seconds", format!("{seconds:02}")),
+                ],
+            )
         } else {
-            format!("{minutes}min")
+            format_pattern(
+                text::ELAPSED_MINUTES,
+                language,
+                &[("minutes", minutes.to_string())],
+            )
         }
     } else {
-        format!("{seconds}s")
+        format_pattern(
+            text::ELAPSED_SECONDS,
+            language,
+            &[("seconds", seconds.to_string())],
+        )
     }
 }
 
-fn format_compact_number(value: f64) -> String {
-    if value.abs() >= 1_000_000.0 {
-        format!("{:.1}m", value / 1_000_000.0)
-    } else if value.abs() >= 1_000.0 {
-        format!("{:.1}k", value / 1_000.0)
+fn localized_standstill(report: &RoundReport, language: Language) -> String {
+    if report.has_longest_standstill_data {
+        format_pattern(
+            text::SECONDS_VALUE,
+            language,
+            &[("seconds", report.longest_standstill_seconds.to_string())],
+        )
     } else {
-        format!("{:.0}", value)
+        "-".to_owned()
     }
+}
+
+fn format_compact_number(value: f64, language: Language) -> String {
+    compact_metric(value, false, language)
 }
 
 fn sidebar_notice(ui: &mut egui::Ui, message: &str, tone: SidebarNoticeTone) -> egui::Response {
@@ -3512,6 +3545,7 @@ fn lock_card(
     lock: &str,
     locked_self: bool,
     scale: f32,
+    language: Language,
 ) -> (
     egui::Response,
     egui::Response,
@@ -3540,7 +3574,7 @@ fn lock_card(
                 |ui| {
                     let label = ui.add(
                         egui::Label::new(
-                            egui::RichText::new("BOSS LOCK")
+                            egui::RichText::new(text::BOSS_LOCK.get(language))
                                 .size(10.0 * scale)
                                 .color(TEXT_SECONDARY),
                         )
@@ -4295,10 +4329,11 @@ mod tests {
 
     #[test]
     fn chart_elapsed_time_is_human_readable_game_time() {
-        assert_eq!(format_chart_elapsed(0.0), "0s");
-        assert_eq!(format_chart_elapsed(60.0), "1min");
-        assert_eq!(format_chart_elapsed(125.0), "2min 05s");
-        assert_eq!(format_chart_elapsed(3_900.0), "1hour 05min");
+        assert_eq!(format_chart_elapsed(0.0, Language::English), "0s");
+        assert_eq!(format_chart_elapsed(60.0, Language::English), "1m");
+        assert_eq!(format_chart_elapsed(125.0, Language::English), "2m 05s");
+        assert_eq!(format_chart_elapsed(3_900.0, Language::English), "1h 05m");
+        assert_eq!(format_chart_elapsed(125.0, Language::Chinese), "2分 05秒");
     }
 
     #[test]
@@ -4323,10 +4358,10 @@ mod tests {
                 step: 8,
             },
         ];
-        assert_eq!(format_chart_x_tick(0.0, &range, &markers), "0s · 7轮");
+        assert_eq!(format_chart_x_tick(0.0, &range, &markers), "0秒 · 7轮");
         assert_eq!(format_chart_x_tick(300.0, &range, &markers), "");
-        assert_eq!(format_chart_x_tick(60.0, &range, &markers), "1min · 8轮");
-        assert_eq!(format_chart_x_tick(30.0, &range, &[]), "30s");
+        assert_eq!(format_chart_x_tick(60.0, &range, &markers), "1分 · 8轮");
+        assert_eq!(format_chart_x_tick(30.0, &range, &[]), "30秒");
     }
 
     #[test]
@@ -4387,7 +4422,7 @@ mod tests {
 
         assert_eq!(smooth.len(), 1);
         assert_eq!(chart_point_at_x(&smooth, 12.0), Some(smooth[0]));
-        assert_eq!(format_chart_x_tick(60.0, &(0.0..=300.0), &[]), "1min");
+        assert_eq!(format_chart_x_tick(60.0, &(0.0..=300.0), &[]), "1分");
     }
 
     #[test]
@@ -4764,7 +4799,8 @@ mod tests {
                 spacing.item_spacing = OVERLAY_ITEM_SPACING * scale;
                 spacing.interact_size = egui::vec2(40.0, 18.0) * scale;
 
-                let (_card, row, label, value) = lock_card(ui, "Player 123", false, scale);
+                let (_card, row, label, value) =
+                    lock_card(ui, "Player 123", false, scale, Language::English);
                 assert!(
                     (label.rect.center().y - value.rect.center().y).abs() <= 0.5,
                     "Boss Lock labels are not vertically centered at {scale}x: {:?} vs {:?}",

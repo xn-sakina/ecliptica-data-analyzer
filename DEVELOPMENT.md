@@ -7,7 +7,13 @@ Native Rust desktop analyzer for the VRChat world Ecliptica. It tails the newest
 ```bash
 cargo run
 cargo test
+python3 scripts/check-i18n-literals.py
 ```
+
+The i18n literal check audits direct string literals passed to UI, toast, and
+system-event sinks. It uses rust-analyzer's syntax tree when that command is
+available and otherwise uses the bundled balanced-token fallback. Brand and
+protocol notation are explicitly allowlisted; game-log parsing is out of scope.
 
 On macOS, the checked-in sample under `data/` is used for parser/UI development. Override it at runtime with:
 

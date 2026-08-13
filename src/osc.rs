@@ -614,7 +614,7 @@ mod tests {
             render_message(template, &snapshot).unwrap(),
             "NO LOCK|COMBAT|OK|HURT|ALERT|PLAYING|DPS: 42"
         );
-        assert!(crate::config::validate_template(template).is_ok());
+        assert!(crate::config::validate_template(template, crate::i18n::Language::English).is_ok());
     }
 
     #[test]

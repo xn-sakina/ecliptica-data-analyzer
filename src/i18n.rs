@@ -106,6 +106,7 @@ pub mod text {
     pair!(OVERVIEW, "Overview", "运行总览");
     pair!(OSC_MESSAGES, "OSC Messages", "OSC 消息");
     pair!(PLAYER_ALERTS, "Player Alerts", "玩家提醒");
+    pair!(OVERLAY, "Overlay", "悬浮窗");
     pair!(SYSTEM_LOGS, "System Logs", "系统日志");
     pair!(WORKSPACE, "WORKSPACE", "工作区");
     pair!(
@@ -217,6 +218,7 @@ pub mod text {
     pair!(ROUND_EFFECTIVE_DPS, "Round effective DPS", "回合有效 DPS");
     pair!(ROUND_BURST_10S, "Round 10-second burst", "回合 10 秒爆发");
     pair!(ROUND_DAMAGE_TAKEN, "Round damage taken", "回合承伤");
+    pair!(BOSS_LOCK, "BOSS LOCK", "BOSS 锁定");
     pair!(SESSION_DPS_CHART, "Session DPS chart", "本局 DPS 曲线");
     pair!(
         SESSION_DPS_CHART_DESCRIPTION,
@@ -303,6 +305,11 @@ pub mod text {
         "输入你的 VRChat 显示名称"
     );
     pair!(
+        VRCHAT_DISPLAY_NAME,
+        "VRChat Display Name",
+        "VRChat 显示名称"
+    );
+    pair!(
         DISPLAY_NAME_NORMALIZATION,
         "Comparison trims whitespace, applies Unicode NFKC normalization, and ignores case.",
         "比较时会去除首尾空格、执行 Unicode NFKC 规范化，并忽略大小写。"
@@ -344,6 +351,7 @@ pub mod text {
     );
     pair!(HORIZONTAL_POSITION, "Horizontal position X", "水平位置 X");
     pair!(VERTICAL_POSITION, "Vertical position Y", "垂直位置 Y");
+    pair!(PIXELS_SUFFIX, " px", " 像素");
     pair!(
         SYSTEM_LOGS_SUBTITLE,
         "Recent log-reader, OSC, and audio-device status",
@@ -463,6 +471,20 @@ pub mod text {
     pair!(CHART_FINISHED_ROUND, "Completed round", "刚结束的回合");
     pair!(DPS_TREND, "DPS trend", "DPS 趋势");
     pair!(SESSION_TIME, "Session time", "本局时间");
+    pair!(
+        ELAPSED_HOURS_MINUTES,
+        "{hours}h {minutes}m",
+        "{hours}小时 {minutes}分"
+    );
+    pair!(ELAPSED_HOURS, "{hours}h", "{hours}小时");
+    pair!(
+        ELAPSED_MINUTES_SECONDS,
+        "{minutes}m {seconds}s",
+        "{minutes}分 {seconds}秒"
+    );
+    pair!(ELAPSED_MINUTES, "{minutes}m", "{minutes}分");
+    pair!(ELAPSED_SECONDS, "{seconds}s", "{seconds}秒");
+    pair!(SECONDS_VALUE, "{seconds}s", "{seconds}秒");
     pair!(ROUND_REPORT_HEADING, "Round report", "回合战报");
     pair!(
         RETURNED_TO_LOBBY,
@@ -721,6 +743,61 @@ pub mod text {
         TEMPLATE_UNKNOWN_VARIABLE,
         "Message template contains an unknown variable",
         "消息模板包含未知变量"
+    );
+    pair!(
+        CONFIG_DIR_UNAVAILABLE,
+        "Cannot determine the system configuration directory",
+        "无法确定系统配置目录"
+    );
+    pair!(
+        CONFIG_READ_FAILED,
+        "Failed to read configuration: {path}",
+        "读取配置失败：{path}"
+    );
+    pair!(
+        CONFIG_JSON_CORRUPT,
+        "Configuration JSON is corrupted",
+        "配置 JSON 已损坏"
+    );
+    pair!(
+        CONFIG_BACKUP_FAILED,
+        "The corrupted configuration could not be backed up to {path}",
+        "配置损坏且无法备份到 {path}"
+    );
+    pair!(
+        CONFIG_RECOVERED,
+        "The configuration was corrupted and defaults were restored. The original file is at {path}",
+        "配置损坏，已恢复默认值。原文件保存在 {path}"
+    );
+    pair!(
+        CONFIG_DIR_CREATE_FAILED,
+        "Failed to create configuration directory: {path}",
+        "创建配置目录失败：{path}"
+    );
+    pair!(
+        CONFIG_TEMP_CREATE_FAILED,
+        "Failed to create a temporary configuration file",
+        "创建配置临时文件失败"
+    );
+    pair!(
+        CONFIG_SERIALIZE_FAILED,
+        "Failed to serialize configuration",
+        "序列化配置失败"
+    );
+    pair!(
+        CONFIG_TEMP_SYNC_FAILED,
+        "Failed to sync the temporary configuration file",
+        "同步配置临时文件失败"
+    );
+    pair!(
+        CONFIG_REPLACE_FAILED,
+        "Failed to atomically replace configuration: {path}",
+        "原子替换配置失败：{path}"
+    );
+    pair!(
+        USERPROFILE_MISSING,
+        "USERPROFILE is not set",
+        "USERPROFILE 未设置"
     );
     pair!(
         CONFIG_VERSION_UNSUPPORTED,

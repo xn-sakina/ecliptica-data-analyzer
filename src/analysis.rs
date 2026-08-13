@@ -64,12 +64,12 @@ impl RoundPhase {
         }
     }
 
-    pub fn display_label(self) -> &'static str {
+    pub fn display_label(self, language: crate::i18n::Language) -> &'static str {
         match self {
-            Self::Outside => "未进入 Ecliptica",
-            Self::Syncing => "正在同步房间进度",
-            Self::Lobby => "大厅 / 升级阶段",
-            Self::Combat => "回合战斗中",
+            Self::Outside => crate::i18n::text::PHASE_OUTSIDE.get(language),
+            Self::Syncing => crate::i18n::text::PHASE_SYNCING.get(language),
+            Self::Lobby => crate::i18n::text::PHASE_LOBBY.get(language),
+            Self::Combat => crate::i18n::text::PHASE_COMBAT.get(language),
         }
     }
 }

@@ -325,8 +325,11 @@ pub fn discover_latest_log() -> anyhow::Result<Option<PathBuf>> {
 fn default_vrchat_log_dir() -> anyhow::Result<PathBuf> {
     #[cfg(target_os = "windows")]
     {
-        let profile =
-            env::var_os("USERPROFILE").ok_or_else(|| anyhow::anyhow!("USERPROFILE 未设置"))?;
+        let profile = env::var_os("USERPROFILE").ok_or_else(|| {
+            anyhow::anyhow!(
+                crate::i18n::text::USERPROFILE_MISSING.get(crate::i18n::Language::system_default())
+            )
+        })?;
         Ok(PathBuf::from(profile).join("AppData/LocalLow/VRChat/VRChat"))
     }
     #[cfg(target_os = "macos")]

@@ -1,6 +1,6 @@
 【回合战报】
 用时 {{round_duration}}｜被草 {{round_report_damage_taken}}
-最长站桩 {{round_longest_standstill}}s
+最长站桩 {{round_longest_standstill}} 秒
 {{#if has_step_estimate}}
 预计距 Jim 还有 {{until_boss_step}} 回合
 {{/if}}

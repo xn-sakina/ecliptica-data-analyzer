@@ -14,6 +14,8 @@ pub const BOSS_PATTERN: &str =
 pub const BOSS_DEFEATED_PATTERN: &str = r"Boss\s+(?P<name>.+?)\s+dead, personal damage dealt:";
 pub const OWNERSHIP_PATTERN: &str =
     r"ownership of\s+(?P<object>.+?)\s+transferred to\s+(?P<player>.+?)\s*$";
+pub const AUTHENTICATED_PLAYER_PATTERN: &str =
+    r"User Authenticated:\s*(?P<player>.+?)\s+\(usr_[^)]+\)\s*$";
 pub const STAGE_DETAILS_PATTERN: &str =
     r"ECLIPTICA - now in stage:\s*.+?\s+on phase:\s*(?P<phase>[0-9]+(?:\.[0-9]+)?)\s+as class:";
 
@@ -33,10 +35,14 @@ pub const OWNERSHIP_MARKER: &str = "ownership of";
 pub const OWNERSHIP_TRANSFER_MARKER: &str = "transferred to";
 pub const BOSS_DEFEATED_PREFIX: &str = "Boss ";
 pub const BOSS_DEFEATED_SUFFIX: &str = "dead, personal damage dealt:";
+pub const AUTHENTICATED_PLAYER_MARKER: &str = "User Authenticated:";
+pub const LOCAL_IS_MASTER_MARKER: &str = "[Behaviour] I am MASTER";
+pub const LOCAL_IS_NOT_MASTER_MARKER: &str = "[Behaviour] I am *NOT* MASTER";
+pub const MASTER_CLIENT_SWITCHED_MARKER: &str = "[Behaviour] OnMasterClientSwitched";
 
 /// Inventory used by diagnostics and by developers reviewing compatibility.
 /// All strings that recognize game/VRChat log input must live in this module.
-pub const LOG_PATTERN_INVENTORY: [(&str, &str); 14] = [
+pub const LOG_PATTERN_INVENTORY: [(&str, &str); 18] = [
     ("timestamp", TIMESTAMP_PATTERN),
     ("enter_ecliptica", ENTER_ECLIPTICA_MARKER),
     ("enter_room", ENTER_ROOM_MARKER),
@@ -54,6 +60,10 @@ pub const LOG_PATTERN_INVENTORY: [(&str, &str); 14] = [
     ("boss_defeated", BOSS_DEFEATED_PATTERN),
     ("ownership", OWNERSHIP_PATTERN),
     ("ownership_marker", "ownership of ... transferred to ..."),
+    ("authenticated_player", AUTHENTICATED_PLAYER_PATTERN),
+    ("local_is_master", LOCAL_IS_MASTER_MARKER),
+    ("local_is_not_master", LOCAL_IS_NOT_MASTER_MARKER),
+    ("master_client_switched", MASTER_CLIENT_SWITCHED_MARKER),
 ];
 
 #[derive(Debug, Clone, PartialEq)]
@@ -65,6 +75,9 @@ pub enum ParsedEvent {
     Boss { second: i64, name: String },
     BossDefeated { second: i64, name: String },
     Ownership { object: String, player: String },
+    AuthenticatedPlayer { player: String },
+    LocalMasterStatus { is_master: bool },
+    MasterClientSwitched,
     Damage { second: i64, amount: u64 },
     DamageTaken { second: i64, amount: u64 },
 }
@@ -114,6 +127,7 @@ pub struct LogParser {
     boss: Option<Regex>,
     boss_defeated: Option<Regex>,
     ownership: Option<Regex>,
+    authenticated_player: Option<Regex>,
     stage: Option<Regex>,
 }
 
@@ -128,6 +142,7 @@ impl Default for LogParser {
             boss: Regex::new(BOSS_PATTERN).ok(),
             boss_defeated: Regex::new(BOSS_DEFEATED_PATTERN).ok(),
             ownership: Regex::new(OWNERSHIP_PATTERN).ok(),
+            authenticated_player: Regex::new(AUTHENTICATED_PLAYER_PATTERN).ok(),
             stage: Regex::new(STAGE_DETAILS_PATTERN).ok(),
         }
     }
@@ -135,6 +150,26 @@ impl Default for LogParser {
 
 impl LogParser {
     pub fn parse(&self, line: &str) -> ParsedLine {
+        if line.contains(AUTHENTICATED_PLAYER_MARKER) {
+            return capture_text(self.authenticated_player.as_ref(), line, "player").map_or_else(
+                || {
+                    ParsedLine::malformed(
+                        "authenticated_player",
+                        "本地玩家名日志格式已变化，Boss 初始锁定可能暂时无法识别",
+                    )
+                },
+                |player| ParsedLine::event(ParsedEvent::AuthenticatedPlayer { player }),
+            );
+        }
+        if line.contains(LOCAL_IS_NOT_MASTER_MARKER) {
+            return ParsedLine::event(ParsedEvent::LocalMasterStatus { is_master: false });
+        }
+        if line.contains(LOCAL_IS_MASTER_MARKER) {
+            return ParsedLine::event(ParsedEvent::LocalMasterStatus { is_master: true });
+        }
+        if line.contains(MASTER_CLIENT_SWITCHED_MARKER) {
+            return ParsedLine::event(ParsedEvent::MasterClientSwitched);
+        }
         if line.contains(ENTER_ECLIPTICA_MARKER) {
             return self.timed(line, "enter_ecliptica", |second| {
                 ParsedEvent::EnterEcliptica { second }
@@ -338,6 +373,30 @@ mod tests {
         assert!(matches!(
             parsed.event,
             Some(ParsedEvent::BossDefeated { name, .. }) if name == "JimBringerPhase3"
+        ));
+    }
+
+    #[test]
+    fn parses_local_identity_and_master_state_markers() {
+        let parser = LogParser::default();
+        let authenticated = parser.parse(
+            "2026.08.14 01:23:42 Debug - User Authenticated: Kanamio (usr_79365660-0969-4c77-b6b5-6c43e262c013)",
+        );
+        assert!(matches!(
+            authenticated.event,
+            Some(ParsedEvent::AuthenticatedPlayer { player }) if player == "Kanamio"
+        ));
+        assert!(matches!(
+            parser
+                .parse("2026.08.14 01:48:17 Debug - [Behaviour] I am *NOT* MASTER")
+                .event,
+            Some(ParsedEvent::LocalMasterStatus { is_master: false })
+        ));
+        assert!(matches!(
+            parser
+                .parse("2026.08.14 01:53:05 Debug - [Behaviour] OnMasterClientSwitched")
+                .event,
+            Some(ParsedEvent::MasterClientSwitched)
         ));
     }
 }

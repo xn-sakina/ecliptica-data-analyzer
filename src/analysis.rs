@@ -346,6 +346,9 @@ pub struct Analyzer {
     step_estimator: StepEstimator,
     protocol_issues: BTreeMap<String, DataQualityIssue>,
     pending_protocol_diagnostics: Vec<ProtocolDiagnostic>,
+    local_player: Option<String>,
+    local_is_master: bool,
+    master_switch_pending: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -538,6 +541,23 @@ impl Analyzer {
             return;
         };
         match event {
+            ParsedEvent::AuthenticatedPlayer { player } => {
+                self.local_player = Some(player);
+            }
+            ParsedEvent::LocalMasterStatus { is_master } => {
+                self.local_is_master = is_master;
+                self.master_switch_pending = false;
+                if is_master && self.snapshot.boss_active && self.snapshot.boss_lock.is_none() {
+                    self.snapshot.boss_lock = self.local_player.clone();
+                }
+            }
+            ParsedEvent::MasterClientSwitched => {
+                // VRChat does not repeat `I am MASTER` when master changes in-room.
+                // The first ownership transfer after this marker identifies whether
+                // the local player became the new master.
+                self.local_is_master = false;
+                self.master_switch_pending = true;
+            }
             ParsedEvent::EnterEcliptica { second } => {
                 self.reset_all();
                 self.snapshot.in_ecliptica = true;
@@ -602,7 +622,14 @@ impl Analyzer {
                     self.snapshot.in_ecliptica = true;
                     self.snapshot.phase = RoundPhase::Combat;
                     self.snapshot.boss_active = true;
-                    self.snapshot.boss_lock = None;
+                    // A newly spawned network object is already owned locally, so
+                    // VRChat emits no `ownership ... transferred to ...` line for
+                    // the initial Boss target. The world master is the implicit
+                    // first owner; later target changes still arrive explicitly.
+                    self.snapshot.boss_lock = self
+                        .local_is_master
+                        .then(|| self.local_player.clone())
+                        .flatten();
                     self.snapshot.boss = Some(name);
                 }
             }
@@ -634,6 +661,13 @@ impl Analyzer {
                 }
             }
             ParsedEvent::Ownership { object, player } => {
+                if self.master_switch_pending && is_enemy_controller(&object) {
+                    self.local_is_master = self
+                        .local_player
+                        .as_deref()
+                        .is_some_and(|local| normalized_name(local) == normalized_name(&player));
+                    self.master_switch_pending = false;
+                }
                 if self.snapshot.boss_active
                     && self
                         .snapshot
@@ -771,6 +805,10 @@ impl Analyzer {
 
     pub fn reset_all(&mut self) {
         self.reset_combat();
+        // Master status is scoped to a room. Keeping it across a transition can
+        // falsely attribute a restored Boss to the previous room's master.
+        self.local_is_master = false;
+        self.master_switch_pending = false;
         self.step_estimator.reset();
         self.realtime_damage_by_second.clear();
         self.last_nonzero_realtime_dps = None;
@@ -1168,6 +1206,10 @@ pub fn normalized_name(value: &str) -> String {
 
 fn boss_object_matches(boss: &str, object: &str) -> bool {
     normalized_name(boss) == normalized_name(object)
+}
+
+fn is_enemy_controller(object: &str) -> bool {
+    normalized_name(object).starts_with("enemycontroller")
 }
 
 #[cfg(test)]
@@ -2268,6 +2310,82 @@ mod tests {
         );
         analyzer.process_line(&line(3, "ECLIPTICA - now in intermission"));
         assert!(!analyzer.snapshot_at(i64::MAX).boss_active);
+    }
+
+    #[test]
+    fn locally_owned_boss_starts_locked_to_local_player_without_transfer_line() {
+        let mut analyzer = Analyzer::default();
+        analyzer.process_line(&line(
+            0,
+            "User Authenticated: Kanamio (usr_79365660-0969-4c77-b6b5-6c43e262c013)",
+        ));
+        analyzer.process_line(&line(1, "[Behaviour] I am *NOT* MASTER"));
+        analyzer.process_line(&line(2, "[Behaviour] OnMasterClientSwitched"));
+        analyzer.process_line(&line(
+            3,
+            "ownership of EnemyController (10) transferred to Kanamio",
+        ));
+        analyzer.process_line(&line(
+            4,
+            "ECLIPTICA - now in stage: Stage_BalboaRuins on phase: 0.6246904 as class: Twinmage",
+        ));
+        analyzer.process_line(&line(
+            5,
+            "ECLIPTICA - now fighting boss: ConeHead(Clone) on phase: 0.6246904",
+        ));
+
+        assert_eq!(
+            analyzer.snapshot_at(i64::MAX).boss_lock.as_deref(),
+            Some("Kanamio")
+        );
+
+        analyzer.process_line(&line(
+            6,
+            "ownership of ConeHead transferred to ちょうあい你",
+        ));
+        assert_eq!(
+            analyzer.snapshot_at(i64::MAX).boss_lock.as_deref(),
+            Some("ちょうあい你")
+        );
+    }
+
+    #[test]
+    fn non_master_boss_still_waits_for_explicit_initial_owner() {
+        let mut analyzer = Analyzer::default();
+        analyzer.process_line(&line(
+            0,
+            "User Authenticated: Kanamio (usr_79365660-0969-4c77-b6b5-6c43e262c013)",
+        ));
+        analyzer.process_line(&line(1, "[Behaviour] I am *NOT* MASTER"));
+        analyzer.process_line(&line(
+            2,
+            "ECLIPTICA - now fighting boss: QueenBug(Clone) on phase: 0",
+        ));
+
+        assert_eq!(analyzer.snapshot_at(i64::MAX).boss_lock, None);
+    }
+
+    #[test]
+    fn room_transition_clears_stale_master_before_restored_boss() {
+        let mut analyzer = Analyzer::default();
+        analyzer.process_line(&line(
+            0,
+            "User Authenticated: Kanamio (usr_79365660-0969-4c77-b6b5-6c43e262c013)",
+        ));
+        analyzer.process_line(&line(1, "[Behaviour] I am MASTER"));
+        analyzer.process_line(&line(2, "[Behaviour] Entering Room: Ecliptica"));
+        analyzer.process_line(&line(
+            3,
+            "ECLIPTICA - now fighting boss: QueenBug(Clone) on phase: 0",
+        ));
+
+        assert_eq!(analyzer.snapshot_at(i64::MAX).boss_lock, None);
+
+        analyzer.process_line(&line(4, "[Behaviour] I am MASTER"));
+        assert_eq!(
+            analyzer.snapshot_at(i64::MAX).boss_lock.as_deref(),
+            Some("Kanamio")
+        );
     }
 
     #[test]

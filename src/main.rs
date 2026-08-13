@@ -44,6 +44,7 @@ const OVERLAY_REPORT_WITH_ALERT_HEIGHT: f32 = 300.0;
 const OVERLAY_CONTENT_WIDTH: f32 = 296.0;
 const OVERLAY_ITEM_SPACING: egui::Vec2 = egui::vec2(6.0, 4.0);
 const OVERLAY_SCALE_OPTIONS: [f32; 6] = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+const CJK_FONT_FAMILY: &str = "system-cjk";
 const MAX_LOG_ROWS: usize = 200;
 const DEVELOPER_MODE_CLICK_COUNT: u8 = 5;
 const DEVELOPER_MODE_CLICK_TIMEOUT: Duration = Duration::from_secs(4);
@@ -3624,12 +3625,8 @@ fn lock_card(
                 egui::Layout::left_to_right(egui::Align::Center),
                 |ui| {
                     let label = ui.add(
-                        egui::Label::new(
-                            egui::RichText::new(text::BOSS_LOCK.get(language))
-                                .size(10.0 * scale)
-                                .color(TEXT_SECONDARY),
-                        )
-                        .selectable(false),
+                        egui::Label::new(overlay_lock_label_text(language, scale))
+                            .selectable(false),
                     );
                     let value = ui
                         .with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -3651,6 +3648,22 @@ fn lock_card(
         });
     let row = frame.inner;
     (frame.response, row.response, row.inner.0, row.inner.1)
+}
+
+fn overlay_lock_label_text(language: Language, scale: f32) -> egui::RichText {
+    let text = egui::RichText::new(text::BOSS_LOCK.get(language)).color(TEXT_SECONDARY);
+    if let Some(font) = overlay_lock_label_font(language, scale) {
+        // Render the Latin and Han glyphs with one font so `BOSS` and `锁定`
+        // share the same metrics instead of sitting on mismatched fallback baselines.
+        text.font(font)
+    } else {
+        text.size(10.0 * scale)
+    }
+}
+
+fn overlay_lock_label_font(language: Language, scale: f32) -> Option<egui::FontId> {
+    (language == Language::Chinese)
+        .then(|| egui::FontId::new(10.0 * scale, egui::FontFamily::Name(CJK_FONT_FAMILY.into())))
 }
 
 fn log_line(ui: &mut egui::Ui, row: &LogRow, language: Language) -> egui::Response {
@@ -3934,15 +3947,19 @@ fn install_cjk_font(ctx: &egui::Context) {
     };
     let mut fonts = egui::FontDefinitions::default();
     fonts.font_data.insert(
-        "system-cjk".to_owned(),
+        CJK_FONT_FAMILY.to_owned(),
         egui::FontData::from_owned(bytes).into(),
+    );
+    fonts.families.insert(
+        egui::FontFamily::Name(CJK_FONT_FAMILY.into()),
+        vec![CJK_FONT_FAMILY.to_owned()],
     );
     for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
         fonts
             .families
             .entry(family)
             .or_default()
-            .push("system-cjk".to_owned());
+            .push(CJK_FONT_FAMILY.to_owned());
     }
     ctx.set_fonts(fonts);
 }
@@ -4875,5 +4892,13 @@ mod tests {
                 );
             });
         }
+    }
+
+    #[test]
+    fn chinese_boss_lock_label_uses_one_font_for_latin_and_han_glyphs() {
+        let font = overlay_lock_label_font(Language::Chinese, 1.0).unwrap();
+        assert_eq!(font.family, egui::FontFamily::Name(CJK_FONT_FAMILY.into()));
+        assert_eq!(font.size, 10.0);
+        assert!(overlay_lock_label_font(Language::English, 1.0).is_none());
     }
 }

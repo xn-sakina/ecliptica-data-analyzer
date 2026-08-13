@@ -3,10 +3,12 @@
 use std::{
     collections::VecDeque,
     path::{Path, PathBuf},
-    process::Command,
     sync::{Arc, atomic::Ordering},
     time::{Duration, Instant},
 };
+
+#[cfg(not(target_os = "windows"))]
+use std::process::Command;
 
 use anyhow::Context;
 use arboard::Clipboard;
@@ -3343,13 +3345,16 @@ fn log_directory(path: &Path) -> anyhow::Result<PathBuf> {
         path.display()
     );
 
-    let absolute_path = if path.is_absolute() {
-        path.to_owned()
-    } else {
-        std::env::current_dir()
-            .context(text::CURRENT_DIR_FAILED.get(language))?
-            .join(path)
-    };
+    // Besides making relative paths absolute, canonicalization converts paths
+    // to the platform's native representation (notably `\` separators on
+    // Windows) before they are handed to the system file manager.
+    let absolute_path = std::fs::canonicalize(path).with_context(|| {
+        format!(
+            "{} {}",
+            text::LOG_ACCESS_FAILED.get(language),
+            path.display()
+        )
+    })?;
     let directory = absolute_path.parent().ok_or_else(|| {
         anyhow::anyhow!(
             "{}: {}",
@@ -3375,20 +3380,60 @@ fn open_directory(directory: &Path) -> anyhow::Result<()> {
         directory.display()
     );
 
-    #[cfg(target_os = "macos")]
-    let mut command = Command::new("open");
     #[cfg(target_os = "windows")]
-    let mut command = Command::new("explorer.exe");
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    let mut command = Command::new("xdg-open");
+    {
+        open_directory_windows(directory)
+    }
 
-    command.arg(directory).spawn().with_context(|| {
-        format!(
-            "{} {}",
-            text::FILE_MANAGER_LAUNCH_FAILED.get(language),
-            directory.display()
+    #[cfg(not(target_os = "windows"))]
+    {
+        #[cfg(target_os = "macos")]
+        let mut command = Command::new("open");
+        #[cfg(not(target_os = "macos"))]
+        let mut command = Command::new("xdg-open");
+
+        command.arg(directory).spawn().with_context(|| {
+            format!(
+                "{} {}",
+                text::FILE_MANAGER_LAUNCH_FAILED.get(language),
+                directory.display()
+            )
+        })?;
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn open_directory_windows(directory: &Path) -> anyhow::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::UI::{Shell::ShellExecuteW, WindowsAndMessaging::SW_SHOWNORMAL};
+
+    let language = Language::system_default();
+    let operation = "open\0".encode_utf16().collect::<Vec<_>>();
+    let path = directory
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    // ShellExecuteW receives the directory as a UTF-16 path, so forward
+    // slashes, spaces, commas, and non-ASCII characters never pass through
+    // explorer.exe's command-line option parser.
+    let result = unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            operation.as_ptr(),
+            path.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            SW_SHOWNORMAL,
         )
-    })?;
+    } as isize;
+    anyhow::ensure!(
+        result > 32,
+        "{} {} (ShellExecuteW error {result})",
+        text::FILE_MANAGER_LAUNCH_FAILED.get(language),
+        directory.display()
+    );
     Ok(())
 }
 
@@ -4069,7 +4114,10 @@ mod tests {
         let log = directory.path().join("output_log_test.txt");
         std::fs::write(&log, b"test").unwrap();
 
-        assert_eq!(log_directory(&log).unwrap(), directory.path());
+        assert_eq!(
+            log_directory(&log).unwrap(),
+            std::fs::canonicalize(directory.path()).unwrap()
+        );
         assert!(log_directory(&directory.path().join("missing.txt")).is_err());
         assert!(log_directory(directory.path()).is_err());
     }

@@ -332,6 +332,7 @@ pub struct Analyzer {
     dps_idle_since: Option<i64>,
     round_first_damage_second: Option<i64>,
     round_started_second: Option<i64>,
+    round_has_duration_data: bool,
     round_damage_total: u64,
     round_damage_taken_total: u64,
     round_max_dps: u64,
@@ -644,10 +645,11 @@ impl Analyzer {
                 }
             }
             ParsedEvent::Damage { second, amount } => {
-                // Damage is a metric, not a round-boundary event. It may help
-                // classify a just-joined room that is still Syncing, but must
-                // never override an already-known Lobby phase (for example
-                // when the player attacks the lobby training dummy).
+                // A personal damage record inside an observed world combat is
+                // authoritative proof that the local player is participating.
+                // This safely recovers from a missed pre-join lobby without
+                // inferring anything from Stage/Boss world state alone.
+                self.activate_round_metrics_from_personal_signal(second);
                 if self.snapshot.in_ecliptica {
                     self.snapshot.has_realtime_dps_data = true;
                     let realtime_total = self.realtime_damage_by_second.entry(second).or_default();
@@ -668,6 +670,10 @@ impl Analyzer {
                 }
             }
             ParsedEvent::DamageTaken { second, amount } => {
+                // Incoming personal damage is the same kind of participation
+                // proof. Lobby training damage cannot activate metrics because
+                // the world phase must already be explicit Combat.
+                self.activate_round_metrics_from_personal_signal(second);
                 if self.snapshot.in_ecliptica && self.snapshot.round_metrics_active {
                     let second_total = self.damage_taken_by_second.entry(second).or_default();
                     *second_total = second_total.saturating_add(amount);
@@ -830,6 +836,7 @@ impl Analyzer {
         self.snapshot.round_report = None;
         self.snapshot.round_metrics_active = true;
         self.round_started_second = Some(second);
+        self.round_has_duration_data = true;
         self.dps_idle_since = Some(second);
     }
 
@@ -837,6 +844,20 @@ impl Analyzer {
         self.reset_combat();
         self.snapshot.combat_round_epoch = self.snapshot.combat_round_epoch.wrapping_add(1).max(1);
         self.snapshot.round_report = None;
+    }
+
+    fn activate_round_metrics_from_personal_signal(&mut self, second: i64) {
+        if self.snapshot.in_ecliptica
+            && self.snapshot.phase == RoundPhase::Combat
+            && !self.snapshot.round_metrics_active
+        {
+            self.snapshot.round_metrics_active = true;
+            // The true Stage start was not observed reliably. Start the partial
+            // metric window at the first authoritative personal signal.
+            self.round_started_second = Some(second);
+            self.round_has_duration_data = false;
+            self.dps_idle_since = Some(second);
+        }
     }
 
     fn finish_round(&mut self, second: i64) {
@@ -868,7 +889,7 @@ impl Analyzer {
                 })
                 .flatten();
             self.snapshot.round_report = Some(RoundReport {
-                has_duration_data: self.round_started_second.is_some(),
+                has_duration_data: self.round_has_duration_data,
                 has_output_data: self.round_first_damage_second.is_some(),
                 duration_seconds,
                 total_damage: self.round_damage_total,
@@ -915,6 +936,7 @@ impl Analyzer {
         self.dps_idle_since = None;
         self.round_first_damage_second = None;
         self.round_started_second = None;
+        self.round_has_duration_data = false;
         self.round_damage_total = 0;
         self.round_damage_taken_total = 0;
         self.round_max_dps = 0;
@@ -1971,7 +1993,7 @@ mod tests {
     }
 
     #[test]
-    fn joining_an_active_stage_waits_for_an_explicit_round_boundary() {
+    fn joining_an_active_stage_uses_personal_combat_as_a_partial_round_boundary() {
         let mut analyzer = Analyzer::default();
         analyzer.process_line(&line(
             0,
@@ -1987,18 +2009,24 @@ mod tests {
         assert_eq!(snapshot.phase, RoundPhase::Combat);
         assert!(!snapshot.round_metrics_active);
 
-        // Late-join activity is ignored until the next lobby.
+        // The Stage marker only proves world combat. A personal damage event is
+        // the first authoritative evidence that local round metrics can start.
         analyzer.process_line(&line(8, "Dealing 999 STRIKE damage"));
         analyzer.process_line(&line(9, "damage has been taken: 4, from source: Boss"));
         let snapshot = analyzer.snapshot_at(i64::MAX);
-        assert!(!snapshot.round_metrics_active);
-        assert!(!snapshot.has_damage_data);
+        assert!(snapshot.round_metrics_active);
+        assert!(snapshot.has_damage_data);
 
         analyzer.process_line(&line(10, "ECLIPTICA - now in intermission"));
         let snapshot = analyzer.snapshot_at(i64::MAX);
         assert_eq!(snapshot.phase, RoundPhase::Lobby);
         assert!(!snapshot.round_metrics_active);
-        assert!(snapshot.round_report.is_none());
+        let report = snapshot
+            .round_report
+            .expect("personal combat should produce a partial round report");
+        assert_eq!(report.total_damage, 999);
+        assert_eq!(report.damage_taken, 4);
+        assert!(!report.has_duration_data);
 
         analyzer.process_line(&line(12, "ECLIPTICA - now in stage: Stage_Next"));
         analyzer.process_line(&line(15, "Dealing 30 STRIKE damage"));
@@ -2030,13 +2058,18 @@ mod tests {
         assert!(unknown.round_report.is_none());
 
         // A Stage alone identifies world combat, but cannot prove local
-        // participation, so personal round metrics remain disabled.
+        // participation, so personal round metrics initially remain disabled.
         analyzer.process_line(&line(30, "ECLIPTICA - now in stage: Stage_First"));
+        let stage_only = analyzer.snapshot_at(timestamp(31));
+        assert_eq!(stage_only.phase, RoundPhase::Combat);
+        assert!(!stage_only.round_metrics_active);
+
+        // A personal combat event is authoritative local-participation evidence.
         analyzer.process_line(&line(35, "Dealing 25 STRIKE damage"));
         let playing = analyzer.snapshot_at(timestamp(36));
         assert_eq!(playing.phase, RoundPhase::Combat);
-        assert!(!playing.round_metrics_active);
-        assert_eq!(playing.latest_dps, 0);
+        assert!(playing.round_metrics_active);
+        assert_eq!(playing.latest_dps, 25);
     }
 
     #[test]

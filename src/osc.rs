@@ -291,7 +291,7 @@ impl PublishedChatboxState {
 }
 
 fn broadcast_context(snapshot: &GameSnapshot) -> Option<BroadcastContext> {
-    if snapshot.phase == RoundPhase::Combat && snapshot.round_metrics_active {
+    if snapshot.phase == RoundPhase::Combat {
         Some(BroadcastContext::Combat(snapshot.combat_round_epoch))
     } else if snapshot.round_report.is_some() {
         Some(BroadcastContext::RoundReport(snapshot.combat_round_epoch))
@@ -1237,7 +1237,9 @@ mod tests {
         assert!(!broadcast_context_ready(&snapshot));
 
         snapshot.phase = RoundPhase::Combat;
-        snapshot.round_metrics_active = true;
+        // A reliable world-combat marker must open OSC even before a personal
+        // combat signal makes round metrics available.
+        assert!(!snapshot.round_metrics_active);
         assert!(broadcast_context_ready(&snapshot));
 
         snapshot.phase = RoundPhase::Lobby;

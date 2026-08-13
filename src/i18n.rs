@@ -258,8 +258,8 @@ pub mod text {
     pair!(SYNC_STATUS, "Round metrics", "回合指标");
     pair!(
         ROUND_DATA_UNAVAILABLE,
-        "Waiting for an explicit lobby → stage boundary",
-        "等待明确的大厅 → 战斗边界"
+        "Waiting for a round boundary or personal combat signal",
+        "等待回合边界或个人战斗信号"
     );
     pair!(
         ROUND_DATA_AVAILABLE,

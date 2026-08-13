@@ -245,9 +245,11 @@ impl ChatboxRateLimiter {
 
 #[derive(Debug, Default)]
 struct PublishedChatboxState {
-    /// Once this process has sent visible text, only another non-empty message
-    /// can deterministically replace it in VRChat.
-    remote_may_have_visible_content: bool,
+    /// The last text successfully submitted by this process. VRChat may keep
+    /// showing it until another non-empty packet replaces it, so an empty
+    /// render needs one replacement packet but must not repeat that packet on
+    /// every send cycle.
+    last_message: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -265,26 +267,30 @@ impl PublishedChatboxState {
     ) -> ChatboxUpdate {
         if !message.trim().is_empty() {
             ChatboxUpdate::Message(message)
-        } else if matches!(context, BroadcastContext::RoundReport(_))
-            && self.remote_may_have_visible_content
-        {
-            // An empty report may replace stale visible combat content. An
-            // empty combat render, however, can be the intentional result of
-            // a conditions-only template, so it must remain empty instead of
-            // being turned into a recurring "waiting for data" message.
-            ChatboxUpdate::Message(
-                crate::i18n::text::EMPTY_REPORT_REPLACEMENT
-                    .get(language)
-                    .to_owned(),
-            )
         } else {
-            ChatboxUpdate::SkipEmpty
+            let replacement = match context {
+                BroadcastContext::Combat(_) => {
+                    crate::i18n::text::EMPTY_COMBAT_REPLACEMENT.get(language)
+                }
+                BroadcastContext::RoundReport(_) => {
+                    crate::i18n::text::EMPTY_REPORT_REPLACEMENT.get(language)
+                }
+            };
+
+            match self.last_message.as_deref() {
+                // Nothing from this process needs clearing, or the correct
+                // replacement is already present. In both cases an empty
+                // conditions-only template should remain silent.
+                None => ChatboxUpdate::SkipEmpty,
+                Some(last) if last == replacement => ChatboxUpdate::SkipEmpty,
+                Some(_) => ChatboxUpdate::Message(replacement.to_owned()),
+            }
         }
     }
 
     fn complete(&mut self, update: &ChatboxUpdate) {
-        if matches!(update, ChatboxUpdate::Message(_)) {
-            self.remote_may_have_visible_content = true;
+        if let ChatboxUpdate::Message(message) = update {
+            self.last_message = Some(message.clone());
         }
     }
 }
@@ -848,7 +854,7 @@ mod tests {
     }
 
     #[test]
-    fn entering_combat_skips_an_empty_conditions_only_message() {
+    fn entering_combat_replaces_a_report_once_when_live_template_is_empty() {
         let config = AppConfig::default();
         let report_snapshot = GameSnapshot {
             phase: RoundPhase::Lobby,
@@ -886,15 +892,23 @@ mod tests {
         };
         let live_message = render_configured_message(&config, &combat_snapshot).unwrap();
         assert_eq!(live_message, "");
-        let update = published.next_update(
+        let replacement = published.next_update(
             live_message.clone(),
             BroadcastContext::Combat(5),
             config.language,
         );
-        assert_eq!(update, ChatboxUpdate::SkipEmpty);
-        published.complete(&update);
+        assert_eq!(
+            replacement,
+            ChatboxUpdate::Message(
+                crate::i18n::text::EMPTY_COMBAT_REPLACEMENT
+                    .get(config.language)
+                    .to_owned()
+            )
+        );
+        published.complete(&replacement);
 
-        // Empty conditional output stays empty on later send cycles too.
+        // The report is covered immediately, but an empty conditional output
+        // does not keep resending the replacement on later cycles.
         assert_eq!(
             published.next_update(live_message, BroadcastContext::Combat(5), config.language),
             ChatboxUpdate::SkipEmpty
@@ -945,6 +959,58 @@ mod tests {
                 config.language,
             ),
             ChatboxUpdate::Message("DPS: 25".to_owned())
+        );
+    }
+
+    #[test]
+    fn conditions_becoming_false_replace_visible_combat_text_only_once() {
+        let config = AppConfig {
+            message_template:
+                "{{#if rapid_damage_danger}}DANGER{{/if}}{{#if no_dps_for_10s}}NO DPS{{/if}}"
+                    .to_owned(),
+            ..AppConfig::default()
+        };
+        let mut published = PublishedChatboxState::default();
+        let visible_snapshot = GameSnapshot {
+            phase: RoundPhase::Combat,
+            rapid_damage_danger: true,
+            combat_round_epoch: 1,
+            ..GameSnapshot::default()
+        };
+        let visible = published.next_update(
+            render_configured_message(&config, &visible_snapshot).unwrap(),
+            BroadcastContext::Combat(1),
+            config.language,
+        );
+        assert_eq!(visible, ChatboxUpdate::Message("DANGER".to_owned()));
+        published.complete(&visible);
+
+        let empty_snapshot = GameSnapshot {
+            rapid_damage_danger: false,
+            ..visible_snapshot
+        };
+        let replacement = published.next_update(
+            render_configured_message(&config, &empty_snapshot).unwrap(),
+            BroadcastContext::Combat(1),
+            config.language,
+        );
+        assert_eq!(
+            replacement,
+            ChatboxUpdate::Message(
+                crate::i18n::text::EMPTY_COMBAT_REPLACEMENT
+                    .get(config.language)
+                    .to_owned()
+            )
+        );
+        published.complete(&replacement);
+
+        assert_eq!(
+            published.next_update(
+                render_configured_message(&config, &empty_snapshot).unwrap(),
+                BroadcastContext::Combat(1),
+                config.language,
+            ),
+            ChatboxUpdate::SkipEmpty
         );
     }
 

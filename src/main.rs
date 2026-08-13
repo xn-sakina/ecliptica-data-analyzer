@@ -67,6 +67,7 @@ const DPS_CHART_RECENT_WINDOW_SECONDS: f64 = 5.0 * 60.0;
 const DPS_CHART_X_MARGIN_FRACTION: f64 = 0.025;
 const DPS_CHART_Y_MARGIN_FRACTION: f64 = 0.10;
 const DPS_CHART_MIN_Y_SPAN: f64 = 10.0;
+const TEMPLATE_PRESET_TAB_ROW_HEIGHT: f32 = 28.0;
 const SETTINGS_TEXT: egui::Color32 = egui::Color32::from_rgb(246, 243, 255);
 const SETTINGS_HEADING: egui::Color32 = egui::Color32::from_rgb(225, 218, 255);
 const SETTINGS_TEXT_SECONDARY: egui::Color32 = egui::Color32::from_rgb(190, 183, 204);
@@ -1244,24 +1245,28 @@ impl AnalyzerApp {
                     .label_width(84.0)
                     .show(ui, |ui| {
                         let mut selected = self.draft.active_message_template_preset;
-                        ToggleGroup::new(preset_tab_labels(
-                            &self.draft.message_template_preset_names,
-                            language,
-                        ))
-                        .variant(ToggleVariant::Outline)
-                        .size(ComponentSize::Xs)
-                        .applied_index(applied_message_preset)
-                        .draft_changed(message_draft_changed)
-                        .show(ui, &mut selected);
-                        ui.add_space(6.0);
-                        if ShadcnButton::new(text::RESET_SELECTED_PRESET.get(language))
-                            .icon(LucideIcon::RotateCcw)
-                            .variant(ButtonVariant::Ghost)
+                        let reset_clicked = preset_controls_row(ui, |ui| {
+                            ToggleGroup::new(preset_tab_labels(
+                                &self.draft.message_template_preset_names,
+                                language,
+                            ))
+                            .variant(ToggleVariant::Outline)
                             .size(ComponentSize::Xs)
-                            .show(ui)
-                            .on_hover_text(text::RESET_MESSAGE_PRESET_HINT.get(language))
-                            .clicked()
-                        {
+                            .applied_index(applied_message_preset)
+                            .draft_changed(message_draft_changed)
+                            .show(ui, &mut selected);
+                            ui.add_space(6.0);
+                            ShadcnButton::new(text::RESET_SELECTED_PRESET.get(language))
+                                .icon(LucideIcon::RotateCcw)
+                                .variant(ButtonVariant::Ghost)
+                                .size(ComponentSize::Xs)
+                                .height(TEMPLATE_PRESET_TAB_ROW_HEIGHT)
+                                .show(ui)
+                                .on_hover_text(text::RESET_MESSAGE_PRESET_HINT.get(language))
+                                .clicked()
+                        })
+                        .inner;
+                        if reset_clicked {
                             self.template_preset_reset_confirm =
                                 Some(TemplatePresetResetKind::Message);
                         }
@@ -1329,24 +1334,28 @@ impl AnalyzerApp {
                     .label_width(84.0)
                     .show(ui, |ui| {
                         let mut selected = self.draft.active_round_report_template_preset;
-                        ToggleGroup::new(preset_tab_labels(
-                            &self.draft.round_report_template_preset_names,
-                            language,
-                        ))
-                        .variant(ToggleVariant::Outline)
-                        .size(ComponentSize::Xs)
-                        .applied_index(applied_report_preset)
-                        .draft_changed(report_draft_changed)
-                        .show(ui, &mut selected);
-                        ui.add_space(6.0);
-                        if ShadcnButton::new(text::RESET_SELECTED_PRESET.get(language))
-                            .icon(LucideIcon::RotateCcw)
-                            .variant(ButtonVariant::Ghost)
+                        let reset_clicked = preset_controls_row(ui, |ui| {
+                            ToggleGroup::new(preset_tab_labels(
+                                &self.draft.round_report_template_preset_names,
+                                language,
+                            ))
+                            .variant(ToggleVariant::Outline)
                             .size(ComponentSize::Xs)
-                            .show(ui)
-                            .on_hover_text(text::RESET_REPORT_PRESET_HINT.get(language))
-                            .clicked()
-                        {
+                            .applied_index(applied_report_preset)
+                            .draft_changed(report_draft_changed)
+                            .show(ui, &mut selected);
+                            ui.add_space(6.0);
+                            ShadcnButton::new(text::RESET_SELECTED_PRESET.get(language))
+                                .icon(LucideIcon::RotateCcw)
+                                .variant(ButtonVariant::Ghost)
+                                .size(ComponentSize::Xs)
+                                .height(TEMPLATE_PRESET_TAB_ROW_HEIGHT)
+                                .show(ui)
+                                .on_hover_text(text::RESET_REPORT_PRESET_HINT.get(language))
+                                .clicked()
+                        })
+                        .inner;
+                        if reset_clicked {
                             self.template_preset_reset_confirm =
                                 Some(TemplatePresetResetKind::Report);
                         }
@@ -3968,6 +3977,24 @@ fn preset_display_name(name: &str, index: usize, language: Language) -> String {
     }
 }
 
+fn preset_controls_row<R>(
+    ui: &mut egui::Ui,
+    add_contents: impl FnOnce(&mut egui::Ui) -> R,
+) -> egui::InnerResponse<R> {
+    ui.allocate_ui_with_layout(
+        egui::vec2(ui.available_width(), TEMPLATE_PRESET_TAB_ROW_HEIGHT),
+        egui::Layout::left_to_right(egui::Align::Center),
+        |row| {
+            // The application-wide minimum interaction height is 36 px. This
+            // compact row intentionally uses 28 px controls; matching the
+            // row's interaction metric prevents egui's placer from applying
+            // different baseline offsets to the framed tabs and the button.
+            row.spacing_mut().interact_size.y = TEMPLATE_PRESET_TAB_ROW_HEIGHT;
+            add_contents(row)
+        },
+    )
+}
+
 fn self_lock_transition(
     previous: &GameSnapshot,
     current: &GameSnapshot,
@@ -4799,6 +4826,40 @@ mod tests {
         assert_eq!(labels[0], "日常");
         assert_eq!(labels[1], "预设 2");
         assert!(labels[2].ends_with('…'));
+    }
+
+    #[test]
+    fn preset_reset_button_is_vertically_centered_with_tabs() {
+        egui::__run_test_ui(|ui| {
+            let mut selected = 0;
+            let mut tabs_rect = egui::Rect::NOTHING;
+            let mut reset_rect = egui::Rect::NOTHING;
+
+            preset_controls_row(ui, |ui| {
+                tabs_rect = ToggleGroup::new(vec![
+                    "Preset 1".to_owned(),
+                    "Preset 2".to_owned(),
+                    "Preset 3".to_owned(),
+                ])
+                .variant(ToggleVariant::Outline)
+                .size(ComponentSize::Xs)
+                .show(ui, &mut selected)
+                .rect;
+                ui.add_space(6.0);
+                reset_rect = ShadcnButton::new("Reset preset")
+                    .icon(LucideIcon::RotateCcw)
+                    .variant(ButtonVariant::Ghost)
+                    .size(ComponentSize::Xs)
+                    .height(TEMPLATE_PRESET_TAB_ROW_HEIGHT)
+                    .show(ui)
+                    .rect;
+            });
+
+            assert!(
+                (tabs_rect.center().y - reset_rect.center().y).abs() <= 0.5,
+                "tabs {tabs_rect:?}, reset {reset_rect:?}"
+            );
+        });
     }
 
     #[test]

@@ -42,6 +42,10 @@ const MAX_STEP_TIME_PRIOR_WEIGHT: f64 = 0.2;
 /// the local user joined.
 const FULL_RUN_PRIOR_SECONDS: f64 = 135.0 * 60.0;
 const FINAL_BOSS_PRIOR_SECONDS: f64 = 20.0 * 60.0;
+/// The world reports the first stage of a fresh run with phase zero. Unlike a
+/// non-zero restoration Stage, this is a usable first-round boundary even
+/// though Ecliptica does not emit an intermission marker in the initial lobby.
+const RUN_ORIGIN_PHASE_MAX: f64 = 0.001;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RoundPhase {
@@ -578,11 +582,14 @@ impl Analyzer {
                     });
                 }
                 self.step_estimator.observe_stage(second, phase);
-                if self.round_baseline_ready {
+                let is_initial_run_stage = self.snapshot.phase == RoundPhase::Syncing
+                    && phase.is_some_and(|value| value <= RUN_ORIGIN_PHASE_MAX);
+                if self.round_baseline_ready || is_initial_run_stage {
                     self.start_round(second);
                 } else {
                     // A Stage emitted during room restoration is
-                    // indistinguishable from a newly started Stage. Expose the
+                    // indistinguishable from a newly started Stage unless its
+                    // phase identifies the origin of a fresh run. Expose the
                     // world phase, but wait for an explicit lobby -> stage
                     // boundary before collecting personal round metrics.
                     self.start_untracked_round();
@@ -2078,6 +2085,55 @@ mod tests {
         assert_eq!(report.effective_dps, 0.0);
         assert_eq!(report.burst_10s_dps, None);
         assert_eq!(report.damage_taken, 23);
+    }
+
+    #[test]
+    fn phase_zero_starts_the_first_round_without_an_initial_lobby_marker() {
+        let mut analyzer = Analyzer::default();
+        analyzer.process_line(&line(
+            0,
+            "[Behaviour] Entering Room: Ecliptica - Fresh Instance",
+        ));
+        analyzer.process_line(&line(
+            2,
+            "ECLIPTICA - now in stage: Stage_Hall of Beginnings on phase: 0 as class: Twinmage",
+        ));
+
+        let combat = analyzer.snapshot_at(timestamp(3));
+        assert_eq!(combat.phase, RoundPhase::Combat);
+        assert!(combat.round_metrics_active);
+
+        analyzer.process_line(&line(5, "Dealing 100 STRIKE damage"));
+        analyzer.process_line(&line(12, "ECLIPTICA - now in intermission"));
+        let report = analyzer
+            .snapshot_at(timestamp(13))
+            .round_report
+            .expect("the first round should be archived");
+        assert!(report.has_duration_data);
+        assert_eq!(report.duration_seconds, 10);
+        assert_eq!(report.duration_text(), "00:10");
+    }
+
+    #[test]
+    fn nonzero_first_stage_still_uses_partial_late_join_timing() {
+        let mut analyzer = Analyzer::default();
+        analyzer.process_line(&line(
+            0,
+            "[Behaviour] Entering Room: Ecliptica - Active Instance",
+        ));
+        analyzer.process_line(&line(
+            2,
+            "ECLIPTICA - now in stage: Stage_Active on phase: 0.429022 as class: Twinmage",
+        ));
+        assert!(!analyzer.snapshot_at(timestamp(3)).round_metrics_active);
+
+        analyzer.process_line(&line(5, "Dealing 100 STRIKE damage"));
+        analyzer.process_line(&line(12, "ECLIPTICA - now in intermission"));
+        let report = analyzer
+            .snapshot_at(timestamp(13))
+            .round_report
+            .expect("personal combat should still produce a partial report");
+        assert!(!report.has_duration_data);
     }
 
     #[test]

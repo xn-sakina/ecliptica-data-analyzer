@@ -45,6 +45,8 @@ const OVERLAY_CONTENT_WIDTH: f32 = 296.0;
 const OVERLAY_ITEM_SPACING: egui::Vec2 = egui::vec2(6.0, 4.0);
 const OVERLAY_SCALE_OPTIONS: [f32; 6] = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 const CJK_FONT_FAMILY: &str = "system-cjk";
+const EXTENDED_TEXT_FONT_FAMILY: &str = "system-extended-text";
+const SYMBOL_FONT_FAMILY: &str = "system-symbols";
 const MAX_LOG_ROWS: usize = 200;
 const DEVELOPER_MODE_CLICK_COUNT: u8 = 5;
 const DEVELOPER_MODE_CLICK_TIMEOUT: Duration = Duration::from_secs(4);
@@ -3930,7 +3932,7 @@ fn install_theme(ctx: &egui::Context) {
 }
 
 fn install_cjk_font(ctx: &egui::Context) {
-    let candidates: &[&str] = if cfg!(target_os = "windows") {
+    let cjk_candidates: &[&str] = if cfg!(target_os = "windows") {
         &["C:/Windows/Fonts/msyh.ttc", "C:/Windows/Fonts/simhei.ttf"]
     } else {
         &[
@@ -3938,30 +3940,71 @@ fn install_cjk_font(ctx: &egui::Context) {
             "/System/Library/Fonts/STHeiti Light.ttc",
         ]
     };
-    let Some((_, bytes)) = candidates
-        .iter()
-        .find_map(|path| std::fs::read(path).ok().map(|bytes| (*path, bytes)))
-    else {
-        tracing::warn!("未找到系统 CJK 字体，中文可能显示为方框");
-        return;
+    let extended_text_candidates: &[&str] = if cfg!(target_os = "windows") {
+        &["C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/arial.ttf"]
+    } else {
+        &[
+            "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+            "/System/Library/Fonts/Helvetica.ttc",
+        ]
     };
+    let symbol_candidates: &[&str] = if cfg!(target_os = "windows") {
+        &[
+            "C:/Windows/Fonts/seguisym.ttf",
+            "C:/Windows/Fonts/seguiemj.ttf",
+        ]
+    } else {
+        &[
+            "/System/Library/Fonts/Apple Symbols.ttf",
+            "/System/Library/Fonts/CJKSymbolsFallback.ttc",
+        ]
+    };
+
     let mut fonts = egui::FontDefinitions::default();
+    if !install_font_fallback(&mut fonts, CJK_FONT_FAMILY, cjk_candidates) {
+        tracing::warn!("未找到系统 CJK 字体，中文可能显示为方框");
+    }
+    if !install_font_fallback(
+        &mut fonts,
+        EXTENDED_TEXT_FONT_FAMILY,
+        extended_text_candidates,
+    ) {
+        tracing::warn!("未找到扩展字符字体，玩家名中的特殊字符可能显示为方框");
+    }
+    if !install_font_fallback(&mut fonts, SYMBOL_FONT_FAMILY, symbol_candidates) {
+        tracing::warn!("未找到系统符号字体，玩家名中的装饰符号可能显示为方框");
+    }
+    ctx.set_fonts(fonts);
+}
+
+fn install_font_fallback(
+    fonts: &mut egui::FontDefinitions,
+    family_name: &'static str,
+    candidates: &[&str],
+) -> bool {
+    let Some(bytes) = candidates.iter().find_map(|path| std::fs::read(path).ok()) else {
+        return false;
+    };
     fonts.font_data.insert(
-        CJK_FONT_FAMILY.to_owned(),
+        family_name.to_owned(),
         egui::FontData::from_owned(bytes).into(),
     );
+    append_font_fallback(fonts, family_name);
+    true
+}
+
+fn append_font_fallback(fonts: &mut egui::FontDefinitions, family_name: &'static str) {
     fonts.families.insert(
-        egui::FontFamily::Name(CJK_FONT_FAMILY.into()),
-        vec![CJK_FONT_FAMILY.to_owned()],
+        egui::FontFamily::Name(family_name.into()),
+        vec![family_name.to_owned()],
     );
     for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
         fonts
             .families
             .entry(family)
             .or_default()
-            .push(CJK_FONT_FAMILY.to_owned());
+            .push(family_name.to_owned());
     }
-    ctx.set_fonts(fonts);
 }
 
 #[cfg(test)]
@@ -4900,5 +4943,22 @@ mod tests {
         assert_eq!(font.family, egui::FontFamily::Name(CJK_FONT_FAMILY.into()));
         assert_eq!(font.size, 10.0);
         assert!(overlay_lock_label_font(Language::English, 1.0).is_none());
+    }
+
+    #[test]
+    fn player_name_fonts_include_extended_text_and_symbol_fallbacks() {
+        let mut fonts = egui::FontDefinitions::default();
+        append_font_fallback(&mut fonts, CJK_FONT_FAMILY);
+        append_font_fallback(&mut fonts, EXTENDED_TEXT_FONT_FAMILY);
+        append_font_fallback(&mut fonts, SYMBOL_FONT_FAMILY);
+
+        for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+            let fallbacks = &fonts.families[&family];
+            assert!(fallbacks.ends_with(&[
+                CJK_FONT_FAMILY.to_owned(),
+                EXTENDED_TEXT_FONT_FAMILY.to_owned(),
+                SYMBOL_FONT_FAMILY.to_owned(),
+            ]));
+        }
     }
 }

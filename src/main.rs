@@ -125,6 +125,7 @@ fn main() -> anyhow::Result<()> {
             .with_transparent(true)
             .with_inner_size([940.0, 720.0])
             .with_min_inner_size([760.0, 600.0]),
+        centered: true,
         renderer: eframe::Renderer::Glow,
         ..Default::default()
     };
@@ -2207,6 +2208,7 @@ fn dps_history_chart(
                 visuals.widgets.noninteractive.fg_stroke =
                     egui::Stroke::new(1.0, SETTINGS_CHART_AXIS);
 
+                let x_axis_width = ui.available_width();
                 let response = Plot::new("overview-dps-history")
                     .height(250.0)
                     .show_background(false)
@@ -2223,7 +2225,13 @@ fn dps_history_chart(
                     .x_axis_label(text::SESSION_TIME.get(language))
                     .y_axis_label("DPS")
                     .x_axis_formatter(move |mark, range| {
-                        format_chart_x_tick_localized(mark.value, range, &round_markers, language)
+                        format_chart_x_tick_localized(
+                            mark.value,
+                            range,
+                            &round_markers,
+                            language,
+                            x_axis_width,
+                        )
                     })
                     .y_axis_formatter(move |mark, _| format_compact_number(mark.value, language))
                     .show_x(false)
@@ -2380,7 +2388,13 @@ fn format_chart_x_tick(
     visible_range: &std::ops::RangeInclusive<f64>,
     round_markers: &[ChartRoundMarker],
 ) -> String {
-    format_chart_x_tick_localized(seconds, visible_range, round_markers, Language::Chinese)
+    format_chart_x_tick_localized(
+        seconds,
+        visible_range,
+        round_markers,
+        Language::Chinese,
+        600.0,
+    )
 }
 
 fn format_chart_x_tick_localized(
@@ -2388,26 +2402,33 @@ fn format_chart_x_tick_localized(
     visible_range: &std::ops::RangeInclusive<f64>,
     round_markers: &[ChartRoundMarker],
     language: Language,
+    axis_width: f32,
 ) -> String {
     let span = (*visible_range.end() - *visible_range.start()).abs();
     let is_origin = seconds.abs() < 0.5;
-    // The right-most label is centered on its tick by egui_plot and would be
-    // clipped. Preserve the meaningful game origin, but omit only the unsafe
-    // outer ticks instead of suppressing ten percent of the whole axis.
-    let edge_guard = span * 0.025;
+    let elapsed = format_chart_elapsed(seconds, language);
+    let label = chart_round_at(seconds, round_markers).map_or(elapsed.clone(), |step| {
+        format!(
+            "{elapsed} · {}",
+            format_pattern(text::ROUND_TICK, language, &[("step", step.to_string())])
+        )
+    });
+    // egui_plot centers each label on its tick without clipping it to the
+    // axis. Convert half of this label's estimated rendered width back into
+    // axis units so long elapsed-time/round labels near the right edge are
+    // omitted before they can spill outside the chart frame.
+    let estimated_label_width = label
+        .chars()
+        .map(|character| if character.is_ascii() { 7.0 } else { 14.0 })
+        .sum::<f64>();
+    let edge_guard = span * (estimated_label_width / 2.0 + 6.0) / f64::from(axis_width.max(1.0));
     if !is_origin
         && (seconds - *visible_range.start() < edge_guard
             || *visible_range.end() - seconds < edge_guard)
     {
         return String::new();
     }
-    let elapsed = format_chart_elapsed(seconds, language);
-    chart_round_at(seconds, round_markers).map_or(elapsed.clone(), |step| {
-        format!(
-            "{elapsed} · {}",
-            format_pattern(text::ROUND_TICK, language, &[("step", step.to_string())])
-        )
-    })
+    label
 }
 
 fn chart_round_markers(
@@ -4335,6 +4356,24 @@ mod tests {
         assert_eq!(format_chart_x_tick(300.0, &range, &markers), "");
         assert_eq!(format_chart_x_tick(60.0, &range, &markers), "1分 · 8轮");
         assert_eq!(format_chart_x_tick(30.0, &range, &[]), "30秒");
+    }
+
+    #[test]
+    fn chart_x_ticks_use_label_width_for_the_edge_guard() {
+        let markers = [ChartRoundMarker {
+            start_seconds: 0.0,
+            step: 123,
+        }];
+        let range = 0.0..=3_900.0;
+
+        assert_eq!(
+            format_chart_x_tick_localized(3_000.0, &range, &markers, Language::Chinese, 600.0,),
+            "50分 · 123轮"
+        );
+        assert_eq!(
+            format_chart_x_tick_localized(3_800.0, &range, &markers, Language::Chinese, 600.0,),
+            ""
+        );
     }
 
     #[test]

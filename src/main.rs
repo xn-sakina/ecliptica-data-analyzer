@@ -1015,58 +1015,58 @@ impl AnalyzerApp {
                 text::PREVIOUS_ROUND_REPORT.get(language),
                 text::PREVIOUS_ROUND_REPORT_DESCRIPTION.get(language),
                 |ui| {
-                    ui.columns(7, |columns| {
-                        report_stat(
-                            &mut columns[0],
-                            text::DURATION.get(language),
-                            &report.duration_text(),
-                            SETTINGS_INFO,
-                        );
-                        report_stat(
-                            &mut columns[1],
-                            text::TOTAL_DAMAGE.get(language),
-                            &report.total_damage.to_string(),
-                            SETTINGS_SUCCESS,
-                        );
-                        report_stat(
-                            &mut columns[2],
-                            text::EFFECTIVE_DPS.get(language),
-                            &report.effective_dps_text(),
-                            SETTINGS_SUCCESS,
-                        );
-                        report_stat(
-                            &mut columns[3],
-                            text::BURST_10S.get(language),
-                            &report.burst_10s_dps_text(),
-                            SETTINGS_WARNING,
-                        );
-                        report_stat(
-                            &mut columns[4],
-                            text::EFFECTIVE_DPS_GROWTH.get(language),
-                            &if report.has_dps_growth_rate {
+                    let primary = [
+                        ReportStatItem {
+                            label: text::DURATION.get(language),
+                            value: report.duration_text(),
+                            color: SETTINGS_INFO,
+                        },
+                        ReportStatItem {
+                            label: text::TOTAL_DAMAGE.get(language),
+                            value: report.total_damage.to_string(),
+                            color: SETTINGS_SUCCESS,
+                        },
+                        ReportStatItem {
+                            label: text::EFFECTIVE_DPS.get(language),
+                            value: report.effective_dps_text(),
+                            color: SETTINGS_SUCCESS,
+                        },
+                        ReportStatItem {
+                            label: text::BURST_10S.get(language),
+                            value: report.burst_10s_dps_text(),
+                            color: SETTINGS_WARNING,
+                        },
+                    ];
+                    let secondary = [
+                        ReportStatItem {
+                            label: text::EFFECTIVE_DPS_GROWTH.get(language),
+                            value: if report.has_dps_growth_rate {
                                 format!("{}%", report.dps_growth_rate_text())
                             } else {
                                 "-".to_owned()
                             },
-                            if report.dps_growth_rate >= 0.0 {
+                            color: if report.dps_growth_rate >= 0.0 {
                                 SETTINGS_SUCCESS
                             } else {
                                 SETTINGS_DANGER
                             },
-                        );
-                        report_stat(
-                            &mut columns[5],
-                            text::DAMAGE_TAKEN.get(language),
-                            &report.damage_taken.to_string(),
-                            SETTINGS_DANGER,
-                        );
-                        report_stat(
-                            &mut columns[6],
-                            text::LONGEST_STANDSTILL.get(language),
-                            &report.longest_standstill_text(),
-                            SETTINGS_WARNING,
-                        );
-                    });
+                        },
+                        ReportStatItem {
+                            label: text::DAMAGE_TAKEN.get(language),
+                            value: report.damage_taken.to_string(),
+                            color: SETTINGS_DANGER,
+                        },
+                        ReportStatItem {
+                            label: text::LONGEST_STANDSTILL.get(language),
+                            value: report.longest_standstill_text(),
+                            color: SETTINGS_WARNING,
+                        },
+                    ];
+                    report_stat_group(ui, &primary, 4);
+                    ui.add_space(14.0);
+                    ui.separator();
+                    ui.add_space(14.0);
+                    report_stat_group(ui, &secondary, 3);
                 },
             );
             ui.add_space(14.0);
@@ -3175,13 +3175,48 @@ fn dashboard_stat(ui: &mut egui::Ui, label: &str, value: &str, color: egui::Colo
 }
 
 fn report_stat(ui: &mut egui::Ui, label: &str, value: &str, color: egui::Color32) {
-    Typography::small(label)
-        .color(SETTINGS_TEXT_SECONDARY)
-        .show(ui);
+    ui.allocate_ui_with_layout(
+        egui::vec2(ui.available_width(), 34.0),
+        egui::Layout::top_down(egui::Align::LEFT),
+        |ui| {
+            Typography::small(label)
+                .color(SETTINGS_TEXT_SECONDARY)
+                .wrap()
+                .show(ui);
+        },
+    );
     Typography::new(value)
         .variant(TypographyVariant::Large)
         .color(color)
+        .truncate()
         .show(ui);
+}
+
+struct ReportStatItem<'a> {
+    label: &'a str,
+    value: String,
+    color: egui::Color32,
+}
+
+fn report_stat_group(ui: &mut egui::Ui, items: &[ReportStatItem<'_>], max_columns: usize) {
+    let columns = report_stat_column_count(ui.available_width(), max_columns);
+    for (row_index, row) in items.chunks(columns).enumerate() {
+        if row_index > 0 {
+            ui.add_space(14.0);
+        }
+        ui.columns(columns, |column_uis| {
+            for (column, item) in column_uis.iter_mut().zip(row) {
+                report_stat(column, item.label, &item.value, item.color);
+            }
+        });
+    }
+}
+
+fn report_stat_column_count(available_width: f32, max_columns: usize) -> usize {
+    const MIN_STAT_WIDTH: f32 = 150.0;
+    const COLUMN_GAP: f32 = 10.0;
+    (((available_width + COLUMN_GAP) / (MIN_STAT_WIDTH + COLUMN_GAP)).floor() as usize)
+        .clamp(1, max_columns.max(1))
 }
 
 fn detail_row(ui: &mut egui::Ui, label: &str, value: &str) {
@@ -4490,6 +4525,39 @@ mod tests {
                     assert!(log_item.rect.height() >= 70.0);
                 },
             );
+        });
+    }
+
+    #[test]
+    fn previous_report_uses_readable_responsive_columns() {
+        assert_eq!(report_stat_column_count(900.0, 4), 4);
+        assert_eq!(report_stat_column_count(900.0, 3), 3);
+        assert_eq!(report_stat_column_count(620.0, 4), 3);
+        assert_eq!(report_stat_column_count(420.0, 4), 2);
+        assert_eq!(report_stat_column_count(140.0, 4), 1);
+
+        egui::__run_test_ui(|ui| {
+            ui.set_width(420.0);
+            let items = [
+                ReportStatItem {
+                    label: "Effective DPS growth rate",
+                    value: "123.4%".to_owned(),
+                    color: SETTINGS_SUCCESS,
+                },
+                ReportStatItem {
+                    label: "Damage taken",
+                    value: "18446744073709551615".to_owned(),
+                    color: SETTINGS_DANGER,
+                },
+                ReportStatItem {
+                    label: "Longest standstill",
+                    value: "59min 59s".to_owned(),
+                    color: SETTINGS_WARNING,
+                },
+            ];
+            let right_edge = ui.max_rect().right();
+            report_stat_group(ui, &items, 3);
+            assert!(ui.min_rect().right() <= right_edge + 0.5);
         });
     }
 

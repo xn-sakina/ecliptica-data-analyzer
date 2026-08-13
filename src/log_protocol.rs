@@ -68,18 +68,47 @@ pub const LOG_PATTERN_INVENTORY: [(&str, &str); 18] = [
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ParsedEvent {
-    EnterEcliptica { second: i64 },
-    LeaveRoom { second: i64 },
-    Stage { second: i64, phase: Option<f64> },
-    Intermission { second: i64 },
-    Boss { second: i64, name: String },
-    BossDefeated { second: i64, name: String },
-    Ownership { object: String, player: String },
-    AuthenticatedPlayer { player: String },
-    LocalMasterStatus { is_master: bool },
+    EnterEcliptica {
+        second: i64,
+    },
+    LeaveRoom {
+        second: i64,
+    },
+    Stage {
+        second: i64,
+        phase: Option<f64>,
+    },
+    Intermission {
+        second: i64,
+    },
+    Boss {
+        second: i64,
+        name: String,
+    },
+    BossDefeated {
+        second: i64,
+        name: String,
+    },
+    Ownership {
+        second: i64,
+        object: String,
+        player: String,
+    },
+    AuthenticatedPlayer {
+        player: String,
+    },
+    LocalMasterStatus {
+        is_master: bool,
+    },
     MasterClientSwitched,
-    Damage { second: i64, amount: u64 },
-    DamageTaken { second: i64, amount: u64 },
+    Damage {
+        second: i64,
+        amount: u64,
+    },
+    DamageTaken {
+        second: i64,
+        amount: u64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -258,12 +287,17 @@ impl LogParser {
             );
         }
         if line.contains(OWNERSHIP_MARKER) && line.contains(OWNERSHIP_TRANSFER_MARKER) {
+            let Some(second) = self.parse_second(line) else {
+                return Self::timestamp_failure("ownership");
+            };
             let object = capture_text(self.ownership.as_ref(), line, "object");
             let player = capture_text(self.ownership.as_ref(), line, "player");
             return match (object, player) {
-                (Some(object), Some(player)) => {
-                    ParsedLine::event(ParsedEvent::Ownership { object, player })
-                }
+                (Some(object), Some(player)) => ParsedLine::event(ParsedEvent::Ownership {
+                    second,
+                    object,
+                    player,
+                }),
                 _ => {
                     ParsedLine::malformed("ownership", "所有权日志格式已变化，Boss Lock 已降级为空")
                 }

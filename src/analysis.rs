@@ -349,6 +349,10 @@ pub struct Analyzer {
     local_player: Option<String>,
     local_is_master: bool,
     master_switch_pending: bool,
+    boss_started_second: Option<i64>,
+    boss_lock_is_explicit: bool,
+    pending_initial_boss_lock: Option<String>,
+    recent_ownership: BTreeMap<String, (i64, String)>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -547,9 +551,6 @@ impl Analyzer {
             ParsedEvent::LocalMasterStatus { is_master } => {
                 self.local_is_master = is_master;
                 self.master_switch_pending = false;
-                if is_master && self.snapshot.boss_active && self.snapshot.boss_lock.is_none() {
-                    self.snapshot.boss_lock = self.local_player.clone();
-                }
             }
             ParsedEvent::MasterClientSwitched => {
                 // VRChat does not repeat `I am MASTER` when master changes in-room.
@@ -614,23 +615,42 @@ impl Analyzer {
                 self.snapshot.phase = RoundPhase::Lobby;
                 self.round_baseline_ready = true;
             }
-            ParsedEvent::Boss { second: _, name } => {
+            ParsedEvent::Boss { second, name } => {
                 // Boss is a world-state signal, not evidence that the local
                 // player is alive. It may refine an already known/unknown
                 // combat phase, but it never starts personal round metrics.
                 if self.snapshot.phase != RoundPhase::Lobby {
                     self.snapshot.in_ecliptica = true;
                     self.snapshot.phase = RoundPhase::Combat;
-                    self.snapshot.boss_active = true;
-                    // A newly spawned network object is already owned locally, so
-                    // VRChat emits no `ownership ... transferred to ...` line for
-                    // the initial Boss target. The world master is the implicit
-                    // first owner; later target changes still arrive explicitly.
-                    self.snapshot.boss_lock = self
-                        .local_is_master
-                        .then(|| self.local_player.clone())
-                        .flatten();
-                    self.snapshot.boss = Some(name);
+                    let same_boss = self.snapshot.boss_active
+                        && self
+                            .snapshot
+                            .boss
+                            .as_deref()
+                            .is_some_and(|boss| boss_object_matches(boss, &name));
+                    if !same_boss {
+                        self.snapshot.boss_active = true;
+                        self.snapshot.boss = Some(name.clone());
+                        self.snapshot.boss_lock = None;
+                        self.boss_started_second = Some(second);
+                        self.boss_lock_is_explicit = false;
+                        self.pending_initial_boss_lock = self
+                            .local_is_master
+                            .then(|| self.local_player.clone())
+                            .flatten();
+
+                        // Ownership and Boss creation can be logged in either
+                        // order within one second. Explicit evidence always wins.
+                        if let Some((ownership_second, player)) =
+                            self.recent_ownership.get(&normalized_name(&name))
+                        {
+                            if *ownership_second == second {
+                                self.snapshot.boss_lock = Some(player.clone());
+                                self.boss_lock_is_explicit = true;
+                                self.pending_initial_boss_lock = None;
+                            }
+                        }
+                    }
                 }
             }
             ParsedEvent::BossDefeated { second, name } => {
@@ -660,7 +680,11 @@ impl Analyzer {
                     self.clear_boss();
                 }
             }
-            ParsedEvent::Ownership { object, player } => {
+            ParsedEvent::Ownership {
+                second,
+                object,
+                player,
+            } => {
                 if self.master_switch_pending && is_enemy_controller(&object) {
                     self.local_is_master = self
                         .local_player
@@ -668,6 +692,9 @@ impl Analyzer {
                         .is_some_and(|local| normalized_name(local) == normalized_name(&player));
                     self.master_switch_pending = false;
                 }
+                let object_key = normalized_name(&object);
+                self.recent_ownership
+                    .insert(object_key.clone(), (second, player.clone()));
                 if self.snapshot.boss_active
                     && self
                         .snapshot
@@ -676,6 +703,9 @@ impl Analyzer {
                         .is_some_and(|boss| boss_object_matches(boss, &object))
                 {
                     self.snapshot.boss_lock = Some(player);
+                    self.boss_lock_is_explicit = true;
+                    self.pending_initial_boss_lock = None;
+                    self.recent_ownership.remove(&object_key);
                 }
             }
             ParsedEvent::Damage { second, amount } => {
@@ -720,6 +750,18 @@ impl Analyzer {
     }
 
     pub fn snapshot_at(&mut self, now_second: i64) -> GameSnapshot {
+        // Do not publish the master-based fallback during the Boss creation
+        // second. A definitive ownership line can race it within that second,
+        // and publishing early could trigger a false self-lock notification.
+        if self.snapshot.boss_active
+            && self.snapshot.boss_lock.is_none()
+            && !self.boss_lock_is_explicit
+            && self
+                .boss_started_second
+                .is_some_and(|started| now_second > started.saturating_add(1))
+        {
+            self.snapshot.boss_lock = self.pending_initial_boss_lock.clone();
+        }
         let rapid_damage_first = now_second.saturating_sub(RAPID_DAMAGE_WINDOW_SECONDS);
         self.damage_taken_by_second
             .retain(|second, _| *second >= rapid_damage_first);
@@ -991,6 +1033,7 @@ impl Analyzer {
         self.snapshot.has_step_estimate = false;
         self.snapshot.current_step = 0;
         self.snapshot.until_boss_step = 0;
+        self.recent_ownership.clear();
         self.clear_boss();
     }
 
@@ -998,6 +1041,9 @@ impl Analyzer {
         self.snapshot.boss_active = false;
         self.snapshot.boss = None;
         self.snapshot.boss_lock = None;
+        self.boss_started_second = None;
+        self.boss_lock_is_explicit = false;
+        self.pending_initial_boss_lock = None;
     }
 
     fn finish_visit(&mut self, second: i64) {
@@ -2350,6 +2396,86 @@ mod tests {
     }
 
     #[test]
+    fn explicit_lock_is_never_overwritten_by_duplicate_boss_marker() {
+        let mut analyzer = Analyzer::default();
+        analyzer.process_line(&line(
+            0,
+            "User Authenticated: Kanamio (usr_79365660-0969-4c77-b6b5-6c43e262c013)",
+        ));
+        analyzer.process_line(&line(1, "[Behaviour] I am MASTER"));
+        analyzer.process_line(&line(
+            2,
+            "ECLIPTICA - now fighting boss: ConeHeadPhase2(Clone) on phase: 0.6246904",
+        ));
+        analyzer.process_line(&line(
+            3,
+            "ownership of ConeHeadPhase2 transferred to ʚ橘姜ɞ",
+        ));
+        analyzer.process_line(&line(
+            4,
+            "ECLIPTICA - now fighting boss: ConeHeadPhase2(Clone) on phase: 0.6246904",
+        ));
+
+        assert_eq!(
+            analyzer.snapshot_at(i64::MAX).boss_lock.as_deref(),
+            Some("ʚ橘姜ɞ")
+        );
+    }
+
+    #[test]
+    fn same_second_explicit_owner_wins_in_either_log_order() {
+        for ownership_first in [false, true] {
+            let mut analyzer = Analyzer::default();
+            analyzer.process_line(&line(
+                0,
+                "User Authenticated: Kanamio (usr_79365660-0969-4c77-b6b5-6c43e262c013)",
+            ));
+            analyzer.process_line(&line(1, "[Behaviour] I am MASTER"));
+
+            let boss = line(
+                5,
+                "ECLIPTICA - now fighting boss: ConeHead(Clone) on phase: 0.6246904",
+            );
+            let ownership = line(5, "ownership of ConeHead transferred to Sayoray");
+            if ownership_first {
+                analyzer.process_line(&ownership);
+                analyzer.process_line(&boss);
+            } else {
+                analyzer.process_line(&boss);
+                // The master fallback must not be observable during the race second.
+                assert_eq!(analyzer.snapshot_at(timestamp(5)).boss_lock, None);
+                analyzer.process_line(&ownership);
+            }
+
+            assert_eq!(
+                analyzer.snapshot_at(timestamp(7)).boss_lock.as_deref(),
+                Some("Sayoray")
+            );
+        }
+    }
+
+    #[test]
+    fn next_second_explicit_owner_arrives_before_master_fallback_is_published() {
+        let mut analyzer = Analyzer::default();
+        analyzer.process_line(&line(
+            0,
+            "User Authenticated: Kanamio (usr_79365660-0969-4c77-b6b5-6c43e262c013)",
+        ));
+        analyzer.process_line(&line(1, "[Behaviour] I am MASTER"));
+        analyzer.process_line(&line(
+            5,
+            "ECLIPTICA - now fighting boss: ConeHead(Clone) on phase: 0.6246904",
+        ));
+
+        assert_eq!(analyzer.snapshot_at(timestamp(6)).boss_lock, None);
+        analyzer.process_line(&line(6, "ownership of ConeHead transferred to Sayoray"));
+        assert_eq!(
+            analyzer.snapshot_at(timestamp(7)).boss_lock.as_deref(),
+            Some("Sayoray")
+        );
+    }
+
+    #[test]
     fn non_master_boss_still_waits_for_explicit_initial_owner() {
         let mut analyzer = Analyzer::default();
         analyzer.process_line(&line(
@@ -2382,10 +2508,7 @@ mod tests {
         assert_eq!(analyzer.snapshot_at(i64::MAX).boss_lock, None);
 
         analyzer.process_line(&line(4, "[Behaviour] I am MASTER"));
-        assert_eq!(
-            analyzer.snapshot_at(i64::MAX).boss_lock.as_deref(),
-            Some("Kanamio")
-        );
+        assert_eq!(analyzer.snapshot_at(i64::MAX).boss_lock, None);
     }
 
     #[test]

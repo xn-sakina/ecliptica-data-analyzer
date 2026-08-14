@@ -349,6 +349,10 @@ pub struct Analyzer {
     /// Stage marker. Additional Stage timing/transition evidence handles
     /// lobbies whose marker happened before the local player joined.
     round_baseline_ready: bool,
+    /// Whether this Ecliptica visit has actually observed a Stage marker.
+    /// `RoundPhase::Combat` is not equivalent because a restored Boss signal
+    /// can also expose the world combat phase before any Stage is seen.
+    observed_stage_since_entry: bool,
     visit_started_second: Option<i64>,
     history_through_second: Option<i64>,
     previous_round_effective_dps: Option<f64>,
@@ -594,7 +598,7 @@ impl Analyzer {
                 // was otherwise missed). Likewise, a first Stage arriving only
                 // after the short restoration window is a live transition out
                 // of a silent lobby, not an immediate room-restoration record.
-                let observed_stage_transition = phase_before_stage == RoundPhase::Combat;
+                let observed_stage_transition = self.observed_stage_since_entry;
                 let stage_after_quiet_join = phase_before_stage == RoundPhase::Syncing
                     && self.visit_started_second.is_some_and(|joined| {
                         second.saturating_sub(joined) >= JOIN_STAGE_RESTORATION_WINDOW_SECONDS
@@ -620,6 +624,7 @@ impl Analyzer {
                 }
                 self.snapshot.in_ecliptica = true;
                 self.snapshot.phase = RoundPhase::Combat;
+                self.observed_stage_since_entry = true;
                 self.round_baseline_ready = false;
             }
             ParsedEvent::Intermission { second } => {
@@ -889,6 +894,7 @@ impl Analyzer {
         self.snapshot.in_ecliptica = false;
         self.snapshot.phase = RoundPhase::Outside;
         self.round_baseline_ready = false;
+        self.observed_stage_since_entry = false;
         self.visit_started_second = None;
         self.history_through_second = None;
         self.previous_round_effective_dps = None;
@@ -2194,6 +2200,34 @@ mod tests {
             .expect("the Stage transition should start a complete round");
         assert!(report.has_duration_data);
         assert_eq!(report.duration_seconds, 30);
+    }
+
+    #[test]
+    fn restored_boss_does_not_make_the_first_stage_look_like_a_transition() {
+        let mut analyzer = Analyzer::default();
+        analyzer.process_line(&line(
+            0,
+            "[Behaviour] Entering Room: Ecliptica - Active Instance",
+        ));
+        analyzer.process_line(&line(
+            13,
+            "ECLIPTICA - now fighting boss: Maxipuss(Clone) on phase: 0.31",
+        ));
+        assert_eq!(
+            analyzer.snapshot_at(timestamp(13)).phase,
+            RoundPhase::Combat
+        );
+
+        // Boss restoration exposes Combat, but it is not evidence that a
+        // previous Stage marker was observed. The first Stage must therefore
+        // remain an untracked restoration boundary.
+        analyzer.process_line(&line(
+            14,
+            "ECLIPTICA - now in stage: Stage_Restored on phase: 0.31 as class: Twinmage",
+        ));
+        let restored = analyzer.snapshot_at(timestamp(15));
+        assert_eq!(restored.phase, RoundPhase::Combat);
+        assert!(!restored.round_metrics_active);
     }
 
     #[test]

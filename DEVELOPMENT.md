@@ -94,14 +94,16 @@ downed, or waiting to respawn. Stage, Boss, and Lobby records describe world sta
 not local-player state. The analyzer therefore does not infer a pre-game lobby after
 a timeout and does not expose a mid-session/death flag.
 
-Complete personal round metrics start after an explicit Lobby/Intermission marker
-followed by an explicit Stage marker. Stage or Boss restoration records seen immediately
-after joining may update the world combat/Boss context and allow OSC templates to react,
-but do not by themselves prove local participation. A subsequent personal outgoing- or
-incoming-damage record is authoritative participation evidence and starts a partial
-metric window at that record; its incomplete round duration remains unavailable. If no
-personal signal arrives, the analyzer waits for the next explicit round boundary instead
-of guessing that the local player is alive or downed.
+Complete personal round metrics start at a Stage after an explicit Lobby/Intermission
+marker, at the phase-zero Stage of a fresh run, or at a safely inferred live Stage
+transition. The latter covers a player joining an upgrade lobby after its lobby marker
+was already emitted: a Stage that arrives after the short room-restoration window, or a
+second Stage following an immediate restoration Stage, supplies the exact next-round
+start time. A non-zero Stage restoration seen immediately after joining an active fight
+still updates only the world context. A subsequent personal outgoing- or incoming-damage
+record is authoritative participation evidence and starts a partial metric window at
+that record; its incomplete round duration remains unavailable. The next observed lobby
+or Stage transition restores complete-round timing.
 
 When an intermission/lobby marker ends a round with personal output or incoming damage, the analyzer
 archives a report until the next stage begins. Report variables are `round_duration`

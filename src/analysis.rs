@@ -46,6 +46,11 @@ const FINAL_BOSS_PRIOR_SECONDS: f64 = 20.0 * 60.0;
 /// non-zero restoration Stage, this is a usable first-round boundary even
 /// though Ecliptica does not emit an intermission marker in the initial lobby.
 const RUN_ORIGIN_PHASE_MAX: f64 = 0.001;
+/// Stage restoration records are emitted shortly after joining an active
+/// combat. If the first Stage arrives only after this quiet synchronization
+/// window, treat it as a live transition out of a lobby whose marker happened
+/// before the local player joined.
+const JOIN_STAGE_RESTORATION_WINDOW_SECONDS: i64 = 12;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RoundPhase {
@@ -224,9 +229,9 @@ pub struct GameSnapshot {
     /// Whether a damage record has ever been observed during this Ecliptica
     /// visit. Unlike `max_dps > 0`, this preserves a real zero as valid data.
     pub has_max_dps_data: bool,
-    /// Personal round metrics are valid only after an explicit lobby marker
-    /// followed by an explicit stage marker. World combat signals alone cannot
-    /// prove that the local player is alive or participating.
+    /// Personal round metrics are valid after an observed or safely inferred
+    /// round boundary. A restoration Stage seen immediately after joining does
+    /// not by itself prove that the local player observed the full round.
     #[serde(default)]
     pub round_metrics_active: bool,
     /// The completed round retained while the player is back in the upgrade
@@ -340,9 +345,9 @@ pub struct Analyzer {
     round_damage_total: u64,
     round_damage_taken_total: u64,
     round_max_dps: u64,
-    /// Set only by an explicit lobby/intermission marker and consumed by the
-    /// next stage marker. This deliberately avoids inferring local player state
-    /// from world-level Stage/Boss restoration logs.
+    /// Set by an explicit lobby/intermission marker and consumed by the next
+    /// Stage marker. Additional Stage timing/transition evidence handles
+    /// lobbies whose marker happened before the local player joined.
     round_baseline_ready: bool,
     visit_started_second: Option<i64>,
     history_through_second: Option<i64>,
@@ -574,24 +579,38 @@ impl Analyzer {
             }
             ParsedEvent::Stage { second, phase } => {
                 self.update_dps_history(second.saturating_sub(1));
-                if self.snapshot.phase == RoundPhase::Combat && self.round_started_second.is_some()
-                {
+                let phase_before_stage = self.snapshot.phase;
+                if phase_before_stage == RoundPhase::Combat && self.round_started_second.is_some() {
                     self.record_protocol_diagnostic(ProtocolDiagnostic {
                         code: "intermission_missing",
                         message: "战斗中直接观察到下一阶段，未观察到 intermission/lobby 日志；上一回合按不完整数据丢弃并安全开始新回合".to_owned(),
                     });
                 }
                 self.step_estimator.observe_stage(second, phase);
-                let is_initial_run_stage = self.snapshot.phase == RoundPhase::Syncing
+                let is_initial_run_stage = phase_before_stage == RoundPhase::Syncing
                     && phase.is_some_and(|value| value <= RUN_ORIGIN_PHASE_MAX);
-                if self.round_baseline_ready || is_initial_run_stage {
+                // A Stage-to-Stage transition is a usable boundary even when
+                // the intermission marker was emitted before a late join (or
+                // was otherwise missed). Likewise, a first Stage arriving only
+                // after the short restoration window is a live transition out
+                // of a silent lobby, not an immediate room-restoration record.
+                let observed_stage_transition = phase_before_stage == RoundPhase::Combat;
+                let stage_after_quiet_join = phase_before_stage == RoundPhase::Syncing
+                    && self.visit_started_second.is_some_and(|joined| {
+                        second.saturating_sub(joined) >= JOIN_STAGE_RESTORATION_WINDOW_SECONDS
+                    });
+                if self.round_baseline_ready
+                    || is_initial_run_stage
+                    || observed_stage_transition
+                    || stage_after_quiet_join
+                {
                     self.start_round(second);
                 } else {
                     // A Stage emitted during room restoration is
-                    // indistinguishable from a newly started Stage unless its
-                    // phase identifies the origin of a fresh run. Expose the
-                    // world phase, but wait for an explicit lobby -> stage
-                    // boundary before collecting personal round metrics.
+                    // indistinguishable from a newly started Stage during the
+                    // initial sync window unless its phase identifies the
+                    // origin of a fresh run. Expose the world phase, but do not
+                    // claim a complete personal round boundary yet.
                     self.start_untracked_round();
                 }
                 if let Some(estimate) = self.step_estimator.estimate() {
@@ -2115,6 +2134,69 @@ mod tests {
     }
 
     #[test]
+    fn joining_a_silent_upgrade_lobby_tracks_the_next_complete_round() {
+        let mut analyzer = Analyzer::default();
+        analyzer.process_line(&line(
+            0,
+            "[Behaviour] Entering Room: Ecliptica - Upgrade Lobby",
+        ));
+
+        // The lobby marker happened before this player joined, so no phase
+        // record is replayed locally. Remaining quiet must not fabricate a
+        // lobby snapshot, but the later Stage is a live round boundary.
+        let syncing = analyzer.snapshot_at(timestamp(15));
+        assert_eq!(syncing.phase, RoundPhase::Syncing);
+        assert!(!syncing.round_metrics_active);
+
+        analyzer.process_line(&line(
+            20,
+            "ECLIPTICA - now in stage: Stage_Next on phase: 0.429022 as class: Twinmage",
+        ));
+        assert!(analyzer.snapshot_at(timestamp(21)).round_metrics_active);
+
+        analyzer.process_line(&line(25, "Dealing 100 STRIKE damage"));
+        analyzer.process_line(&line(50, "ECLIPTICA - now in intermission"));
+        let report = analyzer
+            .snapshot_at(timestamp(51))
+            .round_report
+            .expect("the post-upgrade round should be archived");
+        assert!(report.has_duration_data);
+        assert_eq!(report.duration_seconds, 30);
+        assert_eq!(report.duration_text(), "00:30");
+    }
+
+    #[test]
+    fn restored_stage_in_upgrade_lobby_does_not_hide_the_next_round_boundary() {
+        let mut analyzer = Analyzer::default();
+        analyzer.process_line(&line(
+            0,
+            "[Behaviour] Entering Room: Ecliptica - Upgrade Lobby",
+        ));
+        analyzer.process_line(&line(
+            1,
+            "ECLIPTICA - now in stage: Stage_Previous on phase: 0.31 as class: Twinmage",
+        ));
+        assert!(!analyzer.snapshot_at(timestamp(2)).round_metrics_active);
+
+        // Some restoration sequences expose the previous Stage but do not
+        // replay the already-emitted lobby marker. The next Stage-to-Stage
+        // transition still gives an exact start time for the new round.
+        analyzer.process_line(&line(
+            20,
+            "ECLIPTICA - now in stage: Stage_Next on phase: 0.429022 as class: Twinmage",
+        ));
+        analyzer.process_line(&line(25, "Dealing 80 STRIKE damage"));
+        analyzer.process_line(&line(50, "ECLIPTICA - now in lobby"));
+
+        let report = analyzer
+            .snapshot_at(timestamp(51))
+            .round_report
+            .expect("the Stage transition should start a complete round");
+        assert!(report.has_duration_data);
+        assert_eq!(report.duration_seconds, 30);
+    }
+
+    #[test]
     fn nonzero_first_stage_still_uses_partial_late_join_timing() {
         let mut analyzer = Analyzer::default();
         analyzer.process_line(&line(
@@ -2182,10 +2264,18 @@ mod tests {
         let snapshot = analyzer.snapshot_at(base + 16);
         assert!(snapshot.round_metrics_active);
         assert_eq!(snapshot.latest_dps, 30);
+
+        analyzer.process_line(&line(20, "ECLIPTICA - now in lobby"));
+        let report = analyzer
+            .snapshot_at(timestamp(21))
+            .round_report
+            .expect("the round after the observed lobby should be complete");
+        assert!(report.has_duration_data);
+        assert_eq!(report.duration_seconds, 8);
     }
 
     #[test]
-    fn a_quiet_new_room_remains_syncing_without_an_explicit_phase_signal() {
+    fn a_quiet_new_room_stays_syncing_until_a_live_stage_starts() {
         let mut analyzer = Analyzer::default();
         analyzer.process_line(&line(
             0,
@@ -2201,19 +2291,26 @@ mod tests {
         assert!(!unknown.round_metrics_active);
         assert!(unknown.round_report.is_none());
 
-        // A Stage alone identifies world combat, but cannot prove local
-        // participation, so personal round metrics initially remain disabled.
+        // After the restoration window, the first Stage is a live transition
+        // and therefore supplies an exact complete-round start time.
         analyzer.process_line(&line(30, "ECLIPTICA - now in stage: Stage_First"));
         let stage_only = analyzer.snapshot_at(timestamp(31));
         assert_eq!(stage_only.phase, RoundPhase::Combat);
-        assert!(!stage_only.round_metrics_active);
+        assert!(stage_only.round_metrics_active);
 
-        // A personal combat event is authoritative local-participation evidence.
         analyzer.process_line(&line(35, "Dealing 25 STRIKE damage"));
         let playing = analyzer.snapshot_at(timestamp(36));
         assert_eq!(playing.phase, RoundPhase::Combat);
         assert!(playing.round_metrics_active);
         assert_eq!(playing.latest_dps, 25);
+
+        analyzer.process_line(&line(45, "ECLIPTICA - now in intermission"));
+        let report = analyzer
+            .snapshot_at(timestamp(46))
+            .round_report
+            .expect("the live Stage should produce a complete report");
+        assert!(report.has_duration_data);
+        assert_eq!(report.duration_seconds, 15);
     }
 
     #[test]

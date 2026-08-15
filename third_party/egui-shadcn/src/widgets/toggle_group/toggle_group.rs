@@ -9,6 +9,7 @@ pub struct ToggleGroup {
     pub(crate) applied_index: Option<usize>,
     pub(crate) draft_changed: bool,
     pub(crate) selection_markers: bool,
+    pub(crate) strong_labels: bool,
 }
 
 impl ToggleGroup {
@@ -20,6 +21,7 @@ impl ToggleGroup {
             applied_index: None,
             draft_changed: false,
             selection_markers: true,
+            strong_labels: true,
         }
     }
 
@@ -48,6 +50,12 @@ impl ToggleGroup {
     /// Controls the optional circle glyphs rendered before outline labels.
     pub fn selection_markers(mut self, visible: bool) -> Self {
         self.selection_markers = visible;
+        self
+    }
+
+    /// Controls the sub-pixel second paint pass used to strengthen labels.
+    pub fn strong_labels(mut self, strong: bool) -> Self {
+        self.strong_labels = strong;
         self
     }
 }

@@ -16,7 +16,7 @@ use tempfile::NamedTempFile;
 use crate::APP_ID;
 use crate::i18n::Language;
 
-pub const CONFIG_VERSION: u32 = 22;
+pub const CONFIG_VERSION: u32 = 23;
 pub const MESSAGE_TEMPLATE_PRESET_COUNT: usize = 3;
 pub const ROUND_REPORT_TEMPLATE_PRESET_COUNT: usize = 3;
 pub const TEMPLATE_PRESET_NAME_MAX_CHARS: usize = 24;
@@ -30,6 +30,10 @@ const VERSION_15_DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2: &str = "【回合战报
 const VERSION_16_DEFAULT_TEMPLATE_ENGLISH: &str = "{{#if is_self_boss_locked}}\n【Boss is targeting me — help!】\n{{/if}}\n{{#if rapid_damage_danger}}\n【Taking heavy damage — help!】\n{{/if}}\n{{#if no_wasd_for_10s}}\n【I haven't moved for 10 seconds】\n{{/if}}\n{{#if no_dps_for_10s}}\n【No damage for 10 seconds】\n{{/if}}\n{{#if has_latest_dps}}\nDPS: {{latest_dps}}\n{{/if}}\n";
 const VERSION_16_DEFAULT_TEMPLATE_PRESET_2_ENGLISH: &str = "{{#if is_self_boss_locked}}\n【Boss is targeting me — attack it!】\n{{/if}}\n{{#if no_wasd_for_10s}}\n【I haven't moved for 10 seconds】\n{{/if}}\n{{#if no_dps_for_10s}}\n【No damage for 10 seconds】\n{{/if}}\n{{#if has_round_damage_taken}}\nDamage taken: {{round_damage_taken}}\n{{/if}}\n";
 const VERSION_17_DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2: &str = "【回合战报】\n用时 {{round_duration}}｜被草 {{round_report_damage_taken}}\n最长站桩 {{round_longest_standstill}}s\n{{#if has_step_estimate}}\n预计距 Jim 还有 {{until_boss_step}} 回合\n{{/if}}\n";
+const VERSION_22_DEFAULT_ROUND_REPORT_TEMPLATE: &str = "【回合战报】\n用时 {{round_duration}}｜我打了 {{round_total_damage}}\n平均 {{round_report_effective_dps}} DPS｜最高 {{round_max_dps}} DPS\n{{#if has_step_estimate}}\n预计距 Jim 还有 {{until_boss_step}} 回合\n{{/if}}\n";
+const VERSION_22_DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2: &str = "【回合战报】\n用时 {{round_duration}}｜被草 {{round_report_damage_taken}}\n最长站桩 {{round_longest_standstill}} 秒\n{{#if has_step_estimate}}\n预计距 Jim 还有 {{until_boss_step}} 回合\n{{/if}}\n";
+const VERSION_22_DEFAULT_ROUND_REPORT_TEMPLATE_ENGLISH: &str = "【Round Report】\nTime {{round_duration}} | Damage {{round_total_damage}}\nAverage {{round_report_effective_dps}} DPS | Peak {{round_max_dps}} DPS\n{{#if has_step_estimate}}\nAbout {{until_boss_step}} rounds until Jim\n{{/if}}\n";
+const VERSION_22_DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2_ENGLISH: &str = "【Round Report】\nTime {{round_duration}} | Damage taken {{round_report_damage_taken}}\nLongest standstill {{round_longest_standstill}}s\n{{#if has_step_estimate}}\nAbout {{until_boss_step}} rounds until Jim\n{{/if}}\n";
 const VERSION_13_DEFAULT_ALERT_VOLUME: f32 = 0.35;
 pub const DEFAULT_TEMPLATE: &str = include_str!("../resources/presets/zh/combat1.txt");
 pub const DEFAULT_TEMPLATE_PRESET_2: &str = include_str!("../resources/presets/zh/combat2.txt");
@@ -613,6 +617,65 @@ impl AppConfig {
                 );
             }
         }
+        if self.version < 23 {
+            let default_messages = default_message_template_presets(self.language);
+            let default_reports = default_round_report_template_presets(self.language);
+
+            if matches_builtin(
+                &self.message_template_presets[2],
+                [DEFAULT_TEMPLATE, DEFAULT_TEMPLATE_ENGLISH],
+            ) {
+                self.message_template_presets[2].clear();
+            }
+            replace_builtin(
+                &mut self.round_report_template_presets[0],
+                [
+                    VERSION_22_DEFAULT_ROUND_REPORT_TEMPLATE,
+                    VERSION_22_DEFAULT_ROUND_REPORT_TEMPLATE_ENGLISH,
+                ],
+                &default_reports[0],
+            );
+            replace_builtin(
+                &mut self.round_report_template_presets[1],
+                [
+                    VERSION_22_DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2,
+                    VERSION_22_DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2_ENGLISH,
+                ],
+                &default_reports[1],
+            );
+            if matches_builtin(
+                &self.round_report_template_presets[2],
+                [
+                    VERSION_22_DEFAULT_ROUND_REPORT_TEMPLATE,
+                    VERSION_22_DEFAULT_ROUND_REPORT_TEMPLATE_ENGLISH,
+                ],
+            ) || matches_builtin(
+                &self.round_report_template_presets[2],
+                [
+                    DEFAULT_ROUND_REPORT_TEMPLATE,
+                    DEFAULT_ROUND_REPORT_TEMPLATE_ENGLISH,
+                ],
+            ) {
+                self.round_report_template_presets[2].clear();
+            }
+
+            if let Some(template) = self
+                .message_template_presets
+                .get(self.active_message_template_preset)
+            {
+                self.message_template.clone_from(template);
+            } else {
+                self.message_template.clone_from(&default_messages[0]);
+            }
+            if let Some(template) = self
+                .round_report_template_presets
+                .get(self.active_round_report_template_preset)
+            {
+                self.round_report_template.clone_from(template);
+            } else {
+                self.round_report_template.clone_from(&default_reports[0]);
+            }
+        }
         self.version = CONFIG_VERSION;
         self.alert_volume = self.alert_volume.clamp(0.0, 1.0);
         if !self.overlay_scale.is_finite() {
@@ -630,12 +693,22 @@ fn localize_builtin_value(value: &mut String, builtins: [&String; 2], target: &s
     }
 }
 
+fn matches_builtin(value: &str, builtins: [&str; 2]) -> bool {
+    builtins.into_iter().any(|builtin| value == builtin)
+}
+
+fn replace_builtin(value: &mut String, builtins: [&str; 2], target: &str) {
+    if matches_builtin(value, builtins) {
+        *value = target.to_owned();
+    }
+}
+
 fn default_message_template_presets(language: Language) -> [String; MESSAGE_TEMPLATE_PRESET_COUNT] {
     let (first, second) = match language {
         Language::English => (DEFAULT_TEMPLATE_ENGLISH, DEFAULT_TEMPLATE_PRESET_2_ENGLISH),
         Language::Chinese => (DEFAULT_TEMPLATE, DEFAULT_TEMPLATE_PRESET_2),
     };
-    [first.to_owned(), second.to_owned(), first.to_owned()]
+    [first.to_owned(), second.to_owned(), String::new()]
 }
 
 fn default_round_report_template_presets(
@@ -651,7 +724,7 @@ fn default_round_report_template_presets(
             DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2,
         ),
     };
-    [first.to_owned(), second.to_owned(), first.to_owned()]
+    [first.to_owned(), second.to_owned(), String::new()]
 }
 
 fn upgrade_version_13_builtin_presets<const N: usize>(
@@ -1083,7 +1156,7 @@ mod tests {
             [
                 include_str!("../resources/presets/zh/combat1.txt"),
                 include_str!("../resources/presets/zh/combat2.txt"),
-                include_str!("../resources/presets/zh/combat1.txt"),
+                "",
             ]
         );
         assert_eq!(
@@ -1091,10 +1164,11 @@ mod tests {
             [
                 include_str!("../resources/presets/zh/report1.txt"),
                 include_str!("../resources/presets/zh/report2.txt"),
-                include_str!("../resources/presets/zh/report1.txt"),
+                "",
             ]
         );
         assert_eq!(config.alert_volume, 1.0);
+        config.validate().unwrap();
     }
 
     #[test]
@@ -1136,10 +1210,7 @@ mod tests {
         let message_draft_before = config.message_template.clone();
 
         assert!(config.reset_active_round_report_template_to_default());
-        assert_eq!(
-            config.round_report_template,
-            include_str!("../resources/presets/zh/report1.txt")
-        );
+        assert!(config.round_report_template.is_empty());
         assert_eq!(
             config.round_report_template_presets[2],
             config.round_report_template
@@ -1193,10 +1264,7 @@ mod tests {
             localized.message_template_presets[1],
             DEFAULT_TEMPLATE_PRESET_2_ENGLISH
         );
-        assert_eq!(
-            localized.message_template_presets[2],
-            format!("{DEFAULT_TEMPLATE} ")
-        );
+        assert_eq!(localized.message_template_presets[2], " ");
         assert_eq!(
             localized.message_template_preset_names,
             ["DPS", "我的预设", "Backup"]
@@ -1488,7 +1556,7 @@ mod tests {
             migrated.message_template_presets[1],
             DEFAULT_TEMPLATE_PRESET_2
         );
-        assert_eq!(migrated.message_template_presets[2], DEFAULT_TEMPLATE);
+        assert!(migrated.message_template_presets[2].is_empty());
     }
 
     #[test]
@@ -1561,10 +1629,7 @@ mod tests {
             migrated.round_report_template_presets[1],
             DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2
         );
-        assert_eq!(
-            migrated.round_report_template_presets[2],
-            DEFAULT_ROUND_REPORT_TEMPLATE
-        );
+        assert!(migrated.round_report_template_presets[2].is_empty());
     }
 
     #[test]
@@ -1651,6 +1716,66 @@ mod tests {
     }
 
     #[test]
+    fn version_twenty_two_builtin_reports_upgrade_and_backup_contents_are_cleared() {
+        let migrated = AppConfig {
+            version: 22,
+            language: Language::Chinese,
+            message_template: DEFAULT_TEMPLATE.to_owned(),
+            message_template_presets: [
+                DEFAULT_TEMPLATE.to_owned(),
+                DEFAULT_TEMPLATE_PRESET_2.to_owned(),
+                DEFAULT_TEMPLATE.to_owned(),
+            ],
+            active_message_template_preset: 2,
+            round_report_template: VERSION_22_DEFAULT_ROUND_REPORT_TEMPLATE.to_owned(),
+            round_report_template_presets: [
+                VERSION_22_DEFAULT_ROUND_REPORT_TEMPLATE.to_owned(),
+                VERSION_22_DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2.to_owned(),
+                VERSION_22_DEFAULT_ROUND_REPORT_TEMPLATE.to_owned(),
+            ],
+            active_round_report_template_preset: 2,
+            ..AppConfig::default()
+        }
+        .migrated();
+
+        assert_eq!(
+            migrated.message_template_presets,
+            [DEFAULT_TEMPLATE, DEFAULT_TEMPLATE_PRESET_2, ""]
+        );
+        assert_eq!(
+            migrated.round_report_template_presets,
+            [
+                DEFAULT_ROUND_REPORT_TEMPLATE,
+                DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2,
+                "",
+            ]
+        );
+        assert!(migrated.message_template.is_empty());
+        assert!(migrated.round_report_template.is_empty());
+
+        let custom = AppConfig {
+            version: 22,
+            message_template_presets: [
+                "CUSTOM OUTPUT".to_owned(),
+                "CUSTOM TANK".to_owned(),
+                "CUSTOM BACKUP".to_owned(),
+            ],
+            round_report_template_presets: [
+                "CUSTOM OUTPUT REPORT".to_owned(),
+                "CUSTOM TANK REPORT".to_owned(),
+                "CUSTOM BACKUP REPORT".to_owned(),
+            ],
+            ..AppConfig::default()
+        }
+        .migrated();
+        assert_eq!(custom.message_template_presets[2], "CUSTOM BACKUP");
+        assert_eq!(
+            custom.round_report_template_presets[2],
+            "CUSTOM BACKUP REPORT"
+        );
+    }
+
+    #[test]
     fn preset_names_must_be_non_empty_and_reasonably_short() {
         let mut config = AppConfig::default();
         config.message_template_preset_names[1] = "   ".to_owned();
@@ -1703,7 +1828,7 @@ mod tests {
                 .zip([
                     DEFAULT_ROUND_REPORT_TEMPLATE,
                     DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2,
-                    DEFAULT_ROUND_REPORT_TEMPLATE,
+                    "",
                 ])
                 .all(|(template, expected)| template == expected)
         );
@@ -1732,15 +1857,11 @@ mod tests {
 
         assert_eq!(
             migrated.message_template_presets,
-            [DEFAULT_TEMPLATE, "CUSTOM MESSAGE", DEFAULT_TEMPLATE]
+            [DEFAULT_TEMPLATE, "CUSTOM MESSAGE", ""]
         );
         assert_eq!(
             migrated.round_report_template_presets,
-            [
-                DEFAULT_ROUND_REPORT_TEMPLATE,
-                "CUSTOM REPORT",
-                DEFAULT_ROUND_REPORT_TEMPLATE,
-            ]
+            [DEFAULT_ROUND_REPORT_TEMPLATE, "CUSTOM REPORT", "",]
         );
         assert_eq!(migrated.alert_volume, 1.0);
     }

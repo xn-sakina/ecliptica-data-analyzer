@@ -85,7 +85,9 @@ chord; both now have a stronger base gain across the existing 0–1 volume range
 The normal combat message and completed-round report have independent templates and
 share the same variables and condition syntax. Each template type has three persistent
 preset slots. Switching slots preserves the current edit, and saving keeps all six
-texts plus both selected slots for the next launch. Down-state detection and dedicated
+texts plus both selected slots for the next launch. The third Backup message and report
+slots intentionally start with empty content while retaining their localized names.
+Down-state detection and dedicated
 first-down/second-down messages are intentionally unsupported because Ecliptica logs
 do not expose a reliable event across sessions.
 

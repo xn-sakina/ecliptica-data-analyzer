@@ -1,6 +1,11 @@
 【回合战报】
+You are not sigma
 用时 {{round_duration}}｜我打了 {{round_total_damage}}
 平均 {{round_report_effective_dps}} DPS｜最高 {{round_max_dps}} DPS
 {{#if has_step_estimate}}
-预计距 Jim 还有 {{until_boss_step}} 回合
+  {{#if (eq until_boss_step "0")}}
+最终战，和我一起打爆 Jim
+  {{else}}
+距 Jim 还有 {{until_boss_step}} 回合
+  {{/if}}
 {{/if}}

@@ -167,7 +167,7 @@ impl super::toggle_group::ToggleGroup {
                 rect.center().x - galley.size().x / 2.0,
                 rect.center().y - galley.size().y / 2.0,
             );
-            if high_emphasis {
+            if high_emphasis && self.strong_labels {
                 // The bundled proportional font has no separate bold face.
                 // A sub-pixel double pass gives compact tabs a clearly heavier
                 // label without changing the font or increasing control height.

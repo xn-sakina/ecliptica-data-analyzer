@@ -1,6 +1,11 @@
 【Round Report】
+You are not sigma
 Time {{round_duration}} | Damage {{round_total_damage}}
 Average {{round_report_effective_dps}} DPS | Peak {{round_max_dps}} DPS
 {{#if has_step_estimate}}
-About {{until_boss_step}} rounds until Jim
+  {{#if (eq until_boss_step "0")}}
+Final battle—let's take down Jim together
+  {{else}}
+{{until_boss_step}} rounds until Jim
+  {{/if}}
 {{/if}}

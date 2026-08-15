@@ -1247,6 +1247,7 @@ impl AnalyzerApp {
                             ))
                             .variant(ToggleVariant::Outline)
                             .size(ComponentSize::Xs)
+                            .strong_labels(false)
                             .applied_index(applied_message_preset)
                             .draft_changed(message_draft_changed)
                             .show(ui, &mut selected);
@@ -1342,6 +1343,7 @@ impl AnalyzerApp {
                             ))
                             .variant(ToggleVariant::Outline)
                             .size(ComponentSize::Xs)
+                            .strong_labels(false)
                             .applied_index(applied_report_preset)
                             .draft_changed(report_draft_changed)
                             .show(ui, &mut selected);

@@ -828,9 +828,59 @@ mod tests {
             .expect("default report template should render");
         assert_eq!(
             rendered,
-            "【回合战报】\n用时 06:07｜我打了 12480\n平均 82.4 DPS｜最高 146 DPS"
+            "【回合战报】\nYou are not sigma\n用时 06:07｜我打了 12480\n平均 82.4 DPS｜最高 146 DPS"
         );
         assert!(rendered.chars().count() < 144);
+    }
+
+    #[test]
+    fn default_round_reports_render_distinct_final_and_remaining_round_messages() {
+        let mut snapshot = GameSnapshot {
+            round_report: Some(crate::analysis::RoundReport {
+                has_duration_data: true,
+                has_output_data: true,
+                duration_seconds: 60,
+                total_damage: 100,
+                average_dps: 2.0,
+                max_dps: 10,
+                effective_dps: 4.0,
+                burst_10s_dps: Some(5.0),
+                dps_growth_rate: 0.0,
+                has_dps_growth_rate: false,
+                damage_taken: 3,
+                has_longest_standstill_data: true,
+                longest_standstill_seconds: 8,
+            }),
+            has_step_estimate: true,
+            until_boss_step: 0,
+            ..GameSnapshot::default()
+        };
+
+        for template in [
+            crate::config::DEFAULT_ROUND_REPORT_TEMPLATE,
+            crate::config::DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2,
+        ] {
+            let final_round = render_message(template, &snapshot).unwrap();
+            assert!(final_round.contains("最终战，和我一起打爆 Jim"));
+            assert!(!final_round.contains("还有 0 回合"));
+
+            snapshot.until_boss_step = 3;
+            let remaining = render_message(template, &snapshot).unwrap();
+            assert!(remaining.contains("距 Jim 还有 3 回合"));
+            assert!(!remaining.contains("最终战"));
+            snapshot.until_boss_step = 0;
+        }
+
+        let english = AppConfig::defaults_for_language(crate::i18n::Language::English);
+        for template in &english.round_report_template_presets[..2] {
+            let final_round = render_message(template, &snapshot).unwrap();
+            assert!(final_round.contains("Final battle—let's take down Jim together"));
+
+            snapshot.until_boss_step = 3;
+            let remaining = render_message(template, &snapshot).unwrap();
+            assert!(remaining.contains("3 rounds until Jim"));
+            snapshot.until_boss_step = 0;
+        }
     }
 
     #[test]

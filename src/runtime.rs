@@ -27,11 +27,26 @@ pub struct LiveConfig {
 pub struct SystemEvent {
     pub level: EventLevel,
     pub message: String,
+    pub presentation: EventPresentation,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EventLevel {
     Info,
+    Warning,
+    Error,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum EventPresentation {
+    #[default]
+    Default,
+    Toast(ToastLevel),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToastLevel {
+    Success,
     Warning,
     Error,
 }
@@ -90,9 +105,31 @@ impl SharedState {
     }
 
     pub fn event(&self, level: EventLevel, message: impl Into<String>) {
+        self.send_event(level, message, EventPresentation::Default);
+    }
+
+    pub fn toast_event(
+        &self,
+        level: EventLevel,
+        toast_level: ToastLevel,
+        message: impl Into<String>,
+    ) {
+        self.send_event(level, message, EventPresentation::Toast(toast_level));
+    }
+
+    fn send_event(
+        &self,
+        level: EventLevel,
+        message: impl Into<String>,
+        presentation: EventPresentation,
+    ) {
         let message = message.into();
         tracing::info!(?level, %message);
-        let _ = self.events.try_send(SystemEvent { level, message });
+        let _ = self.events.try_send(SystemEvent {
+            level,
+            message,
+            presentation,
+        });
     }
 
     pub(crate) fn set_wasd_metric(&self, available: bool, sample: WasdMetricSample) {

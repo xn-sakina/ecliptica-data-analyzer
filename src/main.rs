@@ -20,7 +20,7 @@ use ecliptica_data_analyzer::{
     audio::SoundCommand,
     config::{self, AlertSoundStyle, AppConfig, SendInterval},
     i18n::{Language, format_pattern, format_seconds_pattern, text},
-    runtime::{EventLevel, Runtime, SystemEvent},
+    runtime::{EventLevel, EventPresentation, Runtime, SystemEvent, ToastLevel},
 };
 use eframe::egui;
 use egui_plot::{HLine, Line, Plot, PlotPoints, Points, VLine};
@@ -392,8 +392,16 @@ impl AnalyzerApp {
         }
     }
 
-    fn process_events(&mut self) {
+    fn process_events(&mut self, ctx: &egui::Context) {
+        let toast_time = ctx.input(|input| input.time);
         while let Ok(event) = self.runtime.events.try_recv() {
+            if let EventPresentation::Toast(level) = event.presentation {
+                self.toast_state.add(
+                    event.message.clone(),
+                    toast_variant_for_event(level),
+                    toast_time,
+                );
+            }
             self.push_log(event);
         }
         if self
@@ -416,7 +424,7 @@ impl AnalyzerApp {
                 return;
             }
         }
-        if event.level != EventLevel::Info {
+        if event_creates_overlay_alert(&event) {
             self.alert = Some((
                 event.message.clone(),
                 Instant::now() + Duration::from_secs(6),
@@ -513,6 +521,7 @@ impl AnalyzerApp {
                 self.push_log(SystemEvent {
                     level: EventLevel::Info,
                     message: text::CONFIG_SAVED_LOG.get(language).to_owned(),
+                    presentation: EventPresentation::Default,
                 });
             }
             Err(error) => {
@@ -552,6 +561,7 @@ impl AnalyzerApp {
                 self.push_log(SystemEvent {
                     level: EventLevel::Info,
                     message: text::LANGUAGE_SAVED_LOG.get(language).to_owned(),
+                    presentation: EventPresentation::Default,
                 });
             }
             Err(error) => {
@@ -1805,18 +1815,12 @@ impl AnalyzerApp {
                                 let spacing = ui.spacing_mut();
                                 spacing.item_spacing = OVERLAY_ITEM_SPACING * overlay_scale;
                                 spacing.interact_size *= overlay_scale;
-                                ui.horizontal(|ui| {
-                                    ui.colored_label(
-                                        ACCENT,
-                                        egui::RichText::new("●").size(9.0 * overlay_scale),
-                                    );
-                                    ui.label(
-                                        egui::RichText::new(format!("ECLIPTICA  v{APP_VERSION}"))
-                                            .strong()
-                                            .size(14.0 * overlay_scale)
-                                            .color(egui::Color32::WHITE),
-                                    );
-                                });
+                                overlay_header(
+                                    ui,
+                                    snapshot.has_heart_rate.then_some(snapshot.heart_rate),
+                                    overlay_scale,
+                                    language,
+                                );
                                 ui.add_space(9.0 * overlay_scale);
                                 if let Some(report) = &snapshot.round_report {
                                     ui.horizontal(|ui| {
@@ -2121,7 +2125,7 @@ impl eframe::App for AnalyzerApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             return;
         }
-        self.process_events();
+        self.process_events(ctx);
         self.sync_overlay_position();
         let snapshot = self.runtime.shared.snapshot.read().clone();
         self.detect_self_lock_edge(&snapshot);
@@ -3712,6 +3716,58 @@ fn overlay_height(has_report: bool, has_alert: bool) -> f32 {
     }
 }
 
+fn overlay_header(
+    ui: &mut egui::Ui,
+    heart_rate: Option<u16>,
+    scale: f32,
+    language: Language,
+) -> (egui::Response, Option<egui::Response>) {
+    let right = ui.max_rect().right();
+    let row = ui
+        .horizontal(|ui| {
+            ui.colored_label(ACCENT, egui::RichText::new("●").size(9.0 * scale));
+            ui.label(
+                egui::RichText::new(format!("ECLIPTICA  v{APP_VERSION}"))
+                    .strong()
+                    .size(14.0 * scale)
+                    .color(egui::Color32::WHITE),
+            );
+        })
+        .response;
+    let tag = heart_rate.map(|heart_rate| {
+        overlay_heart_rate_tag(ui, heart_rate, row.rect.center().y, right, scale, language)
+    });
+    (row, tag)
+}
+
+fn overlay_heart_rate_tag(
+    ui: &mut egui::Ui,
+    heart_rate: u16,
+    center_y: f32,
+    right: f32,
+    scale: f32,
+    language: Language,
+) -> egui::Response {
+    let color = egui::Color32::from_rgb(255, 150, 165);
+    let galley = ui.painter().layout_no_wrap(
+        format!("♥ {heart_rate}"),
+        egui::FontId::proportional(10.0 * scale),
+        color,
+    );
+    let padding = egui::vec2(6.0, 2.0) * scale;
+    let size = galley.size() + padding * 2.0;
+    let rect = egui::Rect::from_center_size(egui::pos2(right - size.x / 2.0, center_y), size);
+    let painter = ui.painter();
+    painter.rect_filled(
+        rect,
+        6.0 * scale,
+        egui::Color32::from_rgba_unmultiplied(255, 105, 125, 30),
+    );
+    painter.galley(rect.min + padding, galley, color);
+    ui.interact(rect, ui.next_auto_id(), egui::Sense::hover())
+        .on_hover_text(text::HEART_RATE_AUXILIARY.get(language))
+}
+
 fn overlay_stat(
     ui: &mut egui::Ui,
     label: &str,
@@ -3980,6 +4036,18 @@ fn is_protocol_diagnostic(message: &str) -> bool {
     Language::ALL.into_iter().any(|language| {
         message.starts_with(&format!("{} [", text::LOG_PROTOCOL_DEGRADED.get(language)))
     })
+}
+
+fn event_creates_overlay_alert(event: &SystemEvent) -> bool {
+    event.presentation == EventPresentation::Default && event.level != EventLevel::Info
+}
+
+fn toast_variant_for_event(level: ToastLevel) -> ToastVariant {
+    match level {
+        ToastLevel::Success => ToastVariant::Success,
+        ToastLevel::Warning => ToastVariant::Warning,
+        ToastLevel::Error => ToastVariant::Error,
+    }
 }
 
 fn register_hidden_click(clicks: &mut u8, last_click: &mut Option<Instant>, now: Instant) -> bool {
@@ -4418,6 +4486,28 @@ mod tests {
         ));
         assert!(!is_protocol_diagnostic("日志读取发生错误，OSC 已暂停"));
         assert!(!is_protocol_diagnostic("未找到 VRChat 日志，将继续重试"));
+    }
+
+    #[test]
+    fn toast_events_never_create_overlay_alerts() {
+        for (level, toast_level, expected_variant) in [
+            (EventLevel::Info, ToastLevel::Success, ToastVariant::Success),
+            (
+                EventLevel::Warning,
+                ToastLevel::Warning,
+                ToastVariant::Warning,
+            ),
+            (EventLevel::Error, ToastLevel::Error, ToastVariant::Error),
+        ] {
+            let event = SystemEvent {
+                level,
+                message: "heart-rate status".to_owned(),
+                presentation: EventPresentation::Toast(toast_level),
+            };
+
+            assert!(!event_creates_overlay_alert(&event));
+            assert_eq!(toast_variant_for_event(toast_level), expected_variant);
+        }
     }
 
     #[test]
@@ -5264,6 +5354,33 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn heart_rate_tag_fits_the_existing_overlay_header_row() {
+        egui::__run_test_ui(|ui| {
+            for scale in OVERLAY_SCALE_OPTIONS {
+                ui.set_width(OVERLAY_CONTENT_WIDTH * scale);
+                let content_left = ui.max_rect().left();
+                let content_right = ui.max_rect().right();
+                let (offline, offline_tag) = overlay_header(ui, None, scale, Language::English);
+                let (online, online_tag) = overlay_header(ui, Some(999), scale, Language::English);
+                let online_tag = online_tag.expect("online heart rate should render a tag");
+
+                assert!(offline_tag.is_none());
+                assert!(
+                    online_tag.rect.right() <= content_right + 0.5
+                        && online_tag.rect.left() >= content_left - 0.5,
+                    "heart-rate tag overflowed the Overlay header at {scale}x"
+                );
+                assert!(
+                    online.rect.height() <= offline.rect.height() + 0.5,
+                    "heart-rate tag increased the Overlay header height at {scale}x: {} > {}",
+                    online.rect.height(),
+                    offline.rect.height()
+                );
+            }
+        });
     }
 
     #[test]

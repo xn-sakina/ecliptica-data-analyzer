@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     analysis::GameSnapshot,
-    runtime::{EventLevel, SharedState},
+    runtime::{EventLevel, SharedState, ToastLevel},
 };
 
 pub const BASE_PORT: u16 = 49_670;
@@ -116,18 +116,26 @@ pub fn spawn(shared: SharedState) -> thread::JoinHandle<()> {
     thread::Builder::new()
         .name("ecliptica-heart-rate-server".to_owned())
         .spawn(move || {
+            while !shared.shutdown.load(Ordering::Relaxed)
+                && !shared.config.read().value.heart_rate_enabled
+            {
+                thread::sleep(SUPERVISOR_TICK);
+            }
+            if shared.shutdown.load(Ordering::Relaxed) {
+                return;
+            }
+
             let runtime = match tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
             {
                 Ok(runtime) => runtime,
                 Err(error) => {
-                    shared.event(
+                    tracing::error!(%error, "failed to create heart-rate runtime");
+                    shared.toast_event(
                         EventLevel::Error,
-                        format!(
-                            "{}: {error}",
-                            shared.text(crate::i18n::text::HEART_RATE_SERVER_FAILED)
-                        ),
+                        ToastLevel::Error,
+                        shared.text(crate::i18n::text::HEART_RATE_SERVER_FAILED),
                     );
                     return;
                 }
@@ -149,8 +157,9 @@ async fn run(shared: SharedState) {
 
         let Some((listener, port)) = bind_first_available().await else {
             if !bind_warning_emitted {
-                shared.event(
+                shared.toast_event(
                     EventLevel::Warning,
+                    ToastLevel::Warning,
                     shared.text(crate::i18n::text::HEART_RATE_NO_PORT),
                 );
                 bind_warning_emitted = true;
@@ -161,14 +170,7 @@ async fn run(shared: SharedState) {
         bind_warning_emitted = false;
         shared.heart_rate.set_server_running(true);
         shared.refresh_heart_rate();
-        shared.event(
-            EventLevel::Info,
-            crate::i18n::format_pattern(
-                crate::i18n::text::HEART_RATE_SERVER_LISTENING,
-                shared.config.read().value.language,
-                &[("port", port.to_string())],
-            ),
-        );
+        tracing::info!(port, "heart-rate receiver ready");
 
         let http_state = HttpState {
             heart_rate: shared.heart_rate.clone(),
@@ -193,9 +195,11 @@ async fn run(shared: SharedState) {
             tokio::select! {
                 result = &mut server => {
                     if let Err(error) = result {
-                        shared.event(
+                        tracing::error!(%error, "heart-rate receiver stopped unexpectedly");
+                        shared.toast_event(
                             EventLevel::Error,
-                            format!("{}: {error}", shared.text(crate::i18n::text::HEART_RATE_SERVER_FAILED)),
+                            ToastLevel::Error,
+                            shared.text(crate::i18n::text::HEART_RATE_SERVER_FAILED),
                         );
                     }
                     break;
@@ -205,16 +209,28 @@ async fn run(shared: SharedState) {
                     let online = shared.heart_rate.online_at(now);
                     shared.refresh_heart_rate();
                     if online && !was_online {
-                        shared.event(EventLevel::Info, shared.text(crate::i18n::text::HEART_RATE_CONNECTED));
+                        shared.toast_event(
+                            EventLevel::Info,
+                            ToastLevel::Success,
+                            shared.text(crate::i18n::text::HEART_RATE_CONNECTED),
+                        );
                         waiting_warning_emitted = false;
                     } else if !online && was_online {
-                        shared.event(EventLevel::Warning, shared.text(crate::i18n::text::HEART_RATE_DISCONNECTED));
+                        shared.toast_event(
+                            EventLevel::Warning,
+                            ToastLevel::Warning,
+                            shared.text(crate::i18n::text::HEART_RATE_DISCONNECTED),
+                        );
                         waiting_warning_emitted = true;
                     } else if !online
                         && !waiting_warning_emitted
                         && now.saturating_duration_since(listening_since) >= NEGOTIATION_WARNING_AFTER
                     {
-                        shared.event(EventLevel::Warning, shared.text(crate::i18n::text::HEART_RATE_WAITING));
+                        shared.toast_event(
+                            EventLevel::Warning,
+                            ToastLevel::Warning,
+                            shared.text(crate::i18n::text::HEART_RATE_WAITING),
+                        );
                         waiting_warning_emitted = true;
                     }
                     was_online = online;

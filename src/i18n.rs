@@ -285,22 +285,22 @@ pub mod text {
         "VRChat 默认接收地址为 127.0.0.1:9000"
     );
     pair!(ENABLE_OSC, "Enable OSC broadcast", "启用 OSC 广播");
-    pair!(ENABLE_HEART_RATE, "Enable", "启用");
+    pair!(ENABLE_HEART_RATE, "Receive heart rate", "接收心率");
     pair!(
         ENABLE_HEART_RATE_HINT,
-        "After settings are saved, listens only on 127.0.0.1 and uses one of ports 49670–49674 with a compatible HTTP heart-rate sender.",
-        "保存设置后仅监听 127.0.0.1，并通过 49670–49674 中的一个端口接收兼容 HTTP 心率发送软件的数据。"
+        "Receive data from vrchat-fast-heart. Turn on “Report to other apps” there, then save these settings.",
+        "从 vrchat-fast-heart 接收数据。请先在该应用中开启“Report to other apps”，然后保存设置。"
     );
-    pair!(HEART_RATE_AUXILIARY, "Local heart rate", "本地心率");
+    pair!(HEART_RATE_AUXILIARY, "Heart rate", "心率");
     pair!(
         HEART_RATE_AUXILIARY_DESCRIPTION,
-        "Available in live and report templates.",
-        "可用于局内消息和战报模板。"
+        "Add heart-rate data to live messages and round reports.",
+        "在局内消息和回合战报中使用心率数据。"
     );
     pair!(
         HEART_RATE_SETUP_GUIDE,
-        "Open heart-rate setup guide",
-        "打开心率使用指南"
+        "View heart-rate setup guide",
+        "查看心率设置指南"
     );
     pair!(SEND_INTERVAL, "Send interval", "发送频率");
     pair!(TARGET_ADDRESS, "Destination", "目标地址");
@@ -753,38 +753,33 @@ pub mod text {
     pair!(OSC_SEND_FAILED, "OSC send failed", "OSC 发送失败");
     pair!(
         HEART_RATE_SERVER_FAILED,
-        "Heart-rate HTTP server failed",
-        "心率 HTTP 服务运行失败"
+        "Heart rate couldn't start. Restart the app and try again.",
+        "心率功能未能启动，请重启应用后重试。"
     );
     pair!(
         HEART_RATE_NO_PORT,
-        "Heart-rate receiver could not bind ports 49670–49674; it will keep retrying",
-        "心率接收服务无法绑定 49670–49674 端口，将继续重试"
-    );
-    pair!(
-        HEART_RATE_SERVER_LISTENING,
-        "Heart-rate receiver is listening on 127.0.0.1:{port}",
-        "心率接收服务正在监听 127.0.0.1:{port}"
+        "Heart rate is temporarily unavailable. The app will keep trying.",
+        "心率暂时不可用，应用会继续尝试恢复。"
     );
     pair!(
         HEART_RATE_CONNECTED,
-        "Heart-rate sender connected",
-        "心率发送软件已连接"
+        "Heart rate received",
+        "已收到心率数据"
     );
     pair!(
         HEART_RATE_DISCONNECTED,
-        "Heart-rate updates timed out; waiting for the sender to reconnect",
-        "心率数据已超时，正在等待心率发送软件重新连接"
+        "Heart rate signal lost. Check your heart-rate app.",
+        "心率连接已中断，请检查心率应用。"
     );
     pair!(
         HEART_RATE_WAITING,
-        "Heart-rate receiver is enabled but no sender has connected; enable HTTP reporting in a compatible heart-rate sender",
-        "心率接收已开启但尚未连接；请在兼容的心率发送软件中开启 HTTP 上报"
+        "No heart rate received. Check that your heart-rate app is open and sharing data.",
+        "尚未收到心率，请确认心率应用已打开并允许共享数据。"
     );
     pair!(
         HEART_RATE_VARIABLE_OFFLINE,
-        "Heart rate is unavailable. Enable the receiver here and HTTP reporting in a compatible heart-rate sender, then save the settings.",
-        "心率当前不可用。请在此处开启接收，并在兼容的心率发送软件中开启 HTTP 上报，然后保存设置。"
+        "Heart rate isn't available yet. Enable it, save the settings, and make sure your heart-rate app is sharing data.",
+        "心率暂不可用。请开启心率并保存设置，同时确认心率应用正在共享数据。"
     );
     pair!(
         SINGLE_INSTANCE_FAILED,
@@ -1069,15 +1064,15 @@ pub const HEART_RATE_VARIABLE_GROUPS: &[VariableCopyGroup] = &[VariableCopyGroup
             "Value",
             "数值",
             "heart_rate",
-            "Latest heart rate from a compatible HTTP sender. Displays “-” while offline and 0 when connected without a sample.",
-            "兼容 HTTP 心率发送软件上报的最新心率。离线时显示“-”，已连接但暂无采样时显示 0。"
+            "Current heart rate. Displays “-” when no data is available.",
+            "当前心率；没有可用数据时显示“-”。"
         ),
         variable!(
             "Condition",
             "条件",
             "has_heart_rate",
-            "Enabled while a valid heart-rate update was received in the last 5 seconds.",
-            "最近 5 秒收到合法心率上报时开启。"
+            "Whether heart-rate data is currently available.",
+            "当前是否有可用的心率数据。"
         ),
     ],
 }];
@@ -1679,5 +1674,46 @@ mod tests {
         assert!(!source.contains("p(\"\","));
         assert!(!source.contains(", \"\")"));
         assert!(!source.contains("pair!(\"\""));
+    }
+
+    #[test]
+    fn heart_rate_user_copy_avoids_internal_network_details() {
+        let user_copy = [
+            text::ENABLE_HEART_RATE_HINT,
+            text::HEART_RATE_AUXILIARY_DESCRIPTION,
+            text::HEART_RATE_SERVER_FAILED,
+            text::HEART_RATE_NO_PORT,
+            text::HEART_RATE_CONNECTED,
+            text::HEART_RATE_DISCONNECTED,
+            text::HEART_RATE_WAITING,
+            text::HEART_RATE_VARIABLE_OFFLINE,
+        ];
+
+        for copy in user_copy {
+            for language in Language::ALL {
+                let value = copy.get(language).to_ascii_lowercase();
+                assert!(
+                    ![
+                        "127.0.0.1",
+                        "49670",
+                        "http",
+                        "protocol",
+                        "host",
+                        "端口",
+                        "协议",
+                        "主机"
+                    ]
+                    .iter()
+                    .any(|technical_term| value.contains(technical_term)),
+                    "heart-rate copy exposes an internal detail: {value}"
+                );
+                assert!(
+                    !value
+                        .split(|character: char| !character.is_ascii_alphabetic())
+                        .any(|word| matches!(word, "port" | "ports")),
+                    "heart-rate copy exposes an internal port detail: {value}"
+                );
+            }
+        }
     }
 }

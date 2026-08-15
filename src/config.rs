@@ -16,7 +16,7 @@ use tempfile::NamedTempFile;
 use crate::APP_ID;
 use crate::i18n::Language;
 
-pub const CONFIG_VERSION: u32 = 20;
+pub const CONFIG_VERSION: u32 = 21;
 pub const MESSAGE_TEMPLATE_PRESET_COUNT: usize = 3;
 pub const ROUND_REPORT_TEMPLATE_PRESET_COUNT: usize = 3;
 pub const TEMPLATE_PRESET_NAME_MAX_CHARS: usize = 24;
@@ -114,6 +114,9 @@ pub struct AppConfig {
     pub overlay_locked: bool,
     pub overlay_mouse_passthrough: bool,
     pub osc_enabled: bool,
+    /// Accept updates from a compatible local HTTP heart-rate sender.
+    #[serde(default)]
+    pub heart_rate_enabled: bool,
     pub osc_address: String,
     pub stale_after_seconds: u64,
     pub log_path_override: Option<PathBuf>,
@@ -156,6 +159,7 @@ impl AppConfig {
             overlay_locked: true,
             overlay_mouse_passthrough: true,
             osc_enabled: true,
+            heart_rate_enabled: false,
             osc_address: "127.0.0.1:9000".to_owned(),
             stale_after_seconds: 10,
             log_path_override: None,
@@ -805,6 +809,8 @@ pub fn validate_template(source: &str, language: Language) -> Result<()> {
         "max_dps": "-",
         "boss_lock": "",
         "boss": "",
+        "heart_rate": "-",
+        "has_heart_rate": false,
         "has_latest_dps": false,
         "has_avg_dps": false,
         "has_round_avg_dps": false,
@@ -976,6 +982,19 @@ mod tests {
         let mut old_value = serde_json::to_value(AppConfig::default()).unwrap();
         old_value.as_object_mut().unwrap().remove("language");
         assert!(serde_json::from_value::<AppConfig>(old_value).is_ok());
+    }
+
+    #[test]
+    fn old_configs_default_to_heart_rate_disabled() {
+        let mut value = serde_json::to_value(AppConfig::default()).unwrap();
+        let object = value.as_object_mut().unwrap();
+        object.insert("version".to_owned(), serde_json::json!(20));
+        object.remove("heart_rate_enabled");
+        let migrated = serde_json::from_value::<AppConfig>(value)
+            .unwrap()
+            .migrated();
+        assert_eq!(migrated.version, CONFIG_VERSION);
+        assert!(!migrated.heart_rate_enabled);
     }
 
     #[test]

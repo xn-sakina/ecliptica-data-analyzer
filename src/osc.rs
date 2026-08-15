@@ -415,6 +415,8 @@ fn render_message_with_display_name(
         "max_dps": snapshot.max_dps_text(),
         "boss_lock": snapshot.boss_lock.as_deref().unwrap_or(""),
         "boss": snapshot.boss.as_deref().unwrap_or(""),
+        "heart_rate": if snapshot.has_heart_rate { snapshot.heart_rate.to_string() } else { "-".to_owned() },
+        "has_heart_rate": snapshot.has_heart_rate,
         "has_latest_dps": snapshot.has_damage_data,
         "has_avg_dps": snapshot.has_damage_data,
         "has_round_avg_dps": snapshot.has_damage_data,
@@ -566,6 +568,46 @@ mod tests {
             .unwrap(),
             "DPS: - / AVG: - / ROUND: -"
         );
+    }
+
+    #[test]
+    fn heart_rate_is_available_to_live_and_report_templates() {
+        let template = "{{#if has_heart_rate}}{{heart_rate}}{{else}}-{{/if}}";
+        assert_eq!(
+            render_message(template, &GameSnapshot::default()).unwrap(),
+            "-"
+        );
+        let connected_without_sample = GameSnapshot {
+            has_heart_rate: true,
+            heart_rate: 0,
+            ..GameSnapshot::default()
+        };
+        assert_eq!(
+            render_message(template, &connected_without_sample).unwrap(),
+            "0"
+        );
+        let connected = GameSnapshot {
+            has_heart_rate: true,
+            heart_rate: 87,
+            round_report: Some(crate::analysis::RoundReport {
+                has_duration_data: false,
+                has_output_data: false,
+                duration_seconds: 0,
+                total_damage: 0,
+                average_dps: 0.0,
+                max_dps: 0,
+                effective_dps: 0.0,
+                burst_10s_dps: None,
+                dps_growth_rate: 0.0,
+                has_dps_growth_rate: false,
+                damage_taken: 0,
+                has_longest_standstill_data: false,
+                longest_standstill_seconds: 0,
+            }),
+            ..GameSnapshot::default()
+        };
+        assert_eq!(render_message(template, &connected).unwrap(), "87");
+        assert!(crate::config::validate_template(template, crate::i18n::Language::English).is_ok());
     }
 
     #[test]

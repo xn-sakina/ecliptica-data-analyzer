@@ -1210,6 +1210,11 @@ impl AnalyzerApp {
                 Switch::new(&mut self.draft.osc_enabled)
                     .label(text::ENABLE_OSC.get(self.draft.language))
                     .show(ui);
+                ui.add_space(8.0);
+                Switch::new(&mut self.draft.heart_rate_enabled)
+                    .label(text::ENABLE_HEART_RATE.get(self.draft.language))
+                    .show(ui)
+                    .on_hover_text(text::ENABLE_HEART_RATE_HINT.get(self.draft.language));
                 ui.add_space(12.0);
                 let options = [
                     SendIntervalChoice(SendInterval::One, self.draft.language),
@@ -1321,7 +1326,13 @@ impl AnalyzerApp {
                 ui.add_space(10.0);
                 let clipboard = &mut self.clipboard;
                 let toast_state = &mut self.toast_state;
-                live_variable_help(ui, clipboard, toast_state, language);
+                live_variable_help(
+                    ui,
+                    clipboard,
+                    toast_state,
+                    language,
+                    snapshot.has_heart_rate,
+                );
             },
         );
         ui.add_space(14.0);
@@ -1410,7 +1421,13 @@ impl AnalyzerApp {
                 ui.add_space(10.0);
                 let clipboard = &mut self.clipboard;
                 let toast_state = &mut self.toast_state;
-                report_variable_help(ui, clipboard, toast_state, language);
+                report_variable_help(
+                    ui,
+                    clipboard,
+                    toast_state,
+                    language,
+                    snapshot.has_heart_rate,
+                );
             },
         );
         ui.add_space(14.0);
@@ -2879,6 +2896,7 @@ struct VariableHelp<'a> {
     role: &'a str,
     name: &'a str,
     description: &'a str,
+    enabled: bool,
 }
 
 struct VariableHelpGroup<'a> {
@@ -2922,7 +2940,14 @@ fn variable_chip(
         horizontal_padding * 2.0 + icon_size + icon_gap + galley.size().x,
         23.0,
     );
-    let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
+    let (rect, response) = ui.allocate_exact_size(
+        desired_size,
+        if variable.enabled {
+            egui::Sense::click()
+        } else {
+            egui::Sense::hover()
+        },
+    );
     response.widget_info(|| {
         egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label.clone())
     });
@@ -2935,11 +2960,20 @@ fn variable_chip(
                 ((u16::from(base) * 3 + u16::from(accent)) / 4) as u8
             }
         };
-        let fill = egui::Color32::from_rgb(
-            tint(SETTINGS_SURFACE.r(), color.r(), response.hovered()),
-            tint(SETTINGS_SURFACE.g(), color.g(), response.hovered()),
-            tint(SETTINGS_SURFACE.b(), color.b(), response.hovered()),
-        );
+        let fill = if variable.enabled {
+            egui::Color32::from_rgb(
+                tint(SETTINGS_SURFACE.r(), color.r(), response.hovered()),
+                tint(SETTINGS_SURFACE.g(), color.g(), response.hovered()),
+                tint(SETTINGS_SURFACE.b(), color.b(), response.hovered()),
+            )
+        } else {
+            SETTINGS_SURFACE
+        };
+        let foreground = if variable.enabled {
+            SETTINGS_TEXT
+        } else {
+            SETTINGS_TEXT_MUTED
+        };
         let painter = ui.painter();
         let corner = egui::CornerRadius::same(6);
         painter.rect_filled(rect, corner, fill);
@@ -2956,12 +2990,12 @@ fn variable_chip(
             ),
             egui::vec2(icon_size, icon_size),
         );
-        egui_shadcn::paint_icon(painter, icon_rect, &LucideIcon::Copy, SETTINGS_TEXT);
+        egui_shadcn::paint_icon(painter, icon_rect, &LucideIcon::Copy, foreground);
         let text_pos = egui::pos2(
             icon_rect.right() + icon_gap,
             rect.center().y - galley.size().y / 2.0,
         );
-        painter.galley(text_pos, galley, SETTINGS_TEXT);
+        painter.galley(text_pos, galley, foreground);
         if response.has_focus() {
             egui_shadcn::paint::paint_focus_ring::paint_focus_ring(
                 painter,
@@ -2972,17 +3006,25 @@ fn variable_chip(
         }
     }
 
-    let response = response
-        .on_hover_cursor(egui::CursorIcon::PointingHand)
-        .on_hover_text(format!(
+    let response = if variable.enabled {
+        response
+            .on_hover_cursor(egui::CursorIcon::PointingHand)
+            .on_hover_text(format!(
+                "{}\n{}",
+                variable.description,
+                format_pattern(
+                    text::COPY_VARIABLE_HINT,
+                    language,
+                    &[("token", token.clone())]
+                )
+            ))
+    } else {
+        response.on_hover_text(format!(
             "{}\n{}",
             variable.description,
-            format_pattern(
-                text::COPY_VARIABLE_HINT,
-                language,
-                &[("token", token.clone())]
-            )
-        ));
+            text::HEART_RATE_VARIABLE_OFFLINE.get(language)
+        ))
+    };
     if !response.clicked() {
         return response;
     }
@@ -3082,6 +3124,7 @@ fn variable_help_groups(
 fn localized_variable_groups(
     source: &'static [ecliptica_data_analyzer::i18n::VariableCopyGroup],
     language: Language,
+    has_heart_rate: bool,
 ) -> Vec<VariableHelpGroup<'static>> {
     const COLORS: [egui::Color32; 10] = [
         egui::Color32::from_rgb(119, 181, 255),
@@ -3106,6 +3149,8 @@ fn localized_variable_groups(
                     role: variable.role.get(language),
                     name: variable.name,
                     description: variable.description.get(language),
+                    enabled: !matches!(variable.name, "heart_rate" | "has_heart_rate")
+                        || has_heart_rate,
                 })
                 .collect::<Vec<_>>();
             VariableHelpGroup {
@@ -3122,10 +3167,12 @@ fn live_variable_help(
     clipboard: &mut Option<Clipboard>,
     toast_state: &mut ToastState,
     language: Language,
+    has_heart_rate: bool,
 ) {
     let groups = localized_variable_groups(
         ecliptica_data_analyzer::i18n::LIVE_VARIABLE_GROUPS,
         language,
+        has_heart_rate,
     );
     variable_help_groups(ui, &groups, clipboard, toast_state, language);
 }
@@ -3135,10 +3182,12 @@ fn report_variable_help(
     clipboard: &mut Option<Clipboard>,
     toast_state: &mut ToastState,
     language: Language,
+    has_heart_rate: bool,
 ) {
     let groups = localized_variable_groups(
         ecliptica_data_analyzer::i18n::REPORT_VARIABLE_GROUPS,
         language,
+        has_heart_rate,
     );
     variable_help_groups(ui, &groups, clipboard, toast_state, language);
 }
@@ -4945,16 +4994,19 @@ mod tests {
                 role: "数值",
                 name: "latest_dps",
                 description: "test",
+                enabled: true,
             },
             VariableHelp {
                 role: "条件",
                 name: "has_round_report_effective_dps",
                 description: "test",
+                enabled: true,
             },
             VariableHelp {
                 role: "条件",
                 name: "has_round_longest_standstill",
                 description: "test",
+                enabled: true,
             },
         ];
         let group = VariableHelpGroup {

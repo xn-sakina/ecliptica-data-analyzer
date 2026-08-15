@@ -3,6 +3,7 @@
 pub mod analysis;
 pub mod audio;
 pub mod config;
+pub mod heart_rate;
 pub mod i18n;
 pub mod keyboard;
 pub mod log_protocol;

@@ -263,6 +263,13 @@ pub struct GameSnapshot {
     /// Whether an active combat round has seen no W, A, S, or D key-down/repeat
     /// event in its rolling 10-second window. Entering a round resets it false.
     pub no_wasd_for_10s: bool,
+    /// Latest value reported by a compatible local heart-rate sender. Zero is a
+    /// valid connected value (including a connected sender with no sample).
+    #[serde(default)]
+    pub heart_rate: u16,
+    /// True only while a valid sender request was received recently.
+    #[serde(default)]
+    pub has_heart_rate: bool,
     /// Internal identity used to reset round-scoped live metrics even when a
     /// lobby and the next stage are consumed in the same log-reader batch.
     #[doc(hidden)]
@@ -316,6 +323,8 @@ impl Default for GameSnapshot {
             no_dps_for_10s: false,
             wasd_listener_available: false,
             no_wasd_for_10s: false,
+            heart_rate: 0,
+            has_heart_rate: false,
             combat_round_epoch: 0,
             boss_lock: None,
             boss: None,

@@ -285,6 +285,16 @@ pub mod text {
         "VRChat 默认接收地址为 127.0.0.1:9000"
     );
     pair!(ENABLE_OSC, "Enable OSC broadcast", "启用 OSC 广播");
+    pair!(
+        ENABLE_HEART_RATE,
+        "Enable local heart-rate receiver",
+        "启用本地心率接收"
+    );
+    pair!(
+        ENABLE_HEART_RATE_HINT,
+        "After settings are saved, listens only on 127.0.0.1 and uses one of ports 49670–49674 with a compatible HTTP heart-rate sender.",
+        "保存设置后仅监听 127.0.0.1，并通过 49670–49674 中的一个端口接收兼容 HTTP 心率发送软件的数据。"
+    );
     pair!(SEND_INTERVAL, "Send interval", "发送频率");
     pair!(TARGET_ADDRESS, "Destination", "目标地址");
     pair!(EVERY_SECONDS, "Every {seconds} seconds", "每 {seconds} 秒");
@@ -729,6 +739,41 @@ pub mod text {
     );
     pair!(OSC_SEND_FAILED, "OSC send failed", "OSC 发送失败");
     pair!(
+        HEART_RATE_SERVER_FAILED,
+        "Heart-rate HTTP server failed",
+        "心率 HTTP 服务运行失败"
+    );
+    pair!(
+        HEART_RATE_NO_PORT,
+        "Heart-rate receiver could not bind ports 49670–49674; it will keep retrying",
+        "心率接收服务无法绑定 49670–49674 端口，将继续重试"
+    );
+    pair!(
+        HEART_RATE_SERVER_LISTENING,
+        "Heart-rate receiver is listening on 127.0.0.1:{port}",
+        "心率接收服务正在监听 127.0.0.1:{port}"
+    );
+    pair!(
+        HEART_RATE_CONNECTED,
+        "Heart-rate sender connected",
+        "心率发送软件已连接"
+    );
+    pair!(
+        HEART_RATE_DISCONNECTED,
+        "Heart-rate updates timed out; waiting for the sender to reconnect",
+        "心率数据已超时，正在等待心率发送软件重新连接"
+    );
+    pair!(
+        HEART_RATE_WAITING,
+        "Heart-rate receiver is enabled but no sender has connected; enable HTTP reporting in a compatible heart-rate sender",
+        "心率接收已开启但尚未连接；请在兼容的心率发送软件中开启 HTTP 上报"
+    );
+    pair!(
+        HEART_RATE_VARIABLE_OFFLINE,
+        "Heart rate is unavailable. Enable the receiver here and HTTP reporting in a compatible heart-rate sender, then save the settings.",
+        "心率当前不可用。请在此处开启接收，并在兼容的心率发送软件中开启 HTTP 上报，然后保存设置。"
+    );
+    pair!(
         SINGLE_INSTANCE_FAILED,
         "Failed to create the single-instance lock",
         "创建单实例锁失败"
@@ -1006,6 +1051,25 @@ macro_rules! variable {
 
 pub const LIVE_VARIABLE_GROUPS: &[VariableCopyGroup] = &[
     VariableCopyGroup {
+        title: p("Heart rate", "心率"),
+        variables: &[
+            variable!(
+                "Value",
+                "数值",
+                "heart_rate",
+                "Latest heart rate from a compatible HTTP sender. Displays “-” while offline and 0 when connected without a sample.",
+                "兼容 HTTP 心率发送软件上报的最新心率。离线时显示“-”，已连接但暂无采样时显示 0。"
+            ),
+            variable!(
+                "Condition",
+                "条件",
+                "has_heart_rate",
+                "Enabled while a valid heart-rate update was received in the last 5 seconds.",
+                "最近 5 秒收到合法心率上报时开启。"
+            ),
+        ],
+    },
+    VariableCopyGroup {
         title: p("Latest DPS", "最新 DPS"),
         variables: &[
             variable!(
@@ -1193,6 +1257,25 @@ pub const LIVE_VARIABLE_GROUPS: &[VariableCopyGroup] = &[
 ];
 
 pub const REPORT_VARIABLE_GROUPS: &[VariableCopyGroup] = &[
+    VariableCopyGroup {
+        title: p("Heart rate", "心率"),
+        variables: &[
+            variable!(
+                "Value",
+                "数值",
+                "heart_rate",
+                "Latest heart rate from a compatible HTTP sender. Displays “-” while offline and 0 when connected without a sample.",
+                "兼容 HTTP 心率发送软件上报的最新心率。离线时显示“-”，已连接但暂无采样时显示 0。"
+            ),
+            variable!(
+                "Condition",
+                "条件",
+                "has_heart_rate",
+                "Enabled while a valid heart-rate update was received in the last 5 seconds.",
+                "最近 5 秒收到合法心率上报时开启。"
+            ),
+        ],
+    },
     VariableCopyGroup {
         title: p("Jim round estimate", "Jim 回合估计"),
         variables: &[

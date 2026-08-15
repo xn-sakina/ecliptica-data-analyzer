@@ -13,6 +13,7 @@ use crate::{
     analysis::GameSnapshot,
     audio::{self, SoundCommand},
     config::AppConfig,
+    heart_rate,
     i18n::TextPair,
     log_reader, osc,
 };
@@ -80,6 +81,7 @@ pub struct SharedState {
     pub shutdown: Arc<AtomicBool>,
     pub events: Sender<SystemEvent>,
     wasd_metric: Arc<RwLock<WasdMetricState>>,
+    pub(crate) heart_rate: heart_rate::SharedHeartRate,
 }
 
 impl SharedState {
@@ -107,6 +109,16 @@ impl SharedState {
 
     pub fn apply_wasd_metric(&self, snapshot: &mut GameSnapshot) {
         self.wasd_metric.read().apply_to(snapshot);
+    }
+
+    pub fn apply_heart_rate(&self, snapshot: &mut GameSnapshot, enabled: bool) {
+        self.heart_rate.apply_to(snapshot, enabled);
+    }
+
+    pub fn refresh_heart_rate(&self) {
+        let enabled = self.config.read().value.heart_rate_enabled;
+        self.heart_rate
+            .apply_to(&mut self.snapshot.write(), enabled);
     }
 }
 
@@ -136,12 +148,14 @@ impl Runtime {
             shutdown: Arc::new(AtomicBool::new(false)),
             events: event_tx,
             wasd_metric: Arc::new(RwLock::new(WasdMetricState::default())),
+            heart_rate: heart_rate::SharedHeartRate::default(),
         };
         let handles = vec![
             log_reader::spawn(shared.clone()),
             osc::spawn(shared.clone()),
             audio::spawn(shared.clone(), sound_rx),
             crate::keyboard::spawn(shared.clone()),
+            heart_rate::spawn(shared.clone()),
         ];
         Self {
             shared,

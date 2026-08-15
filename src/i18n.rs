@@ -285,15 +285,17 @@ pub mod text {
         "VRChat 默认接收地址为 127.0.0.1:9000"
     );
     pair!(ENABLE_OSC, "Enable OSC broadcast", "启用 OSC 广播");
-    pair!(
-        ENABLE_HEART_RATE,
-        "Enable local heart-rate receiver",
-        "启用本地心率接收"
-    );
+    pair!(ENABLE_HEART_RATE, "Enable", "启用");
     pair!(
         ENABLE_HEART_RATE_HINT,
         "After settings are saved, listens only on 127.0.0.1 and uses one of ports 49670–49674 with a compatible HTTP heart-rate sender.",
         "保存设置后仅监听 127.0.0.1，并通过 49670–49674 中的一个端口接收兼容 HTTP 心率发送软件的数据。"
+    );
+    pair!(HEART_RATE_AUXILIARY, "Local heart rate", "本地心率");
+    pair!(
+        HEART_RATE_AUXILIARY_DESCRIPTION,
+        "Available in live and report templates.",
+        "可用于局内消息和战报模板。"
     );
     pair!(SEND_INTERVAL, "Send interval", "发送频率");
     pair!(TARGET_ADDRESS, "Destination", "目标地址");
@@ -390,6 +392,12 @@ pub mod text {
     pair!(TEMPLATE_PRESET, "Template preset", "模板预设");
     pair!(PRESET_NAME, "Preset name", "预设名称");
     pair!(PRESET_FALLBACK, "Preset {index}", "预设 {index}");
+    pair!(MESSAGE_PRESET_OUTPUT, "DPS", "输出职");
+    pair!(MESSAGE_PRESET_TANK, "Tank", "承伤职");
+    pair!(MESSAGE_PRESET_BACKUP, "Backup", "备用");
+    pair!(REPORT_PRESET_OUTPUT, "DPS Report", "输出战报");
+    pair!(REPORT_PRESET_TANK, "Tank Report", "承伤战报");
+    pair!(REPORT_PRESET_BACKUP, "Backup Report", "备用战报");
     pair!(RESET_SELECTED_PRESET, "Reset preset", "重置当前预设");
     pair!(
         RESET_MESSAGE_PRESET_HINT,
@@ -1049,26 +1057,27 @@ macro_rules! variable {
     };
 }
 
+pub const HEART_RATE_VARIABLE_GROUPS: &[VariableCopyGroup] = &[VariableCopyGroup {
+    title: p("Heart rate", "心率"),
+    variables: &[
+        variable!(
+            "Value",
+            "数值",
+            "heart_rate",
+            "Latest heart rate from a compatible HTTP sender. Displays “-” while offline and 0 when connected without a sample.",
+            "兼容 HTTP 心率发送软件上报的最新心率。离线时显示“-”，已连接但暂无采样时显示 0。"
+        ),
+        variable!(
+            "Condition",
+            "条件",
+            "has_heart_rate",
+            "Enabled while a valid heart-rate update was received in the last 5 seconds.",
+            "最近 5 秒收到合法心率上报时开启。"
+        ),
+    ],
+}];
+
 pub const LIVE_VARIABLE_GROUPS: &[VariableCopyGroup] = &[
-    VariableCopyGroup {
-        title: p("Heart rate", "心率"),
-        variables: &[
-            variable!(
-                "Value",
-                "数值",
-                "heart_rate",
-                "Latest heart rate from a compatible HTTP sender. Displays “-” while offline and 0 when connected without a sample.",
-                "兼容 HTTP 心率发送软件上报的最新心率。离线时显示“-”，已连接但暂无采样时显示 0。"
-            ),
-            variable!(
-                "Condition",
-                "条件",
-                "has_heart_rate",
-                "Enabled while a valid heart-rate update was received in the last 5 seconds.",
-                "最近 5 秒收到合法心率上报时开启。"
-            ),
-        ],
-    },
     VariableCopyGroup {
         title: p("Latest DPS", "最新 DPS"),
         variables: &[
@@ -1249,33 +1258,14 @@ pub const LIVE_VARIABLE_GROUPS: &[VariableCopyGroup] = &[
                 "Condition",
                 "条件",
                 "no_wasd_for_10s",
-                "Enabled after 10 continuous seconds without pressing W, A, S, or D.",
-                "连续 10 秒没有按 W、A、S、D 时开启。"
+                "Enabled after 10 continuous seconds without holding W, A, S, or D.",
+                "连续 10 秒没有按住 W、A、S、D 时开启。"
             ),
         ],
     },
 ];
 
 pub const REPORT_VARIABLE_GROUPS: &[VariableCopyGroup] = &[
-    VariableCopyGroup {
-        title: p("Heart rate", "心率"),
-        variables: &[
-            variable!(
-                "Value",
-                "数值",
-                "heart_rate",
-                "Latest heart rate from a compatible HTTP sender. Displays “-” while offline and 0 when connected without a sample.",
-                "兼容 HTTP 心率发送软件上报的最新心率。离线时显示“-”，已连接但暂无采样时显示 0。"
-            ),
-            variable!(
-                "Condition",
-                "条件",
-                "has_heart_rate",
-                "Enabled while a valid heart-rate update was received in the last 5 seconds.",
-                "最近 5 秒收到合法心率上报时开启。"
-            ),
-        ],
-    },
     VariableCopyGroup {
         title: p("Jim round estimate", "Jim 回合估计"),
         variables: &[
@@ -1423,8 +1413,8 @@ pub const REPORT_VARIABLE_GROUPS: &[VariableCopyGroup] = &[
                 "Value",
                 "数值",
                 "round_longest_standstill",
-                "Longest period without pressing W, A, S, or D in the completed round, as a number of seconds without a unit.",
-                "刚结束这回合中，最长有多久没按 W、A、S、D；只显示秒数，不带单位。"
+                "Longest period without holding W, A, S, or D in the completed round, as a number of seconds without a unit.",
+                "刚结束这回合中，最长有多久没按住 W、A、S、D；只显示秒数，不带单位。"
             ),
             variable!(
                 "Condition",

@@ -69,8 +69,9 @@ not an estimate of remaining health, and resets outside combat.
 `no_dps_for_10s` becomes true when a non-spectating player has dealt no
 damage for 10 seconds during combat, measured from the round start or latest hit.
 It stays false while syncing, in the lobby, or waiting for the next round.
-`no_wasd_for_10s` becomes true after ten seconds without a W, A, S, or D
-key-down/repeat event and resets immediately on activity. The global listener is
+`no_wasd_for_10s` becomes true after W, A, S, and D have all remained released
+for ten seconds. It resets immediately when any one of them is pressed and stays
+false for the full duration of a long press. The global listener is
 observe-only and never reserves, injects, or suppresses keys. If the listener is
 unavailable, the condition remains false. The same listener records the longest
 continuous no-WASD interval in each live round as the shield-oriented standstill

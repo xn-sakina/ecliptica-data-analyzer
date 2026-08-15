@@ -139,21 +139,23 @@ unsafe extern "system" fn windows_keyboard_hook(
 ) -> windows_sys::Win32::Foundation::LRESULT {
     use std::ptr::null_mut;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        CallNextHookEx, KBDLLHOOKSTRUCT, WM_KEYDOWN, WM_SYSKEYDOWN,
+        CallNextHookEx, KBDLLHOOKSTRUCT, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
     };
 
-    if code >= 0 && matches!(wparam as u32, WM_KEYDOWN | WM_SYSKEYDOWN) {
+    let message = wparam as u32;
+    if code >= 0 && matches!(message, WM_KEYDOWN | WM_SYSKEYDOWN | WM_KEYUP | WM_SYSKEYUP) {
         // SAFETY: For WH_KEYBOARD_LL key messages Windows specifies that
         // `lparam` points to a valid KBDLLHOOKSTRUCT for this callback.
         let event = unsafe { &*(lparam as *const KBDLLHOOKSTRUCT) };
-        if is_wasd_virtual_key(event.vkCode) {
+        if let Some(key) = wasd_virtual_key_bit(event.vkCode) {
             if let Some(hook_state) = WINDOWS_HOOK_STATE.get() {
                 let mut hook_state = hook_state.lock();
                 if let Some(state) = hook_state.as_mut() {
                     let now = Instant::now();
-                    state.tracker.record_activity(now);
-                    // Publish directly in the KeyDown callback: no polling interval is
-                    // involved between the physical event and clearing the idle flag.
+                    let pressed = matches!(message, WM_KEYDOWN | WM_SYSKEYDOWN);
+                    state.tracker.record_key_event(key, pressed, now);
+                    // Publish directly in the keyboard callback: press and release
+                    // transitions must immediately update the idle window.
                     update_metric(&state.shared, &mut state.tracker, now);
                 }
             }
@@ -186,8 +188,12 @@ fn run(shared: SharedState) {
 
     while !shared.shutdown.load(Ordering::Relaxed) {
         match tap.recv_timeout(LISTENER_POLL_INTERVAL) {
-            Ok(event) if is_wasd_activity(event.kind) => tracker.record_activity(event.time),
-            Ok(_) | Err(RecvTimeoutError::Timeout) => {}
+            Ok(event) => {
+                if let Some((key, pressed)) = wasd_key_event(event.kind) {
+                    tracker.record_key_event(key, pressed, event.time);
+                }
+            }
+            Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => {
                 shared.set_wasd_metric(false, WasdMetricSample::default());
                 shared.event(
@@ -216,23 +222,41 @@ fn update_metric(shared: &SharedState, tracker: &mut WasdIdleTracker, now: Insta
 }
 
 #[cfg(not(target_os = "windows"))]
-fn is_wasd_activity(kind: EventKind) -> bool {
+fn wasd_key_event(kind: EventKind) -> Option<(u8, bool)> {
     match kind {
         EventKind::KeyDown(key) | EventKind::KeyRepeat(key) => {
-            matches!(key, Key::W | Key::A | Key::S | Key::D)
+            wasd_key_bit(key).map(|key| (key, true))
         }
-        EventKind::KeyUp(_) => false,
+        EventKind::KeyUp(key) => wasd_key_bit(key).map(|key| (key, false)),
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn wasd_key_bit(key: Key) -> Option<u8> {
+    match key {
+        Key::W => Some(1 << 0),
+        Key::A => Some(1 << 1),
+        Key::S => Some(1 << 2),
+        Key::D => Some(1 << 3),
+        _ => None,
     }
 }
 
 #[cfg(any(target_os = "windows", test))]
-fn is_wasd_virtual_key(key: u32) -> bool {
-    matches!(key, 0x57 | 0x41 | 0x53 | 0x44)
+fn wasd_virtual_key_bit(key: u32) -> Option<u8> {
+    match key {
+        0x57 => Some(1 << 0),
+        0x41 => Some(1 << 1),
+        0x53 => Some(1 << 2),
+        0x44 => Some(1 << 3),
+        _ => None,
+    }
 }
 
 #[derive(Debug)]
 struct WasdIdleTracker {
-    last_activity: Instant,
+    pressed_keys: u8,
+    standstill_started_at: Option<Instant>,
     active_round: Option<u64>,
     longest_standstill: Duration,
     completed_round: Option<(u64, Duration)>,
@@ -241,7 +265,8 @@ struct WasdIdleTracker {
 impl WasdIdleTracker {
     fn new(started_at: Instant) -> Self {
         Self {
-            last_activity: started_at,
+            pressed_keys: 0,
+            standstill_started_at: Some(started_at),
             active_round: None,
             longest_standstill: Duration::ZERO,
             completed_round: None,
@@ -253,38 +278,63 @@ impl WasdIdleTracker {
             return;
         }
         if let Some(previous_round) = self.active_round {
-            self.longest_standstill = self
-                .longest_standstill
-                .max(now.saturating_duration_since(self.last_activity));
+            self.finish_standstill(now);
             self.completed_round = Some((previous_round, self.longest_standstill));
         }
         if round.is_some() {
             // A new combat round must never inherit idle time accumulated in
-            // the lobby or in the previous round.
-            self.last_activity = now;
+            // the lobby or in the previous round. A key already held at round
+            // start keeps the standstill window paused until its release.
+            self.standstill_started_at = (self.pressed_keys == 0).then_some(now);
             self.longest_standstill = Duration::ZERO;
+        } else {
+            self.standstill_started_at = None;
         }
         self.active_round = round;
     }
 
-    fn record_activity(&mut self, at: Instant) {
-        if self.active_round.is_some() {
+    fn record_key_event(&mut self, key: u8, pressed: bool, at: Instant) {
+        let was_pressed = self.pressed_keys != 0;
+        if pressed {
+            self.pressed_keys |= key;
+        } else {
+            self.pressed_keys &= !key;
+        }
+        let is_pressed = self.pressed_keys != 0;
+
+        if self.active_round.is_none() || was_pressed == is_pressed {
+            return;
+        }
+        if is_pressed {
+            self.finish_standstill(at);
+            self.standstill_started_at = None;
+        } else {
+            self.standstill_started_at = Some(at);
+        }
+    }
+
+    fn finish_standstill(&mut self, at: Instant) {
+        if let Some(started_at) = self.standstill_started_at {
             self.longest_standstill = self
                 .longest_standstill
-                .max(at.saturating_duration_since(self.last_activity));
+                .max(at.saturating_duration_since(started_at));
         }
-        self.last_activity = self.last_activity.max(at);
     }
 
     fn is_idle(&self, now: Instant) -> bool {
         self.active_round.is_some()
-            && now.saturating_duration_since(self.last_activity) >= WASD_IDLE_THRESHOLD
+            && self.standstill_started_at.is_some_and(|started_at| {
+                now.saturating_duration_since(started_at) >= WASD_IDLE_THRESHOLD
+            })
     }
 
     fn sample(&self, now: Instant) -> WasdMetricSample {
         let current_longest = self.active_round.map(|_| {
-            self.longest_standstill
-                .max(now.saturating_duration_since(self.last_activity))
+            self.standstill_started_at
+                .map(|started_at| now.saturating_duration_since(started_at))
+                .map_or(self.longest_standstill, |current| {
+                    self.longest_standstill.max(current)
+                })
                 .as_secs()
         });
         WasdMetricSample {
@@ -306,22 +356,25 @@ mod tests {
 
     #[test]
     #[cfg(not(target_os = "windows"))]
-    fn only_wasd_down_and_repeat_events_count_as_activity() {
-        assert!(is_wasd_activity(EventKind::KeyDown(Key::W)));
-        assert!(is_wasd_activity(EventKind::KeyDown(Key::A)));
-        assert!(is_wasd_activity(EventKind::KeyRepeat(Key::S)));
-        assert!(is_wasd_activity(EventKind::KeyRepeat(Key::D)));
-        assert!(!is_wasd_activity(EventKind::KeyUp(Key::W)));
-        assert!(!is_wasd_activity(EventKind::KeyDown(Key::Space)));
+    fn wasd_press_repeat_and_release_events_are_tracked() {
+        assert_eq!(wasd_key_event(EventKind::KeyDown(Key::W)), Some((1, true)));
+        assert_eq!(wasd_key_event(EventKind::KeyDown(Key::A)), Some((2, true)));
+        assert_eq!(
+            wasd_key_event(EventKind::KeyRepeat(Key::S)),
+            Some((4, true))
+        );
+        assert_eq!(wasd_key_event(EventKind::KeyUp(Key::D)), Some((8, false)));
+        assert_eq!(wasd_key_event(EventKind::KeyDown(Key::Space)), None);
     }
 
     #[test]
     fn windows_virtual_key_filter_accepts_exactly_wasd() {
-        for key in [0x57, 0x41, 0x53, 0x44] {
-            assert!(is_wasd_virtual_key(key));
-        }
+        assert_eq!(wasd_virtual_key_bit(0x57), Some(1));
+        assert_eq!(wasd_virtual_key_bit(0x41), Some(2));
+        assert_eq!(wasd_virtual_key_bit(0x53), Some(4));
+        assert_eq!(wasd_virtual_key_bit(0x44), Some(8));
         for key in [0x20, 0x45, 0x25, 0x00] {
-            assert!(!is_wasd_virtual_key(key));
+            assert_eq!(wasd_virtual_key_bit(key), None);
         }
     }
 
@@ -339,17 +392,37 @@ mod tests {
     }
 
     #[test]
-    fn every_wasd_activity_immediately_resets_the_sliding_window() {
+    fn a_wasd_press_pauses_and_release_restarts_the_sliding_window() {
         let start = Instant::now();
         let mut tracker = WasdIdleTracker::new(start);
         tracker.set_active_round(Some(1), start);
         assert!(tracker.is_idle(start + Duration::from_secs(10)));
 
         let key_press = start + Duration::from_secs(11);
-        tracker.record_activity(key_press);
+        tracker.record_key_event(1, true, key_press);
         assert!(!tracker.is_idle(key_press));
-        assert!(!tracker.is_idle(key_press + Duration::from_millis(9_999)));
-        assert!(tracker.is_idle(key_press + Duration::from_secs(10)));
+        assert!(!tracker.is_idle(key_press + Duration::from_secs(30)));
+
+        let key_release = key_press + Duration::from_secs(30);
+        tracker.record_key_event(1, false, key_release);
+        assert!(!tracker.is_idle(key_release + Duration::from_millis(9_999)));
+        assert!(tracker.is_idle(key_release + Duration::from_secs(10)));
+    }
+
+    #[test]
+    fn overlapping_wasd_keys_keep_the_idle_window_paused_until_all_are_released() {
+        let start = Instant::now();
+        let mut tracker = WasdIdleTracker::new(start);
+        tracker.set_active_round(Some(1), start);
+
+        tracker.record_key_event(1, true, start + Duration::from_secs(2));
+        tracker.record_key_event(2, true, start + Duration::from_secs(3));
+        tracker.record_key_event(1, false, start + Duration::from_secs(20));
+        assert!(!tracker.is_idle(start + Duration::from_secs(30)));
+
+        tracker.record_key_event(2, false, start + Duration::from_secs(30));
+        assert!(!tracker.is_idle(start + Duration::from_secs(39)));
+        assert!(tracker.is_idle(start + Duration::from_secs(40)));
     }
 
     #[test]
@@ -388,8 +461,10 @@ mod tests {
         let mut tracker = WasdIdleTracker::new(start);
         tracker.set_active_round(Some(3), start);
 
-        tracker.record_activity(start + Duration::from_secs(4));
-        tracker.record_activity(start + Duration::from_secs(11));
+        tracker.record_key_event(1, true, start + Duration::from_secs(4));
+        tracker.record_key_event(1, false, start + Duration::from_secs(4));
+        tracker.record_key_event(2, true, start + Duration::from_secs(11));
+        tracker.record_key_event(2, false, start + Duration::from_secs(11));
         let active = tracker.sample(start + Duration::from_secs(13));
         assert_eq!(active.longest_standstill_seconds, 7);
 

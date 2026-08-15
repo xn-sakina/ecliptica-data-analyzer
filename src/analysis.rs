@@ -130,7 +130,7 @@ pub struct RoundReport {
     /// Whether the global WASD listener observed this round from its active start.
     #[serde(default)]
     pub has_longest_standstill_data: bool,
-    /// Longest continuous interval without W, A, S, or D during this round.
+    /// Longest continuous interval without W, A, S, or D held during this round.
     #[serde(default)]
     pub longest_standstill_seconds: u64,
 }
@@ -260,8 +260,8 @@ pub struct GameSnapshot {
     pub no_dps_for_10s: bool,
     /// Whether the global WASD listener is active and the idle signal is valid.
     pub wasd_listener_available: bool,
-    /// Whether an active combat round has seen no W, A, S, or D key-down/repeat
-    /// event in its rolling 10-second window. Entering a round resets it false.
+    /// Whether W, A, S, and D have all remained released for at least ten
+    /// seconds during an active combat round. Entering a round resets it false.
     pub no_wasd_for_10s: bool,
     /// Latest value reported by a compatible local heart-rate sender. Zero is a
     /// valid connected value (including a connected sender with no sample).

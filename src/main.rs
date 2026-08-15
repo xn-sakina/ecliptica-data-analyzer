@@ -68,6 +68,7 @@ const DPS_CHART_X_MARGIN_FRACTION: f64 = 0.025;
 const DPS_CHART_Y_MARGIN_FRACTION: f64 = 0.10;
 const DPS_CHART_MIN_Y_SPAN: f64 = 10.0;
 const TEMPLATE_PRESET_TAB_ROW_HEIGHT: f32 = 28.0;
+const TEMPLATE_PRESET_TAB_LABEL_MAX_CHARS: usize = 13;
 const SETTINGS_TEXT: egui::Color32 = egui::Color32::from_rgb(246, 243, 255);
 const SETTINGS_HEADING: egui::Color32 = egui::Color32::from_rgb(225, 218, 255);
 const SETTINGS_TEXT_SECONDARY: egui::Color32 = egui::Color32::from_rgb(190, 183, 204);
@@ -1093,7 +1094,7 @@ impl AnalyzerApp {
                 text::PREVIOUS_ROUND_REPORT.get(language),
                 text::PREVIOUS_ROUND_REPORT_DESCRIPTION.get(language),
                 |ui| {
-                    let primary = [
+                    let stats = [
                         ReportStatItem {
                             label: text::DURATION.get(language),
                             value: report.duration_text(),
@@ -1114,8 +1115,6 @@ impl AnalyzerApp {
                             value: report.burst_10s_dps_text(),
                             color: SETTINGS_WARNING,
                         },
-                    ];
-                    let secondary = [
                         ReportStatItem {
                             label: text::EFFECTIVE_DPS_GROWTH.get(language),
                             value: if report.has_dps_growth_rate {
@@ -1140,11 +1139,7 @@ impl AnalyzerApp {
                             color: SETTINGS_WARNING,
                         },
                     ];
-                    report_stat_group(ui, &primary, 4);
-                    ui.add_space(14.0);
-                    ui.separator();
-                    ui.add_space(14.0);
-                    report_stat_group(ui, &secondary, 3);
+                    report_stat_group(ui, &stats, 4);
                 },
             );
             ui.add_space(14.0);
@@ -1210,11 +1205,6 @@ impl AnalyzerApp {
                 Switch::new(&mut self.draft.osc_enabled)
                     .label(text::ENABLE_OSC.get(self.draft.language))
                     .show(ui);
-                ui.add_space(8.0);
-                Switch::new(&mut self.draft.heart_rate_enabled)
-                    .label(text::ENABLE_HEART_RATE.get(self.draft.language))
-                    .show(ui)
-                    .on_hover_text(text::ENABLE_HEART_RATE_HINT.get(self.draft.language));
                 ui.add_space(12.0);
                 let options = [
                     SendIntervalChoice(SendInterval::One, self.draft.language),
@@ -1489,6 +1479,15 @@ impl AnalyzerApp {
                     }
                 }
             },
+        );
+        ui.add_space(14.0);
+        heart_rate_auxiliary_panel(
+            ui,
+            &mut self.draft.heart_rate_enabled,
+            &mut self.clipboard,
+            &mut self.toast_state,
+            language,
+            snapshot.has_heart_rate,
         );
     }
 
@@ -3191,6 +3190,41 @@ fn report_variable_help(
     );
     variable_help_groups(ui, &groups, clipboard, toast_state, language);
 }
+
+fn heart_rate_auxiliary_panel(
+    ui: &mut egui::Ui,
+    enabled: &mut bool,
+    clipboard: &mut Option<Clipboard>,
+    toast_state: &mut ToastState,
+    language: Language,
+    has_heart_rate: bool,
+) {
+    section_card(
+        ui,
+        text::HEART_RATE_AUXILIARY.get(language),
+        text::HEART_RATE_AUXILIARY_DESCRIPTION.get(language),
+        |ui| {
+            Switch::new(enabled)
+                .label(text::ENABLE_HEART_RATE.get(language))
+                .show(ui)
+                .on_hover_text(text::ENABLE_HEART_RATE_HINT.get(language));
+            ui.add_space(12.0);
+            let groups = localized_variable_groups(
+                ecliptica_data_analyzer::i18n::HEART_RATE_VARIABLE_GROUPS,
+                language,
+                has_heart_rate,
+            );
+            if let Some(group) = groups.first() {
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
+                    for variable in &group.variables {
+                        variable_chip(ui, variable, group.color, clipboard, toast_state, language);
+                    }
+                });
+            }
+        },
+    );
+}
 fn template_help_button(ui: &mut egui::Ui, template_help_open: &mut bool, language: Language) {
     ui.add_space(8.0);
     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -4009,7 +4043,12 @@ fn preset_tab_labels(names: &[String], language: Language) -> Vec<String> {
     names
         .iter()
         .enumerate()
-        .map(|(index, name)| short_text(&preset_display_name(name, index, language), 12))
+        .map(|(index, name)| {
+            short_text(
+                &preset_display_name(name, index, language),
+                TEMPLATE_PRESET_TAB_LABEL_MAX_CHARS,
+            )
+        })
         .collect()
 }
 
@@ -4878,6 +4917,19 @@ mod tests {
     }
 
     #[test]
+    fn english_default_report_tab_names_are_not_truncated() {
+        let config = AppConfig::defaults_for_language(Language::English);
+
+        assert_eq!(
+            preset_tab_labels(
+                &config.round_report_template_preset_names,
+                Language::English
+            ),
+            ["DPS Report", "Tank Report", "Backup Report"]
+        );
+    }
+
+    #[test]
     fn preset_reset_button_is_vertically_centered_with_tabs() {
         egui::__run_test_ui(|ui| {
             let mut selected = 0;
@@ -4984,6 +5036,31 @@ mod tests {
             let right_edge = ui.max_rect().right();
             report_stat_group(ui, &items, 3);
             assert!(ui.min_rect().right() <= right_edge + 0.5);
+        });
+    }
+
+    #[test]
+    fn heart_rate_auxiliary_panel_stays_inside_narrow_english_layout() {
+        egui::__run_test_ui(|ui| {
+            ui.set_width(280.0);
+            let right_edge = ui.max_rect().right();
+            let mut enabled = false;
+            let mut clipboard = None;
+            let mut toast_state = ToastState::new();
+            let response = ui
+                .vertical(|ui| {
+                    heart_rate_auxiliary_panel(
+                        ui,
+                        &mut enabled,
+                        &mut clipboard,
+                        &mut toast_state,
+                        Language::English,
+                        false,
+                    );
+                })
+                .response;
+
+            assert!(response.rect.right() <= right_edge + 0.5);
         });
     }
 

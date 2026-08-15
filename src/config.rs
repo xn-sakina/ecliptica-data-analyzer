@@ -16,7 +16,7 @@ use tempfile::NamedTempFile;
 use crate::APP_ID;
 use crate::i18n::Language;
 
-pub const CONFIG_VERSION: u32 = 21;
+pub const CONFIG_VERSION: u32 = 22;
 pub const MESSAGE_TEMPLATE_PRESET_COUNT: usize = 3;
 pub const ROUND_REPORT_TEMPLATE_PRESET_COUNT: usize = 3;
 pub const TEMPLATE_PRESET_NAME_MAX_CHARS: usize = 24;
@@ -138,11 +138,13 @@ impl AppConfig {
             send_interval: SendInterval::One,
             message_template: message_template_presets[0].clone(),
             message_template_presets,
-            message_template_preset_names: default_template_preset_names(language),
+            message_template_preset_names: default_message_template_preset_names(language),
             active_message_template_preset: 0,
             round_report_template: round_report_template_presets[0].clone(),
             round_report_template_presets,
-            round_report_template_preset_names: default_template_preset_names(language),
+            round_report_template_preset_names: default_round_report_template_preset_names(
+                language,
+            ),
             active_round_report_template_preset: 0,
             display_name: String::new(),
             alert_volume: 1.0,
@@ -177,11 +179,12 @@ impl AppConfig {
         let chinese_reports = default_round_report_template_presets(Language::Chinese);
         let english_reports = default_round_report_template_presets(Language::English);
         let target_reports = default_round_report_template_presets(language);
-        let chinese_names =
-            default_template_preset_names::<MESSAGE_TEMPLATE_PRESET_COUNT>(Language::Chinese);
-        let english_names =
-            default_template_preset_names::<MESSAGE_TEMPLATE_PRESET_COUNT>(Language::English);
-        let target_names = default_template_preset_names::<MESSAGE_TEMPLATE_PRESET_COUNT>(language);
+        let chinese_message_names = default_message_template_preset_names(Language::Chinese);
+        let english_message_names = default_message_template_preset_names(Language::English);
+        let target_message_names = default_message_template_preset_names(language);
+        let chinese_report_names = default_round_report_template_preset_names(Language::Chinese);
+        let english_report_names = default_round_report_template_preset_names(Language::English);
+        let target_report_names = default_round_report_template_preset_names(language);
 
         localize_builtin_value(
             &mut localized.message_template,
@@ -212,8 +215,8 @@ impl AppConfig {
             );
             localize_builtin_value(
                 &mut localized.message_template_preset_names[index],
-                [&chinese_names[index], &english_names[index]],
-                &target_names[index],
+                [&chinese_message_names[index], &english_message_names[index]],
+                &target_message_names[index],
             );
         }
         for index in 0..ROUND_REPORT_TEMPLATE_PRESET_COUNT {
@@ -224,8 +227,8 @@ impl AppConfig {
             );
             localize_builtin_value(
                 &mut localized.round_report_template_preset_names[index],
-                [&chinese_names[index], &english_names[index]],
-                &target_names[index],
+                [&chinese_report_names[index], &english_report_names[index]],
+                &target_report_names[index],
             );
         }
         localized.language = language;
@@ -451,8 +454,10 @@ impl AppConfig {
             }
         }
         if self.version < 12 {
-            self.message_template_preset_names = default_template_preset_names(self.language);
-            self.round_report_template_preset_names = default_template_preset_names(self.language);
+            self.message_template_preset_names =
+                default_message_template_preset_names(self.language);
+            self.round_report_template_preset_names =
+                default_round_report_template_preset_names(self.language);
         }
         if self.version < 14 {
             upgrade_version_13_builtin_presets(
@@ -588,6 +593,26 @@ impl AppConfig {
                 self.round_report_template.clone_from(template);
             }
         }
+        if self.version < 22 {
+            let chinese_names = legacy_template_preset_names(Language::Chinese);
+            let english_names = legacy_template_preset_names(Language::English);
+            let message_names = default_message_template_preset_names(self.language);
+            let report_names = default_round_report_template_preset_names(self.language);
+            for index in 0..MESSAGE_TEMPLATE_PRESET_COUNT {
+                localize_builtin_value(
+                    &mut self.message_template_preset_names[index],
+                    [&chinese_names[index], &english_names[index]],
+                    &message_names[index],
+                );
+            }
+            for index in 0..ROUND_REPORT_TEMPLATE_PRESET_COUNT {
+                localize_builtin_value(
+                    &mut self.round_report_template_preset_names[index],
+                    [&chinese_names[index], &english_names[index]],
+                    &report_names[index],
+                );
+            }
+        }
         self.version = CONFIG_VERSION;
         self.alert_volume = self.alert_volume.clamp(0.0, 1.0);
         if !self.overlay_scale.is_finite() {
@@ -641,7 +666,39 @@ fn upgrade_version_13_builtin_presets<const N: usize>(
     }
 }
 
-fn default_template_preset_names<const N: usize>(language: Language) -> [String; N] {
+fn default_message_template_preset_names(
+    language: Language,
+) -> [String; MESSAGE_TEMPLATE_PRESET_COUNT] {
+    [
+        crate::i18n::text::MESSAGE_PRESET_OUTPUT
+            .get(language)
+            .to_owned(),
+        crate::i18n::text::MESSAGE_PRESET_TANK
+            .get(language)
+            .to_owned(),
+        crate::i18n::text::MESSAGE_PRESET_BACKUP
+            .get(language)
+            .to_owned(),
+    ]
+}
+
+fn default_round_report_template_preset_names(
+    language: Language,
+) -> [String; ROUND_REPORT_TEMPLATE_PRESET_COUNT] {
+    [
+        crate::i18n::text::REPORT_PRESET_OUTPUT
+            .get(language)
+            .to_owned(),
+        crate::i18n::text::REPORT_PRESET_TANK
+            .get(language)
+            .to_owned(),
+        crate::i18n::text::REPORT_PRESET_BACKUP
+            .get(language)
+            .to_owned(),
+    ]
+}
+
+fn legacy_template_preset_names(language: Language) -> [String; MESSAGE_TEMPLATE_PRESET_COUNT] {
     std::array::from_fn(|index| {
         crate::i18n::format_pattern(
             crate::i18n::text::PRESET_FALLBACK,
@@ -1101,19 +1158,19 @@ mod tests {
 
         assert_eq!(
             chinese.message_template_preset_names,
-            ["预设 1", "预设 2", "预设 3"]
+            ["输出职", "承伤职", "备用"]
         );
         assert_eq!(
             chinese.round_report_template_preset_names,
-            ["预设 1", "预设 2", "预设 3"]
+            ["输出战报", "承伤战报", "备用战报"]
         );
         assert_eq!(
             english.message_template_preset_names,
-            ["Preset 1", "Preset 2", "Preset 3"]
+            ["DPS", "Tank", "Backup"]
         );
         assert_eq!(
             english.round_report_template_preset_names,
-            ["Preset 1", "Preset 2", "Preset 3"]
+            ["DPS Report", "Tank Report", "Backup Report"]
         );
     }
 
@@ -1142,7 +1199,7 @@ mod tests {
         );
         assert_eq!(
             localized.message_template_preset_names,
-            ["Preset 1", "我的预设", "Preset 3"]
+            ["DPS", "我的预设", "Backup"]
         );
         assert_eq!(localized.round_report_template_presets[1], "CUSTOM REPORT");
     }
@@ -1556,11 +1613,40 @@ mod tests {
         assert_eq!(migrated.version, CONFIG_VERSION);
         assert_eq!(
             migrated.message_template_preset_names,
-            ["预设 1", "预设 2", "预设 3"]
+            ["输出职", "承伤职", "备用"]
         );
         assert_eq!(
             migrated.round_report_template_preset_names,
-            ["预设 1", "预设 2", "预设 3"]
+            ["输出战报", "承伤战报", "备用战报"]
+        );
+    }
+
+    #[test]
+    fn version_twenty_one_default_preset_names_upgrade_without_replacing_custom_names() {
+        let migrated = AppConfig {
+            version: 21,
+            language: Language::Chinese,
+            message_template_preset_names: [
+                "预设 1".to_owned(),
+                "我的局内预设".to_owned(),
+                "Preset 3".to_owned(),
+            ],
+            round_report_template_preset_names: [
+                "Preset 1".to_owned(),
+                "我的战报预设".to_owned(),
+                "预设 3".to_owned(),
+            ],
+            ..AppConfig::default()
+        }
+        .migrated();
+
+        assert_eq!(
+            migrated.message_template_preset_names,
+            ["输出职", "我的局内预设", "备用"]
+        );
+        assert_eq!(
+            migrated.round_report_template_preset_names,
+            ["输出战报", "我的战报预设", "备用战报"]
         );
     }
 

@@ -1,6 +1,6 @@
 [package]
 name = "ecliptica-data-analyzer"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2024"
 description = "Live Ecliptica combat analyzer with a VRChat OSC overlay"
 license = "MIT"

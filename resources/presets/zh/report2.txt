@@ -6,6 +6,6 @@ You are not sigma
   {{#if (eq until_boss_step "0")}}
 最终战，和我一起打爆 Jim
   {{else}}
-预计距 Jim 还有 {{until_boss_step}} 回合
+距 Jim 还有 {{until_boss_step}} 回合
   {{/if}}
 {{/if}}

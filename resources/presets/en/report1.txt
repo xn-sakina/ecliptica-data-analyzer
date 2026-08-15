@@ -6,6 +6,6 @@ Average {{round_report_effective_dps}} DPS | Peak {{round_max_dps}} DPS
   {{#if (eq until_boss_step "0")}}
 Final battle—let's take down Jim together
   {{else}}
-{{until_boss_step}} rounds until Jim
+About {{until_boss_step}} rounds until Jim
   {{/if}}
 {{/if}}

@@ -297,6 +297,11 @@ pub mod text {
         "Available in live and report templates.",
         "可用于局内消息和战报模板。"
     );
+    pair!(
+        HEART_RATE_SETUP_GUIDE,
+        "Open heart-rate setup guide",
+        "打开心率使用指南"
+    );
     pair!(SEND_INTERVAL, "Send interval", "发送频率");
     pair!(TARGET_ADDRESS, "Destination", "目标地址");
     pair!(EVERY_SECONDS, "Every {seconds} seconds", "每 {seconds} 秒");

@@ -69,6 +69,8 @@ const DPS_CHART_Y_MARGIN_FRACTION: f64 = 0.10;
 const DPS_CHART_MIN_Y_SPAN: f64 = 10.0;
 const TEMPLATE_PRESET_TAB_ROW_HEIGHT: f32 = 28.0;
 const TEMPLATE_PRESET_TAB_LABEL_MAX_CHARS: usize = 13;
+const HEART_RATE_GUIDE_URL: &str =
+    "https://github.com/xn-sakina/ecliptica-data-analyzer/blob/main/resources/heart-rate/README.md";
 const SETTINGS_TEXT: egui::Color32 = egui::Color32::from_rgb(246, 243, 255);
 const SETTINGS_HEADING: egui::Color32 = egui::Color32::from_rgb(225, 218, 255);
 const SETTINGS_TEXT_SECONDARY: egui::Color32 = egui::Color32::from_rgb(190, 183, 204);
@@ -3201,32 +3203,64 @@ fn heart_rate_auxiliary_panel(
     language: Language,
     has_heart_rate: bool,
 ) {
-    section_card(
-        ui,
-        text::HEART_RATE_AUXILIARY.get(language),
-        text::HEART_RATE_AUXILIARY_DESCRIPTION.get(language),
-        |ui| {
-            Switch::new(enabled)
-                .label(text::ENABLE_HEART_RATE.get(language))
-                .show(ui)
-                .on_hover_text(text::ENABLE_HEART_RATE_HINT.get(language));
-            ui.add_space(12.0);
-            let groups = localized_variable_groups(
-                ecliptica_data_analyzer::i18n::HEART_RATE_VARIABLE_GROUPS,
-                language,
-                has_heart_rate,
-            );
-            if let Some(group) = groups.first() {
-                ui.horizontal_wrapped(|ui| {
-                    ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
-                    for variable in &group.variables {
-                        variable_chip(ui, variable, group.color, clipboard, toast_state, language);
-                    }
-                });
-            }
-        },
-    );
+    let width = ui.available_width();
+    egui_shadcn::Card::new().show(ui, |ui| {
+        ui.set_min_width((width - 34.0).max(120.0));
+        heart_rate_title_row(ui, language);
+        Typography::muted(text::HEART_RATE_AUXILIARY_DESCRIPTION.get(language))
+            .color(SETTINGS_TEXT_MUTED)
+            .show(ui);
+        ui.add_space(14.0);
+        Switch::new(enabled)
+            .label(text::ENABLE_HEART_RATE.get(language))
+            .show(ui)
+            .on_hover_text(text::ENABLE_HEART_RATE_HINT.get(language));
+        ui.add_space(12.0);
+        let groups = localized_variable_groups(
+            ecliptica_data_analyzer::i18n::HEART_RATE_VARIABLE_GROUPS,
+            language,
+            has_heart_rate,
+        );
+        if let Some(group) = groups.first() {
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
+                for variable in &group.variables {
+                    variable_chip(ui, variable, group.color, clipboard, toast_state, language);
+                }
+            });
+        }
+    });
 }
+
+fn heart_rate_title_row(ui: &mut egui::Ui, language: Language) -> (egui::Response, egui::Response) {
+    ui.allocate_ui_with_layout(
+        egui::vec2(ui.available_width(), 24.0),
+        egui::Layout::left_to_right(egui::Align::Center),
+        |ui| {
+            ui.spacing_mut().item_spacing.x = 4.0;
+            let title = Typography::new(text::HEART_RATE_AUXILIARY.get(language))
+                .font_size(16.0)
+                .strong()
+                .color(SETTINGS_HEADING)
+                .show(ui);
+            let help = ShadcnButton::icon_only(LucideIcon::CircleQuestionMark)
+                .variant(ButtonVariant::Ghost)
+                .size(ComponentSize::Xs)
+                .show(ui)
+                .on_hover_text(text::HEART_RATE_SETUP_GUIDE.get(language));
+            if help.clicked() {
+                open_heart_rate_guide(ui.ctx());
+            }
+            (title, help)
+        },
+    )
+    .inner
+}
+
+fn open_heart_rate_guide(context: &egui::Context) {
+    context.open_url(egui::OpenUrl::new_tab(HEART_RATE_GUIDE_URL));
+}
+
 fn template_help_button(ui: &mut egui::Ui, template_help_open: &mut bool, language: Language) {
     ui.add_space(8.0);
     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -5063,6 +5097,36 @@ mod tests {
                 .response;
 
             assert!(response.rect.right() <= right_edge + 0.5);
+        });
+    }
+
+    #[test]
+    fn heart_rate_guide_opens_the_published_document() {
+        let context = egui::Context::default();
+        let output = context.run(egui::RawInput::default(), |context| {
+            open_heart_rate_guide(context);
+        });
+
+        assert!(output.platform_output.commands.iter().any(|command| {
+            matches!(
+                command,
+                egui::OutputCommand::OpenUrl(open_url)
+                    if open_url.url == HEART_RATE_GUIDE_URL && open_url.new_tab
+            )
+        }));
+    }
+
+    #[test]
+    fn heart_rate_help_button_is_vertically_centered_with_title() {
+        egui::__run_test_ui(|ui| {
+            let (title, help) = heart_rate_title_row(ui, Language::English);
+
+            assert!(
+                (title.rect.center().y - help.rect.center().y).abs() <= 0.5,
+                "title {:?}, help {:?}",
+                title.rect,
+                help.rect
+            );
         });
     }
 

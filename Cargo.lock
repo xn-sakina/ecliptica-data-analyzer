@@ -744,6 +744,7 @@ dependencies = [
  "file-id",
  "handlebars",
  "keytap",
+ "objc2-core-graphics",
  "parking_lot",
  "portpicker",
  "regex",

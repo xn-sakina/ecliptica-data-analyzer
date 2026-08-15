@@ -112,7 +112,11 @@ fn run_windows_hook_loop(shared: &SharedState) -> anyhow::Result<()> {
             if let Some(hook_state) = WINDOWS_HOOK_STATE.get() {
                 let mut hook_state = hook_state.lock();
                 if let Some(state) = hook_state.as_mut() {
-                    update_metric(&state.shared, &mut state.tracker, Instant::now());
+                    let now = Instant::now();
+                    state
+                        .tracker
+                        .replace_pressed_keys(platform_pressed_wasd_keys(), now);
+                    update_metric(&state.shared, &mut state.tracker, now);
                 }
             }
         }
@@ -203,7 +207,10 @@ fn run(shared: SharedState) {
                 return;
             }
         }
-        update_metric(&shared, &mut tracker, Instant::now());
+        let now = Instant::now();
+        #[cfg(target_os = "macos")]
+        tracker.replace_pressed_keys(platform_pressed_wasd_keys(), now);
+        update_metric(&shared, &mut tracker, now);
     }
 
     // Dropping `tap` after this function returns removes the OS listener and
@@ -253,6 +260,43 @@ fn wasd_virtual_key_bit(key: u32) -> Option<u8> {
     }
 }
 
+#[cfg(target_os = "windows")]
+fn platform_pressed_wasd_keys() -> u8 {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
+
+    [0x57, 0x41, 0x53, 0x44]
+        .into_iter()
+        .enumerate()
+        .fold(0, |pressed, (index, virtual_key)| {
+            // SAFETY: GetAsyncKeyState accepts any virtual-key code and has no
+            // pointer or lifetime requirements.
+            let is_pressed = unsafe { GetAsyncKeyState(virtual_key) } as u16 & 0x8000 != 0;
+            if is_pressed {
+                pressed | (1 << index)
+            } else {
+                pressed
+            }
+        })
+}
+
+#[cfg(target_os = "macos")]
+fn platform_pressed_wasd_keys() -> u8 {
+    use objc2_core_graphics::{CGEventSource, CGEventSourceStateID};
+
+    // Physical ANSI key codes: W, A, S, D. Polling the current state repairs
+    // an occasional dropped KeyUp without losing short taps from the event tap.
+    [13, 0, 1, 2]
+        .into_iter()
+        .enumerate()
+        .fold(0, |pressed, (index, key_code)| {
+            if CGEventSource::key_state(CGEventSourceStateID::CombinedSessionState, key_code) {
+                pressed | (1 << index)
+            } else {
+                pressed
+            }
+        })
+}
+
 #[derive(Debug)]
 struct WasdIdleTracker {
     pressed_keys: u8,
@@ -294,13 +338,18 @@ impl WasdIdleTracker {
     }
 
     fn record_key_event(&mut self, key: u8, pressed: bool, at: Instant) {
-        let was_pressed = self.pressed_keys != 0;
-        if pressed {
-            self.pressed_keys |= key;
+        let pressed_keys = if pressed {
+            self.pressed_keys | key
         } else {
-            self.pressed_keys &= !key;
-        }
-        let is_pressed = self.pressed_keys != 0;
+            self.pressed_keys & !key
+        };
+        self.replace_pressed_keys(pressed_keys, at);
+    }
+
+    fn replace_pressed_keys(&mut self, pressed_keys: u8, at: Instant) {
+        let was_pressed = self.pressed_keys != 0;
+        self.pressed_keys = pressed_keys;
+        let is_pressed = pressed_keys != 0;
 
         if self.active_round.is_none() || was_pressed == is_pressed {
             return;
@@ -423,6 +472,25 @@ mod tests {
         tracker.record_key_event(2, false, start + Duration::from_secs(30));
         assert!(!tracker.is_idle(start + Duration::from_secs(39)));
         assert!(tracker.is_idle(start + Duration::from_secs(40)));
+    }
+
+    #[test]
+    fn physical_state_poll_recovers_missed_press_and_release_events() {
+        let start = Instant::now();
+        let mut tracker = WasdIdleTracker::new(start);
+        tracker.set_active_round(Some(1), start);
+
+        // Even without a KeyDown event, the physical-state poll notices the
+        // held key and prevents the 10-second idle condition.
+        tracker.replace_pressed_keys(1, start + Duration::from_secs(9));
+        assert!(!tracker.is_idle(start + Duration::from_secs(30)));
+
+        // Even without a KeyUp event, the next poll clears the stuck state and
+        // starts a fresh idle window from the observed release.
+        let observed_release = start + Duration::from_secs(30);
+        tracker.replace_pressed_keys(0, observed_release);
+        assert!(!tracker.is_idle(observed_release + Duration::from_millis(9_999)));
+        assert!(tracker.is_idle(observed_release + Duration::from_secs(10)));
     }
 
     #[test]

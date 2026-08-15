@@ -44,6 +44,9 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_
 [target.'cfg(not(target_os = "windows"))'.dependencies]
 keytap = "0.4"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "CGEventSource", "CGEventTypes", "CGRemoteOperation"] }
+
 [profile.release]
 lto = "thin"
 codegen-units = 1

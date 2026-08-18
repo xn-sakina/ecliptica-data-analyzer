@@ -694,10 +694,22 @@ impl Analyzer {
                 }
             }
             ParsedEvent::BossDefeated { second, name } => {
+                let is_current_boss = self.snapshot.boss_active
+                    && self
+                        .snapshot
+                        .boss
+                        .as_deref()
+                        .is_some_and(|boss| boss_object_matches(boss, &name));
                 // Jim Phase 3 is the actual end of the run. The game's lobby
                 // marker arrives much later, while the party is already in the
                 // ending/gathering scene, so publish the report immediately.
-                if self.snapshot.phase == RoundPhase::Combat && is_jim_final_phase(&name) {
+                // The destroyed Jim object can keep emitting stale death logs
+                // after a new phase-zero run has started in the same room. Only
+                // end the run when Jim is still the currently active Boss.
+                if self.snapshot.phase == RoundPhase::Combat
+                    && is_current_boss
+                    && is_jim_final_phase(&name)
+                {
                     self.update_dps_history(second.saturating_sub(1));
                     if self.snapshot.round_metrics_active {
                         self.finish_round(second);
@@ -711,12 +723,7 @@ impl Analyzer {
                     self.round_baseline_ready = true;
                     return;
                 }
-                if self
-                    .snapshot
-                    .boss
-                    .as_deref()
-                    .is_some_and(|boss| boss_object_matches(boss, &name))
-                {
+                if is_current_boss {
                     self.clear_boss();
                 }
             }
@@ -2732,5 +2739,51 @@ mod tests {
         let snapshot = analyzer.snapshot_at(i64::MAX);
         assert_eq!(snapshot.latest_dps, 0);
         assert!(!snapshot.boss_active);
+    }
+
+    #[test]
+    fn stale_jim_death_after_phase_zero_does_not_end_the_new_run() {
+        let mut analyzer = Analyzer::default();
+        analyzer.process_line(&line(0, "[Behaviour] Entering Room: Ecliptica"));
+        analyzer.process_line(&line(1, "ECLIPTICA - now in intermission"));
+        analyzer.process_line(&line(
+            2,
+            "ECLIPTICA - now in stage: Stage_Bringer on phase: 1 as class: Spellhammer",
+        ));
+        analyzer.process_line(&line(
+            3,
+            "ECLIPTICA - now fighting boss: JimBringerPhase3(Clone) on phase: 1",
+        ));
+        analyzer.process_line(&line(4, "Dealing 100 STRIKE damage"));
+        analyzer.process_line(&line(
+            5,
+            "Boss JimBringerPhase3 dead, personal damage dealt:",
+        ));
+        assert_eq!(analyzer.snapshot_at(timestamp(6)).phase, RoundPhase::Lobby);
+
+        // This is the order in the reproduction log: the first Stage of the
+        // next run is followed in the same second by one last retirement log
+        // from the previous run's Jim object.
+        analyzer.process_line(&line(
+            20,
+            "ECLIPTICA - now in stage: Stage_Hall of Beginnings on phase: 0 as class: Spellhammer",
+        ));
+        analyzer.process_line(&line(
+            20,
+            "Boss JimBringerPhase3 dead, personal damage dealt:",
+        ));
+        analyzer.process_line(&line(21, "Dealing 118 STRIKE damage"));
+        analyzer.process_line(&line(
+            22,
+            "ECLIPTICA - now fighting boss: Maxipuss(Clone) on phase: 0",
+        ));
+
+        let snapshot = analyzer.snapshot_at(timestamp(22));
+        assert_eq!(snapshot.phase, RoundPhase::Combat);
+        assert!(snapshot.round_metrics_active);
+        assert!(snapshot.has_damage_data);
+        assert_eq!(snapshot.latest_dps, 118);
+        assert_eq!(snapshot.boss.as_deref(), Some("Maxipuss"));
+        assert!(snapshot.boss_active);
     }
 }

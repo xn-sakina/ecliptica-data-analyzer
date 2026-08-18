@@ -168,6 +168,7 @@ pub mod text {
         "这会覆盖当前管理页中的所有未保存修改。确认后仍需点击“保存并应用”才会写入配置。"
     );
     pair!(CANCEL, "Cancel", "取消");
+    pair!(CLOSE_DIALOG, "Close dialog", "关闭弹窗");
     pair!(RESTORE, "Restore", "确认恢复");
     pair!(
         DEFAULTS_RESTORED,
@@ -285,6 +286,65 @@ pub mod text {
         "VRChat 默认接收地址为 127.0.0.1:9000"
     );
     pair!(ENABLE_OSC, "Enable OSC broadcast", "启用 OSC 广播");
+    pair!(AWAY_MODE, "Away mode", "临时外出");
+    pair!(OPEN_AWAY_MODE, "Go away", "临时外出");
+    pair!(
+        AWAY_MODE_DESCRIPTION,
+        "Set your message and return time.",
+        "设置外出消息和返回时间。"
+    );
+    pair!(AWAY_REASON, "Reason", "外出原因");
+    pair!(AWAY_REASON_TAKEOUT, "Pick up delivery", "拿外卖");
+    pair!(AWAY_REASON_RESTROOM, "Restroom", "去卫生间");
+    pair!(AWAY_REASON_CUSTOM, "Custom", "自定义");
+    pair!(AWAY_DURATION, "Return time", "预计时间");
+    pair!(AWAY_ONE_MINUTE, "1 minute", "1 分钟");
+    pair!(AWAY_THREE_MINUTES, "3 minutes", "3 分钟");
+    pair!(AWAY_FIVE_MINUTES, "5 minutes", "5 分钟");
+    pair!(AWAY_TEN_MINUTES, "10 minutes", "10 分钟");
+    pair!(AWAY_CUSTOM_MESSAGE, "Custom message", "自定义消息");
+    pair!(AWAY_MESSAGE, "Message preview", "消息预览");
+    pair!(
+        AWAY_TIME_VARIABLE_HINT,
+        "Use {{time}} for the countdown.",
+        "使用 {{time}} 显示倒计时。"
+    );
+    pair!(
+        AWAY_MESSAGE_REQUIRED,
+        "Enter an away message.",
+        "请输入外出消息。"
+    );
+    pair!(
+        AWAY_OSC_REQUIRED,
+        "Enable and save OSC first.",
+        "请先启用并保存 OSC。"
+    );
+    pair!(ENTER_AWAY_MODE, "Start away mode", "进入外出模式");
+    pair!(EXIT_AWAY_MODE, "End away mode", "关闭外出模式");
+    pair!(AWAY_MODE_ACTIVE, "Away mode is active", "正在外出模式");
+    pair!(EXIT_AWAY_MODE_TITLE, "End away mode?", "退出外出模式？");
+    pair!(
+        EXIT_AWAY_MODE_DESCRIPTION,
+        "Your away message will stop sending.",
+        "外出消息将停止发送。"
+    );
+    pair!(KEEP_AWAY_MODE, "Stay", "继续外出");
+    pair!(CONFIRM_EXIT_AWAY_MODE, "End and close", "退出并关闭");
+    pair!(
+        AWAY_TAKEOUT_MESSAGE,
+        "Sorry, picking up a delivery\nBack in: {{time}}",
+        "抱歉，拿个外卖\n距回来：{{time}}"
+    );
+    pair!(
+        AWAY_RESTROOM_MESSAGE,
+        "Sorry, going to the restroom\nBack in: {{time}}",
+        "抱歉，去趟卫生间\n距回来：{{time}}"
+    );
+    pair!(
+        AWAY_CUSTOM_DEFAULT_MESSAGE,
+        "Sorry, something came up. I'll be back soon\nBack in: {{time}}",
+        "抱歉，临时有事，很快回来\n距回来：{{time}}"
+    );
     pair!(ENABLE_HEART_RATE, "Receive heart rate", "接收心率");
     pair!(
         ENABLE_HEART_RATE_HINT,

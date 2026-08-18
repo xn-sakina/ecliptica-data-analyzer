@@ -12,7 +12,7 @@ use rosc::{OscMessage, OscPacket, OscType, encoder};
 use crate::{
     analysis::{DataStatus, GameSnapshot, RoundPhase, normalized_name},
     config::AppConfig,
-    runtime::{EventLevel, SharedState},
+    runtime::{AwayReason, AwaySession, EventLevel, SharedState},
 };
 
 pub fn spawn(shared: SharedState) -> thread::JoinHandle<()> {
@@ -41,6 +41,9 @@ fn run(shared: SharedState) {
     let mut rate_limiter = ChatboxRateLimiter::default();
     let mut published = PublishedChatboxState::default();
     let mut last_error = String::new();
+    let mut observed_away_session = None;
+    let mut away_transition_pending = false;
+    let mut next_away_send = Instant::now();
 
     while !shared.shutdown.load(Ordering::Relaxed) {
         let (config, revision) = {
@@ -50,6 +53,74 @@ fn run(shared: SharedState) {
         let snapshot = shared.snapshot.read().clone();
         let interval = config.send_interval.duration();
         let now = Instant::now();
+        let away_session = shared.away_session();
+
+        if let Some(away_session) = away_session {
+            queue.clear();
+            if observed_away_session != Some(away_session.id) {
+                observed_away_session = Some(away_session.id);
+                away_transition_pending = true;
+                next_away_send = now;
+            }
+
+            if !config.osc_enabled || now < next_away_send {
+                thread::sleep(Duration::from_millis(50));
+                continue;
+            }
+
+            let priority = if away_transition_pending {
+                SendPriority::StateChange
+            } else {
+                SendPriority::Regular
+            };
+            if !rate_limiter.can_send(priority, now) {
+                thread::sleep(Duration::from_millis(50));
+                continue;
+            }
+
+            let latest_config = shared.config.read().value.clone();
+            let Some(latest_away) = shared.away_session() else {
+                continue;
+            };
+            if latest_away.id != away_session.id || !latest_config.osc_enabled {
+                continue;
+            }
+
+            let update = ChatboxUpdate::Message(render_away_message(
+                &latest_away,
+                latest_config.language,
+                Instant::now(),
+            ));
+            match send_chatbox_update(&socket, &latest_config.osc_address, &update) {
+                Ok(outcome) => {
+                    published.complete(&update);
+                    if outcome.sent_packet() {
+                        rate_limiter.record_send(Instant::now());
+                    }
+                    away_transition_pending = false;
+                    next_away_send = Instant::now() + latest_config.send_interval.duration();
+                    last_error.clear();
+                }
+                Err(error) => {
+                    let message = format!(
+                        "{}: {error:#}",
+                        shared.text(crate::i18n::text::OSC_SEND_FAILED)
+                    );
+                    if message != last_error {
+                        shared.event(EventLevel::Error, message.clone());
+                        last_error = message;
+                    }
+                }
+            }
+            thread::sleep(Duration::from_millis(50));
+            continue;
+        }
+
+        if observed_away_session.take().is_some() {
+            away_transition_pending = false;
+            queue.clear();
+            schedule.next_send = now;
+        }
         let context = broadcast_context(&snapshot);
         let config_changed = schedule.observe_config(revision, interval, now);
         let context_changed = schedule.observe_broadcast_context(context, now);
@@ -143,6 +214,33 @@ fn run(shared: SharedState) {
         }
         thread::sleep(Duration::from_millis(50));
     }
+}
+
+pub fn render_away_message(
+    session: &AwaySession,
+    language: crate::i18n::Language,
+    now: Instant,
+) -> String {
+    let template = match session.reason {
+        AwayReason::Takeout => crate::i18n::text::AWAY_TAKEOUT_MESSAGE.get(language),
+        AwayReason::Restroom => crate::i18n::text::AWAY_RESTROOM_MESSAGE.get(language),
+        AwayReason::Custom if session.custom_uses_localized_default => {
+            crate::i18n::text::AWAY_CUSTOM_DEFAULT_MESSAGE.get(language)
+        }
+        AwayReason::Custom => &session.custom_message,
+    };
+    limit_chatbox(
+        template
+            .replace("{{time}}", &format_away_countdown(session, now))
+            .trim(),
+    )
+}
+
+pub fn format_away_countdown(session: &AwaySession, now: Instant) -> String {
+    let elapsed = now.saturating_duration_since(session.started_at);
+    let remaining = session.duration.saturating_sub(elapsed);
+    let seconds = remaining.as_secs() + u64::from(remaining.subsec_nanos() > 0);
+    format!("{:02}:{:02}", seconds / 60, seconds % 60)
 }
 
 #[cfg(test)]
@@ -532,6 +630,69 @@ fn send_chatbox_packet(socket: &UdpSocket, address: &str, text: &str) -> anyhow:
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn away_countdown_starts_full_and_stays_at_zero() {
+        let started_at = Instant::now();
+        let session = AwaySession {
+            id: 1,
+            reason: AwayReason::Restroom,
+            custom_message: String::new(),
+            custom_uses_localized_default: false,
+            started_at,
+            duration: Duration::from_secs(180),
+        };
+
+        assert_eq!(format_away_countdown(&session, started_at), "03:00");
+        assert_eq!(
+            format_away_countdown(&session, started_at + Duration::from_millis(500)),
+            "03:00"
+        );
+        assert_eq!(
+            format_away_countdown(&session, started_at + Duration::from_secs(1)),
+            "02:59"
+        );
+        assert_eq!(
+            format_away_countdown(&session, started_at + Duration::from_secs(999)),
+            "00:00"
+        );
+    }
+
+    #[test]
+    fn away_messages_localize_builtins_and_preserve_custom_text() {
+        let started_at = Instant::now();
+        let mut session = AwaySession {
+            id: 1,
+            reason: AwayReason::Takeout,
+            custom_message: String::new(),
+            custom_uses_localized_default: false,
+            started_at,
+            duration: Duration::from_secs(60),
+        };
+        assert_eq!(
+            render_away_message(&session, crate::i18n::Language::Chinese, started_at),
+            "抱歉，拿个外卖\n距回来：01:00"
+        );
+        assert_eq!(
+            render_away_message(&session, crate::i18n::Language::English, started_at),
+            "Sorry, picking up a delivery\nBack in: 01:00"
+        );
+
+        session.reason = AwayReason::Custom;
+        session.custom_message = "Tea break · {{time}} · {{time}}".to_owned();
+        assert_eq!(
+            render_away_message(&session, crate::i18n::Language::Chinese, started_at),
+            "Tea break · 01:00 · 01:00"
+        );
+
+        session.custom_message =
+            crate::config::default_away_custom_message(crate::i18n::Language::Chinese).to_owned();
+        session.custom_uses_localized_default = true;
+        assert_eq!(
+            render_away_message(&session, crate::i18n::Language::English, started_at),
+            "Sorry, something came up. I'll be back soon\nBack in: 01:00"
+        );
+    }
 
     #[test]
     fn renders_supported_variables_and_preserves_newlines() {

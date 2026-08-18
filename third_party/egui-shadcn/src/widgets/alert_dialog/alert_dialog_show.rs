@@ -17,7 +17,7 @@ impl super::alert_dialog::AlertDialog {
         if !*open {
             return AlertDialogResult::Open;
         }
-        if ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
+        if self.close_on_escape && ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
             *open = false;
             ctx.request_repaint();
             return AlertDialogResult::Cancelled;
@@ -26,11 +26,11 @@ impl super::alert_dialog::AlertDialog {
         let theme = crate::theme::shadcn_theme_ext::ShadcnThemeExt::shadcn_theme(ctx);
         let mut result = AlertDialogResult::Open;
         let accessible_title = self.title.clone();
+        let dialog_id = egui::Id::new(("alert_dialog", accessible_title.as_str()));
 
         // Backdrop
         let screen = ctx.screen_rect();
-        let backdrop_layer =
-            egui::LayerId::new(egui::Order::Middle, egui::Id::new("alert_dialog_backdrop"));
+        let backdrop_layer = egui::LayerId::new(egui::Order::Middle, dialog_id.with("backdrop"));
         let painter = ctx.layer_painter(backdrop_layer);
         painter.rect_filled(
             screen,
@@ -38,10 +38,19 @@ impl super::alert_dialog::AlertDialog {
             egui::Color32::from_black_alpha(60),
         );
 
+        // Modal input shield: the confirmation stays open on backdrop clicks,
+        // but controls in the dialog below cannot receive them.
+        egui::Area::new(dialog_id.with("backdrop_sense"))
+            .order(egui::Order::Foreground)
+            .anchor(egui::Align2::LEFT_TOP, egui::Vec2::ZERO)
+            .show(ctx, |ui| {
+                ui.allocate_exact_size(screen.size(), egui::Sense::click());
+            });
+
         let cr = (theme.radius + 2.0).round() as u8;
 
         // Dialog panel
-        let area_response = egui::Area::new(egui::Id::new("alert_dialog_panel"))
+        let area_response = egui::Area::new(dialog_id.with("panel"))
             .order(egui::Order::Foreground)
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
             .show(ctx, |ui| {
@@ -58,11 +67,10 @@ impl super::alert_dialog::AlertDialog {
                     });
 
                 frame.show(ui, |ui| {
-                    ui.set_max_width(420.0);
+                    ui.set_width(420.0);
 
-                    // Close button
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-                        let close_size = 16.0;
+                        let close_size = 28.0;
                         let (close_rect, close_resp) = ui.allocate_exact_size(
                             egui::vec2(close_size, close_size),
                             egui::Sense::click(),
@@ -72,15 +80,30 @@ impl super::alert_dialog::AlertDialog {
                             egui::WidgetInfo::labeled(
                                 egui::WidgetType::Button,
                                 ui.is_enabled(),
-                                "关闭确认对话框",
+                                self.close_label.clone(),
                             )
                         });
                         if ui.is_rect_visible(close_rect) {
+                            if close_resp.hovered() || close_resp.has_focus() {
+                                ui.painter().rect_filled(
+                                    close_rect,
+                                    5.0,
+                                    theme.accent.gamma_multiply(0.72),
+                                );
+                            }
+                            let icon_rect = egui::Rect::from_center_size(
+                                close_rect.center(),
+                                egui::vec2(16.0, 16.0),
+                            );
                             crate::icons::paint_icon::paint_icon(
                                 ui.painter(),
-                                close_rect,
+                                icon_rect,
                                 &crate::icons::lucide_icon::LucideIcon::X,
-                                theme.muted_foreground,
+                                if close_resp.hovered() || close_resp.has_focus() {
+                                    theme.foreground
+                                } else {
+                                    theme.muted_foreground
+                                },
                             );
                         }
                         if close_resp.clicked() {
@@ -88,24 +111,30 @@ impl super::alert_dialog::AlertDialog {
                             result = AlertDialogResult::Cancelled;
                             ctx.request_repaint();
                         }
+
+                        ui.allocate_ui_with_layout(
+                            egui::vec2(ui.available_width(), 0.0),
+                            egui::Layout::top_down(egui::Align::Min),
+                            |ui| {
+                                ui.label(
+                                    egui::RichText::new(&self.title)
+                                        .color(theme.foreground)
+                                        .size(18.0)
+                                        .strong(),
+                                );
+
+                                ui.add_space(4.0);
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(&self.description)
+                                            .color(theme.muted_foreground)
+                                            .size(14.0),
+                                    )
+                                    .wrap(),
+                                );
+                            },
+                        );
                     });
-
-                    ui.label(
-                        egui::RichText::new(&self.title)
-                            .color(theme.foreground)
-                            .size(18.0)
-                            .strong(),
-                    );
-
-                    ui.add_space(4.0);
-                    ui.add(
-                        egui::Label::new(
-                            egui::RichText::new(&self.description)
-                                .color(theme.muted_foreground)
-                                .size(14.0),
-                        )
-                        .wrap(),
-                    );
 
                     ui.add_space(20.0);
 

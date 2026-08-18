@@ -16,7 +16,7 @@ use tempfile::NamedTempFile;
 use crate::APP_ID;
 use crate::i18n::Language;
 
-pub const CONFIG_VERSION: u32 = 23;
+pub const CONFIG_VERSION: u32 = 24;
 pub const MESSAGE_TEMPLATE_PRESET_COUNT: usize = 3;
 pub const ROUND_REPORT_TEMPLATE_PRESET_COUNT: usize = 3;
 pub const TEMPLATE_PRESET_NAME_MAX_CHARS: usize = 24;
@@ -122,6 +122,7 @@ pub struct AppConfig {
     #[serde(default)]
     pub heart_rate_enabled: bool,
     pub osc_address: String,
+    pub away_custom_message: String,
     pub stale_after_seconds: u64,
     pub log_path_override: Option<PathBuf>,
 }
@@ -167,6 +168,7 @@ impl AppConfig {
             osc_enabled: true,
             heart_rate_enabled: false,
             osc_address: "127.0.0.1:9000".to_owned(),
+            away_custom_message: default_away_custom_message(language).to_owned(),
             stale_after_seconds: 10,
             log_path_override: None,
         }
@@ -189,6 +191,7 @@ impl AppConfig {
         let chinese_report_names = default_round_report_template_preset_names(Language::Chinese);
         let english_report_names = default_round_report_template_preset_names(Language::English);
         let target_report_names = default_round_report_template_preset_names(language);
+        localize_away_custom_message(&mut localized.away_custom_message, language);
 
         localize_builtin_value(
             &mut localized.message_template,
@@ -676,6 +679,9 @@ impl AppConfig {
                 self.round_report_template.clone_from(&default_reports[0]);
             }
         }
+        if self.version < 24 {
+            self.away_custom_message = default_away_custom_message(self.language).to_owned();
+        }
         self.version = CONFIG_VERSION;
         self.alert_volume = self.alert_volume.clamp(0.0, 1.0);
         if !self.overlay_scale.is_finite() {
@@ -684,6 +690,22 @@ impl AppConfig {
         self.overlay_scale = self.overlay_scale.clamp(0.5, 3.0);
         self.stale_after_seconds = self.stale_after_seconds.clamp(2, 300);
         self
+    }
+}
+
+pub fn default_away_custom_message(language: Language) -> &'static str {
+    crate::i18n::text::AWAY_CUSTOM_DEFAULT_MESSAGE.get(language)
+}
+
+pub fn is_default_away_custom_message(value: &str) -> bool {
+    Language::ALL
+        .into_iter()
+        .any(|language| value == default_away_custom_message(language))
+}
+
+pub fn localize_away_custom_message(value: &mut String, language: Language) {
+    if is_default_away_custom_message(value) {
+        *value = default_away_custom_message(language).to_owned();
     }
 }
 
@@ -1112,6 +1134,25 @@ mod tests {
         let mut old_value = serde_json::to_value(AppConfig::default()).unwrap();
         old_value.as_object_mut().unwrap().remove("language");
         assert!(serde_json::from_value::<AppConfig>(old_value).is_ok());
+    }
+
+    #[test]
+    fn away_custom_default_tracks_language_until_edited() {
+        let chinese = AppConfig::defaults_for_language(Language::Chinese);
+        let english = chinese.with_localized_defaults(Language::English);
+        assert_eq!(
+            english.away_custom_message,
+            default_away_custom_message(Language::English)
+        );
+
+        let mut custom = chinese;
+        custom.away_custom_message = "Be right back {{time}}".to_owned();
+        assert_eq!(
+            custom
+                .with_localized_defaults(Language::English)
+                .away_custom_message,
+            "Be right back {{time}}"
+        );
     }
 
     #[test]

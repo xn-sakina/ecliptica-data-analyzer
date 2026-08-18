@@ -131,7 +131,9 @@ impl<T: Clone + std::fmt::Display + PartialEq + 'static> egui::Widget
             );
 
         popup.show(|ui: &mut egui::Ui| {
-            let popup_width = width.max(144.0);
+            // The popup frame adds four points of horizontal padding on each
+            // side. Keep its outer edge aligned with the trigger.
+            let popup_width = width.max(144.0) - 8.0;
             ui.set_min_width(popup_width);
             ui.set_max_width(popup_width);
             let check_icon_size: f32 = 12.0;
@@ -333,7 +335,9 @@ impl<T: Clone + std::fmt::Display + PartialEq + 'static> egui::Widget
 
         let mut selection_changed = false;
         popup.show(|ui: &mut egui::Ui| {
-            let popup_width = width.max(144.0);
+            // The popup frame adds four points of horizontal padding on each
+            // side. Keep its outer edge aligned with the trigger.
+            let popup_width = width.max(144.0) - 8.0;
             ui.set_min_width(popup_width);
             ui.set_max_width(popup_width);
             let check_icon_size: f32 = 12.0;

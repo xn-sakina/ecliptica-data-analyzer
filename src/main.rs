@@ -20,7 +20,7 @@ use ecliptica_data_analyzer::{
     audio::SoundCommand,
     config::{self, AlertSoundStyle, AppConfig, SendInterval},
     i18n::{Language, format_pattern, format_seconds_pattern, text},
-    runtime::{EventLevel, EventPresentation, Runtime, SystemEvent, ToastLevel},
+    runtime::{AwayReason, EventLevel, EventPresentation, Runtime, SystemEvent, ToastLevel},
 };
 use eframe::egui;
 use egui_plot::{HLine, Line, Plot, PlotPoints, Points, VLine};
@@ -239,6 +239,62 @@ impl std::fmt::Display for OverlayScaleChoice {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AwayDuration {
+    One,
+    Three,
+    Five,
+    Ten,
+}
+
+impl AwayDuration {
+    const ALL: [Self; 4] = [Self::One, Self::Three, Self::Five, Self::Ten];
+
+    fn duration(self) -> Duration {
+        Duration::from_secs(match self {
+            Self::One => 60,
+            Self::Three => 180,
+            Self::Five => 300,
+            Self::Ten => 600,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct AwayReasonChoice(AwayReason, Language);
+
+impl std::fmt::Display for AwayReasonChoice {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self.0 {
+            AwayReason::Takeout => text::AWAY_REASON_TAKEOUT.get(self.1),
+            AwayReason::Restroom => text::AWAY_REASON_RESTROOM.get(self.1),
+            AwayReason::Custom => text::AWAY_REASON_CUSTOM.get(self.1),
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct AwayDurationChoice(AwayDuration, Language);
+
+impl std::fmt::Display for AwayDurationChoice {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self.0 {
+            AwayDuration::One => text::AWAY_ONE_MINUTE.get(self.1),
+            AwayDuration::Three => text::AWAY_THREE_MINUTES.get(self.1),
+            AwayDuration::Five => text::AWAY_FIVE_MINUTES.get(self.1),
+            AwayDuration::Ten => text::AWAY_TEN_MINUTES.get(self.1),
+        })
+    }
+}
+
+struct AwayDialogState {
+    open: bool,
+    exit_confirm_open: bool,
+    reason: AwayReason,
+    duration: AwayDuration,
+    custom_message: String,
+}
+
 struct AnalyzerApp {
     runtime: Runtime,
     persisted: AppConfig,
@@ -263,6 +319,7 @@ struct AnalyzerApp {
     window_always_on_top: bool,
     developer_mode: bool,
     developer_logs_open: bool,
+    away_dialog: AwayDialogState,
     developer_logo_clicks: u8,
     last_developer_logo_click: Option<Instant>,
     overlay_position: Arc<Mutex<OverlayPositionState>>,
@@ -347,6 +404,7 @@ impl DpsChartViewState {
 
 impl AnalyzerApp {
     fn new(_ctx: &egui::Context, runtime: Runtime, draft: AppConfig) -> Self {
+        let away_custom_message = draft.away_custom_message.clone();
         Self {
             runtime,
             persisted: draft.clone(),
@@ -371,6 +429,13 @@ impl AnalyzerApp {
             window_always_on_top: false,
             developer_mode: false,
             developer_logs_open: false,
+            away_dialog: AwayDialogState {
+                open: false,
+                exit_confirm_open: false,
+                reason: AwayReason::Restroom,
+                duration: AwayDuration::Three,
+                custom_message: away_custom_message,
+            },
             developer_logo_clicks: 0,
             last_developer_logo_click: None,
             overlay_position: Arc::new(Mutex::new(OverlayPositionState::default())),
@@ -555,6 +620,10 @@ impl AnalyzerApp {
                 // templates and names follow the selected language.
                 self.persisted = persisted;
                 self.draft = draft;
+                config::localize_away_custom_message(
+                    &mut self.away_dialog.custom_message,
+                    language,
+                );
                 self.save_result = Some((text::LANGUAGE_SAVED.get(language).to_owned(), true));
                 self.save_error_detail = None;
                 self.save_error_detail_open = false;
@@ -869,6 +938,7 @@ impl AnalyzerApp {
                 text::RESTORE_DEFAULTS_TITLE.get(language),
                 text::RESTORE_DEFAULTS_DESCRIPTION.get(language),
             )
+            .close_label(text::CLOSE_DIALOG.get(language))
             .cancel_text(text::CANCEL.get(language))
             .action_text(text::RESTORE.get(language))
             .destructive()
@@ -918,6 +988,7 @@ impl AnalyzerApp {
             };
             let mut open = true;
             match AlertDialog::new(title, description)
+                .close_label(text::CLOSE_DIALOG.get(language))
                 .cancel_text(text::CANCEL.get(language))
                 .action_text(text::RESTORE.get(language))
                 .destructive()
@@ -948,6 +1019,7 @@ impl AnalyzerApp {
         Dialog::new()
             .title(text::TEMPLATE_SYNTAX_HELP.get(language))
             .description(text::TEMPLATE_SYNTAX_HELP_DESCRIPTION.get(language))
+            .close_label(text::CLOSE_DIALOG.get(language))
             .width(680.0)
             .show(ctx, &mut self.template_help_open, |ui| {
                 ui.set_min_height(template_help_height);
@@ -957,6 +1029,7 @@ impl AnalyzerApp {
         Dialog::new()
             .title(text::SAVE_FAILED.get(language))
             .description(text::SAVE_ERROR_DESCRIPTION.get(language))
+            .close_label(text::CLOSE_DIALOG.get(language))
             .width(720.0)
             .show(ctx, &mut self.save_error_detail_open, |ui| {
                 save_error_detail_dialog(ui, &save_error_detail, language);
@@ -968,6 +1041,7 @@ impl AnalyzerApp {
         Dialog::new()
             .title(text::DEVELOPER_LOGS.get(language))
             .description(text::DEVELOPER_LOGS_DESCRIPTION.get(language))
+            .close_label(text::CLOSE_DIALOG.get(language))
             .width(720.0)
             .show(ctx, &mut self.developer_logs_open, |ui| {
                 ui.allocate_ui_with_layout(
@@ -996,6 +1070,7 @@ impl AnalyzerApp {
                     },
                 );
             });
+        self.show_away_dialog(ctx);
         self.toast_state.show(ctx);
     }
 
@@ -1188,6 +1263,337 @@ impl AnalyzerApp {
         );
     }
 
+    fn open_away_dialog(&mut self) {
+        if self.runtime.shared.away_session().is_none() {
+            self.away_dialog.reason = AwayReason::Restroom;
+            self.away_dialog.duration = AwayDuration::Three;
+            self.away_dialog.custom_message = self.persisted.away_custom_message.clone();
+        }
+        self.away_dialog.open = true;
+    }
+
+    fn persist_away_custom_message(&mut self) -> bool {
+        if self.away_dialog.custom_message.trim().is_empty() {
+            return false;
+        }
+        if self.away_dialog.custom_message == self.persisted.away_custom_message {
+            return true;
+        }
+
+        let language = self.draft.language;
+        let custom_message = self.away_dialog.custom_message.clone();
+        let mut committed = self.persisted.clone();
+        committed.version = config::CONFIG_VERSION;
+        committed.away_custom_message = custom_message.clone();
+        match config::save_atomic(&committed) {
+            Ok(()) => {
+                self.persisted.away_custom_message = custom_message.clone();
+                self.draft.away_custom_message = custom_message.clone();
+                let mut live = self.runtime.shared.config.write();
+                live.value.away_custom_message = custom_message;
+                live.revision = live.revision.wrapping_add(1);
+                true
+            }
+            Err(error) => {
+                let detail = format!("{}: {error:#}", text::SAVE_FAILED.get(language));
+                self.save_result = Some((detail.clone(), false));
+                self.save_error_detail = Some(detail);
+                self.save_error_detail_open = true;
+                false
+            }
+        }
+    }
+
+    fn show_away_dialog(&mut self, ctx: &egui::Context) {
+        if !self.away_dialog.open && !self.away_dialog.exit_confirm_open {
+            return;
+        }
+
+        let language = self.draft.language;
+        let active_session = self.runtime.shared.away_session();
+        let is_active = active_session.is_some();
+        let applied_osc_enabled = self.runtime.shared.config.read().value.osc_enabled;
+        let osc_ready = self.draft.osc_enabled && applied_osc_enabled;
+        #[allow(deprecated)]
+        let screen_height = ctx.input(|input| input.screen_rect().height());
+        let content_height = (screen_height * 0.8 - 112.0).max(160.0);
+        const AWAY_DIALOG_CONTENT_MIN_HEIGHT: f32 = 410.0;
+        let mut open = self.away_dialog.open;
+        let was_open = open;
+        let mut start_clicked = false;
+        let mut stop_clicked = false;
+
+        Dialog::new()
+            .title(text::AWAY_MODE.get(language))
+            .description(text::AWAY_MODE_DESCRIPTION.get(language))
+            .close_label(text::CLOSE_DIALOG.get(language))
+            .width(620.0)
+            .close_on_backdrop(false)
+            .close_on_escape(false)
+            .show(ctx, &mut open, |ui| {
+                ui.allocate_ui_with_layout(
+                    egui::vec2(ui.available_width(), content_height),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| {
+                        ShadcnScrollArea::new(content_height)
+                            .id_salt("away-mode-dialog")
+                            .framed(false)
+                            .fill_available(true)
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                let layout_height =
+                                    AWAY_DIALOG_CONTENT_MIN_HEIGHT.max(content_height);
+                                ui.allocate_ui_with_layout(
+                                    egui::vec2(ui.available_width(), layout_height),
+                                    egui::Layout::top_down(egui::Align::Min),
+                                    |ui| {
+                                        ui.columns(2, |columns| {
+                                            columns[0].add_enabled_ui(!is_active, |ui| {
+                                                Typography::small(text::AWAY_REASON.get(language))
+                                                    .color(SETTINGS_TEXT_MUTED)
+                                                    .show(ui);
+                                                ui.add_space(6.0);
+                                                let reasons = [
+                                                    AwayReasonChoice(
+                                                        AwayReason::Restroom,
+                                                        language,
+                                                    ),
+                                                    AwayReasonChoice(AwayReason::Takeout, language),
+                                                    AwayReasonChoice(AwayReason::Custom, language),
+                                                ];
+                                                let mut selected = AwayReasonChoice(
+                                                    self.away_dialog.reason,
+                                                    language,
+                                                );
+                                                let select_width = ui.available_width();
+                                                let response =
+                                                    SelectValue::new(&mut selected, &reasons)
+                                                        .width(select_width)
+                                                        .show(ui);
+                                                if response.changed()
+                                                    || selected.0 != self.away_dialog.reason
+                                                {
+                                                    self.away_dialog.reason = selected.0;
+                                                }
+                                            });
+
+                                            columns[1].add_enabled_ui(!is_active, |ui| {
+                                                Typography::small(
+                                                    text::AWAY_DURATION.get(language),
+                                                )
+                                                .color(SETTINGS_TEXT_MUTED)
+                                                .show(ui);
+                                                ui.add_space(6.0);
+                                                let durations = AwayDuration::ALL.map(|duration| {
+                                                    AwayDurationChoice(duration, language)
+                                                });
+                                                let mut selected = AwayDurationChoice(
+                                                    self.away_dialog.duration,
+                                                    language,
+                                                );
+                                                let select_width = ui.available_width();
+                                                let response =
+                                                    SelectValue::new(&mut selected, &durations)
+                                                        .width(select_width)
+                                                        .show(ui);
+                                                if response.changed()
+                                                    || selected.0 != self.away_dialog.duration
+                                                {
+                                                    self.away_dialog.duration = selected.0;
+                                                }
+                                            });
+                                        });
+
+                                        ui.add_space(18.0);
+                                        let preview = active_session.as_ref().map_or_else(
+                                            || {
+                                                render_away_preview(
+                                                    self.away_dialog.reason,
+                                                    &self.away_dialog.custom_message,
+                                                    self.away_dialog.duration,
+                                                    language,
+                                                )
+                                            },
+                                            |session| {
+                                                ecliptica_data_analyzer::osc::render_away_message(
+                                                    session,
+                                                    language,
+                                                    Instant::now(),
+                                                )
+                                            },
+                                        );
+
+                                        if self.away_dialog.reason == AwayReason::Custom {
+                                            Typography::small(
+                                                text::AWAY_CUSTOM_MESSAGE.get(language),
+                                            )
+                                            .color(SETTINGS_TEXT_MUTED)
+                                            .show(ui);
+                                            ui.add_space(6.0);
+                                            let editor_width =
+                                                (ui.available_width() - 24.0).max(120.0);
+                                            ui.allocate_ui_with_layout(
+                                                egui::vec2(editor_width, 140.0),
+                                                egui::Layout::top_down(egui::Align::Min),
+                                                |ui| {
+                                                    ui.add_enabled_ui(!is_active, |ui| {
+                                                        Textarea::new(
+                                                            &mut self.away_dialog.custom_message,
+                                                        )
+                                                        .id_salt("away-custom-message")
+                                                        .desired_width(ui.available_width())
+                                                        .min_height(140.0)
+                                                        .max_height(140.0)
+                                                        .show(ui);
+                                                    });
+                                                },
+                                            );
+
+                                            ui.add_space(6.0);
+                                            let custom_missing =
+                                                self.away_dialog.custom_message.trim().is_empty();
+                                            Typography::small(if custom_missing {
+                                                text::AWAY_MESSAGE_REQUIRED.get(language)
+                                            } else {
+                                                text::AWAY_TIME_VARIABLE_HINT.get(language)
+                                            })
+                                            .color(if custom_missing {
+                                                SETTINGS_DANGER
+                                            } else {
+                                                SETTINGS_TEXT_MUTED
+                                            })
+                                            .show(ui);
+
+                                            ui.add_space(14.0);
+                                        }
+
+                                        Typography::new(text::AWAY_MESSAGE.get(language))
+                                            .strong()
+                                            .color(SETTINGS_HEADING)
+                                            .show(ui);
+                                        ui.add_space(8.0);
+                                        let preview_width = ui.available_width();
+                                        egui::Frame::NONE
+                                            .fill(SETTINGS_BG)
+                                            .inner_margin(egui::Margin::same(12))
+                                            .corner_radius(6.0)
+                                            .show(ui, |ui| {
+                                                ui.set_width((preview_width - 24.0).max(1.0));
+                                                preview_text(ui, &preview);
+                                            });
+
+                                        let footer_height = 32.0;
+                                        ui.add_space(
+                                            (ui.available_height() - footer_height).max(16.0),
+                                        );
+                                        ui.horizontal(|ui| {
+                                            ui.allocate_ui_with_layout(
+                                                egui::vec2(
+                                                    (ui.available_width() - 190.0).max(1.0),
+                                                    footer_height,
+                                                ),
+                                                egui::Layout::left_to_right(egui::Align::Center),
+                                                |ui| {
+                                                    if is_active {
+                                                        Badge::new(
+                                                            text::AWAY_MODE_ACTIVE.get(language),
+                                                        )
+                                                        .variant(BadgeVariant::Success)
+                                                        .show(ui);
+                                                    } else if !osc_ready {
+                                                        Typography::small(
+                                                            text::AWAY_OSC_REQUIRED.get(language),
+                                                        )
+                                                        .color(SETTINGS_TEXT_MUTED)
+                                                        .show(ui);
+                                                    }
+                                                },
+                                            );
+
+                                            ui.with_layout(
+                                                egui::Layout::right_to_left(egui::Align::Center),
+                                                |ui| {
+                                                    if is_active {
+                                                        stop_clicked = ShadcnButton::new(
+                                                            text::EXIT_AWAY_MODE.get(language),
+                                                        )
+                                                        .icon(LucideIcon::TimerOff)
+                                                        .variant(ButtonVariant::Destructive)
+                                                        .show(ui)
+                                                        .clicked();
+                                                    } else {
+                                                        let custom_valid = self.away_dialog.reason
+                                                            != AwayReason::Custom
+                                                            || !self
+                                                                .away_dialog
+                                                                .custom_message
+                                                                .trim()
+                                                                .is_empty();
+                                                        start_clicked = ShadcnButton::new(
+                                                            text::ENTER_AWAY_MODE.get(language),
+                                                        )
+                                                        .icon(LucideIcon::Timer)
+                                                        .enabled(osc_ready && custom_valid)
+                                                        .show(ui)
+                                                        .clicked();
+                                                    }
+                                                },
+                                            );
+                                        });
+                                    },
+                                );
+                            });
+                    },
+                );
+            });
+
+        if stop_clicked {
+            self.runtime.shared.stop_away_mode();
+        }
+        if start_clicked
+            && (self.away_dialog.reason != AwayReason::Custom || self.persist_away_custom_message())
+        {
+            self.runtime.shared.start_away_mode(
+                self.away_dialog.reason,
+                self.away_dialog.custom_message.clone(),
+                self.away_dialog.duration.duration(),
+            );
+        }
+
+        if was_open && !open {
+            if is_active {
+                self.away_dialog.open = true;
+                self.away_dialog.exit_confirm_open = true;
+            } else {
+                self.persist_away_custom_message();
+                self.away_dialog.open = false;
+            }
+        } else {
+            self.away_dialog.open = open;
+        }
+
+        match AlertDialog::new(
+            text::EXIT_AWAY_MODE_TITLE.get(language),
+            text::EXIT_AWAY_MODE_DESCRIPTION.get(language),
+        )
+        .close_label(text::CLOSE_DIALOG.get(language))
+        .cancel_text(text::KEEP_AWAY_MODE.get(language))
+        .action_text(text::CONFIRM_EXIT_AWAY_MODE.get(language))
+        .destructive()
+        .close_on_escape(false)
+        .show(ctx, &mut self.away_dialog.exit_confirm_open)
+        {
+            AlertDialogResult::Confirmed => {
+                self.runtime.shared.stop_away_mode();
+                self.away_dialog.open = false;
+            }
+            AlertDialogResult::Cancelled => {
+                self.away_dialog.open = true;
+            }
+            AlertDialogResult::Open => {}
+        }
+    }
+
     fn message_page(&mut self, ui: &mut egui::Ui, snapshot: &GameSnapshot) {
         let language = self.draft.language;
         let (
@@ -1204,11 +1610,27 @@ impl AnalyzerApp {
                 report_template_draft_changed(&self.draft, &applied.value),
             )
         };
-        page_heading(
-            ui,
-            text::OSC_MESSAGES.get(self.draft.language),
-            text::OSC_MESSAGES_SUBTITLE.get(self.draft.language),
-        );
+        ui.horizontal(|ui| {
+            ui.vertical(|ui| {
+                Typography::h3(text::OSC_MESSAGES.get(language))
+                    .color(SETTINGS_HEADING)
+                    .show(ui);
+                Typography::muted(text::OSC_MESSAGES_SUBTITLE.get(language))
+                    .color(SETTINGS_TEXT_MUTED)
+                    .show(ui);
+            });
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ShadcnButton::new(text::OPEN_AWAY_MODE.get(language))
+                    .icon(LucideIcon::DoorOpen)
+                    .variant(ButtonVariant::Outline)
+                    .show(ui)
+                    .clicked()
+                {
+                    self.open_away_dialog();
+                }
+            });
+        });
+        ui.add_space(20.0);
         section_card(
             ui,
             text::SEND_SETTINGS.get(self.draft.language),
@@ -2044,13 +2466,32 @@ impl AnalyzerApp {
     }
 }
 
+fn render_away_preview(
+    reason: AwayReason,
+    custom_message: &str,
+    duration: AwayDuration,
+    language: Language,
+) -> String {
+    let template = match reason {
+        AwayReason::Takeout => text::AWAY_TAKEOUT_MESSAGE.get(language),
+        AwayReason::Restroom => text::AWAY_RESTROOM_MESSAGE.get(language),
+        AwayReason::Custom => custom_message,
+    };
+    let seconds = duration.duration().as_secs();
+    template.replace(
+        "{{time}}",
+        &format!("{:02}:{:02}", seconds / 60, seconds % 60),
+    )
+}
+
 fn config_with_language(committed: &AppConfig, language: Language) -> AppConfig {
     committed.with_localized_defaults(language)
 }
 
 fn apply_language_managed_fields(target: &mut AppConfig, localized: &AppConfig) -> bool {
     let templates_changed = target.message_template != localized.message_template
-        || target.round_report_template != localized.round_report_template;
+        || target.round_report_template != localized.round_report_template
+        || target.away_custom_message != localized.away_custom_message;
     target.language = localized.language;
     target.message_template = localized.message_template.clone();
     target.message_template_presets = localized.message_template_presets.clone();
@@ -2059,6 +2500,7 @@ fn apply_language_managed_fields(target: &mut AppConfig, localized: &AppConfig) 
     target.round_report_template_presets = localized.round_report_template_presets.clone();
     target.round_report_template_preset_names =
         localized.round_report_template_preset_names.clone();
+    target.away_custom_message = localized.away_custom_message.clone();
     templates_changed
 }
 

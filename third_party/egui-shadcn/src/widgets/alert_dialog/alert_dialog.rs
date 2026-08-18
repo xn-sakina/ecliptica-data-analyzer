@@ -8,6 +8,8 @@ pub struct AlertDialog {
     pub(crate) cancel_text: String,
     pub(crate) action_text: String,
     pub(crate) destructive: bool,
+    pub(crate) close_on_escape: bool,
+    pub(crate) close_label: String,
 }
 
 impl AlertDialog {
@@ -18,6 +20,8 @@ impl AlertDialog {
             cancel_text: "Cancel".to_owned(),
             action_text: "Continue".to_owned(),
             destructive: false,
+            close_on_escape: true,
+            close_label: "Close dialog".to_owned(),
         }
     }
 
@@ -33,6 +37,16 @@ impl AlertDialog {
 
     pub fn destructive(mut self) -> Self {
         self.destructive = true;
+        self
+    }
+
+    pub fn close_on_escape(mut self, close: bool) -> Self {
+        self.close_on_escape = close;
+        self
+    }
+
+    pub fn close_label(mut self, label: impl Into<String>) -> Self {
+        self.close_label = label.into();
         self
     }
 }

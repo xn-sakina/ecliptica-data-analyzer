@@ -4,6 +4,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
     thread::JoinHandle,
+    time::{Duration, Instant},
 };
 
 use crossbeam_channel::{Receiver, Sender, bounded};
@@ -21,6 +22,29 @@ use crate::{
 pub struct LiveConfig {
     pub value: AppConfig,
     pub revision: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AwayReason {
+    Takeout,
+    Restroom,
+    Custom,
+}
+
+#[derive(Debug, Clone)]
+pub struct AwaySession {
+    pub id: u64,
+    pub reason: AwayReason,
+    pub custom_message: String,
+    pub custom_uses_localized_default: bool,
+    pub started_at: Instant,
+    pub duration: Duration,
+}
+
+#[derive(Debug, Default)]
+struct AwayModeState {
+    next_id: u64,
+    session: Option<AwaySession>,
 }
 
 #[derive(Debug, Clone)]
@@ -95,6 +119,7 @@ pub struct SharedState {
     pub config: Arc<RwLock<LiveConfig>>,
     pub shutdown: Arc<AtomicBool>,
     pub events: Sender<SystemEvent>,
+    away_mode: Arc<RwLock<AwayModeState>>,
     wasd_metric: Arc<RwLock<WasdMetricState>>,
     pub(crate) heart_rate: heart_rate::SharedHeartRate,
 }
@@ -157,6 +182,29 @@ impl SharedState {
         self.heart_rate
             .apply_to(&mut self.snapshot.write(), enabled);
     }
+
+    pub fn start_away_mode(&self, reason: AwayReason, custom_message: String, duration: Duration) {
+        let mut away = self.away_mode.write();
+        away.next_id = away.next_id.wrapping_add(1);
+        away.session = Some(AwaySession {
+            id: away.next_id,
+            reason,
+            custom_uses_localized_default: crate::config::is_default_away_custom_message(
+                &custom_message,
+            ),
+            custom_message,
+            started_at: Instant::now(),
+            duration,
+        });
+    }
+
+    pub fn stop_away_mode(&self) {
+        self.away_mode.write().session = None;
+    }
+
+    pub fn away_session(&self) -> Option<AwaySession> {
+        self.away_mode.read().session.clone()
+    }
 }
 
 pub(crate) fn wasd_window_round(snapshot: &GameSnapshot) -> Option<u64> {
@@ -184,6 +232,7 @@ impl Runtime {
             })),
             shutdown: Arc::new(AtomicBool::new(false)),
             events: event_tx,
+            away_mode: Arc::new(RwLock::new(AwayModeState::default())),
             wasd_metric: Arc::new(RwLock::new(WasdMetricState::default())),
             heart_rate: heart_rate::SharedHeartRate::default(),
         };

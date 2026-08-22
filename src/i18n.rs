@@ -247,25 +247,11 @@ pub mod text {
     );
     pair!(DAMAGE_TAKEN, "Damage taken", "承伤");
     pair!(LONGEST_STANDSTILL, "Longest standstill", "最长站桩");
-    pair!(DATA_SOURCE, "Data source", "数据源");
+    pair!(GAME_LOG, "Game log", "游戏日志");
     pair!(
-        DATA_SOURCE_DESCRIPTION,
-        "Current combat context and log source",
-        "当前战斗上下文与日志来源"
-    );
-    pair!(CURRENT_BOSS, "Current Boss", "当前 Boss");
-    pair!(NO_CURRENT_BOSS, "No current Boss", "当前无 Boss");
-    pair!(CURRENT_PHASE, "Current phase", "当前阶段");
-    pair!(SYNC_STATUS, "Round metrics", "回合指标");
-    pair!(
-        ROUND_DATA_UNAVAILABLE,
-        "Waiting for a round boundary or personal combat signal",
-        "等待回合边界或个人战斗信号"
-    );
-    pair!(
-        ROUND_DATA_AVAILABLE,
-        "Current round data available",
-        "本回合数据可用"
+        GAME_LOG_DESCRIPTION,
+        "The app reads combat data from this file",
+        "应用从这个文件读取战斗数据"
     );
     pair!(SOUND_SOFT, "Soft", "柔和");
     pair!(SOUND_CRISP, "Crisp", "清脆");
@@ -592,23 +578,23 @@ pub mod text {
     );
     pair!(CHART_CURRENT_ROUND, "Current round", "当前回合");
     pair!(CHART_FINISHED_ROUND, "Completed round", "刚结束的回合");
-    pair!(DPS_TREND, "Smoothed trend", "平滑趋势");
+    pair!(DPS_AVERAGE, "Average", "平均");
     pair!(DPS_PER_SECOND, "Per-second DPS", "秒级 DPS");
     pair!(DPS_ROUND_PEAK, "Highest DPS", "最高 DPS");
     pair!(
         DPS_CHART_TOOLTIP,
-        "{time}\nPer-second DPS: {raw}\nSmoothed trend: {trend}",
-        "{time}\n秒级 DPS：{raw}\n平滑趋势：{trend}"
+        "{time}\nPer-second DPS: {raw}\nAverage: {trend}",
+        "{time}\n秒级 DPS：{raw}\n平均：{trend}"
     );
     pair!(
         DPS_CHART_PEAK_TOOLTIP,
-        "{time}\nHighest DPS: {raw}\nSmoothed trend: {trend}",
-        "{time}\n最高 DPS：{raw}\n平滑趋势：{trend}"
+        "{time}\nHighest DPS: {raw}\nAverage: {trend}",
+        "{time}\n最高 DPS：{raw}\n平均：{trend}"
     );
     pair!(
         DPS_CHART_ACCESSIBILITY,
-        "{round}. Interactive DPS chart. Translucent bars show per-second DPS and the solid line shows the smoothed trend. Highest DPS: {peak}, at {time}. Hover for exact values; drag or zoom to inspect a range.",
-        "{round}。交互式 DPS 图表。半透明柱显示秒级 DPS，实线显示平滑趋势。最高 DPS 为 {peak}，出现在{time}。悬停可查看精确数值，拖动或缩放可检查时间区间。"
+        "{round}. Interactive DPS chart. Translucent bars show per-second DPS and the solid line shows the average. Highest DPS: {peak}, at {time}. Hover for exact values; drag or zoom to inspect a range.",
+        "{round}。交互式 DPS 图表。半透明柱显示秒级 DPS，实线显示平均值。最高 DPS 为 {peak}，出现在{time}。悬停可查看精确数值，拖动或缩放可检查时间区间。"
     );
     pair!(SESSION_TIME, "Session time", "本局时间");
     pair!(

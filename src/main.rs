@@ -1171,10 +1171,14 @@ impl AnalyzerApp {
             );
         });
         ui.add_space(14.0);
-        section_card(
+        let chart_round_context = dps_chart_round_context(snapshot, language);
+        section_card_with_status(
             ui,
             text::SESSION_DPS_CHART.get(language),
             text::SESSION_DPS_CHART_DESCRIPTION.get(language),
+            chart_round_context
+                .as_ref()
+                .map(|(_, title)| title.as_str()),
             |ui| {
                 dps_history_chart(ui, snapshot, &mut self.dps_chart_view, language);
             },
@@ -1238,31 +1242,9 @@ impl AnalyzerApp {
         }
         section_card(
             ui,
-            text::DATA_SOURCE.get(language),
-            text::DATA_SOURCE_DESCRIPTION.get(language),
+            text::GAME_LOG.get(language),
+            text::GAME_LOG_DESCRIPTION.get(language),
             |ui| {
-                detail_row(
-                    ui,
-                    text::CURRENT_BOSS.get(language),
-                    snapshot
-                        .boss
-                        .as_deref()
-                        .unwrap_or(text::NO_CURRENT_BOSS.get(language)),
-                );
-                detail_row(
-                    ui,
-                    text::CURRENT_PHASE.get(language),
-                    phase_display_label(snapshot.phase, language),
-                );
-                detail_row(
-                    ui,
-                    text::SYNC_STATUS.get(language),
-                    if snapshot.round_metrics_active {
-                        text::ROUND_DATA_AVAILABLE.get(language)
-                    } else {
-                        text::ROUND_DATA_UNAVAILABLE.get(language)
-                    },
-                );
                 log_source_row(ui, snapshot.source.as_deref(), &self.runtime, language);
             },
         );
@@ -2652,8 +2634,38 @@ fn settings_page_title(page: SettingsPage, language: Language) -> &'static str {
     }
 }
 
-fn phase_display_label(phase: RoundPhase, language: Language) -> &'static str {
-    phase.display_label(language)
+fn dps_chart_round_context(snapshot: &GameSnapshot, language: Language) -> Option<(u64, String)> {
+    let active_epoch = (snapshot.phase == RoundPhase::Combat)
+        .then_some(snapshot.combat_round_epoch)
+        .filter(|epoch| *epoch > 0);
+    let latest_epoch = snapshot
+        .dps_history
+        .iter()
+        .rev()
+        .find_map(|point| (point.combat_round_epoch > 0).then_some(point.combat_round_epoch));
+    let selected_epoch = active_epoch.or(latest_epoch)?;
+    let estimated_step = snapshot
+        .dps_history
+        .iter()
+        .rev()
+        .filter(|point| point.combat_round_epoch == selected_epoch)
+        .find_map(|point| point.estimated_step)
+        .or_else(|| snapshot.has_step_estimate.then_some(snapshot.current_step));
+    let title = match (estimated_step, active_epoch == Some(selected_epoch)) {
+        (Some(step), true) => format_pattern(
+            text::CHART_CURRENT_ESTIMATED_ROUND,
+            language,
+            &[("step", step.to_string())],
+        ),
+        (Some(step), false) => format_pattern(
+            text::CHART_FINISHED_ESTIMATED_ROUND,
+            language,
+            &[("step", step.to_string())],
+        ),
+        (None, true) => text::CHART_CURRENT_ROUND.get(language).to_owned(),
+        (None, false) => text::CHART_FINISHED_ROUND.get(language).to_owned(),
+    };
+    Some((selected_epoch, title))
 }
 
 fn dps_history_chart(
@@ -2680,20 +2692,7 @@ fn dps_history_chart(
         return;
     }
 
-    let active_epoch = (snapshot.phase == RoundPhase::Combat)
-        .then_some(snapshot.combat_round_epoch)
-        .filter(|epoch| *epoch > 0);
-    let latest_epoch = snapshot
-        .dps_history
-        .iter()
-        .rev()
-        .find_map(|point| (point.combat_round_epoch > 0).then_some(point.combat_round_epoch));
-    let target_epoch = active_epoch.or(latest_epoch);
-    if target_epoch != view.selected_epoch {
-        view.selected_epoch = target_epoch;
-    }
-
-    let Some(selected_epoch) = target_epoch else {
+    let Some((selected_epoch, round_title)) = dps_chart_round_context(snapshot, language) else {
         Empty::show(ui, |ui| {
             Typography::new(text::CHART_WAITING_ROUND.get(language))
                 .strong()
@@ -2705,6 +2704,9 @@ fn dps_history_chart(
         });
         return;
     };
+    if Some(selected_epoch) != view.selected_epoch {
+        view.selected_epoch = Some(selected_epoch);
+    }
 
     let selected_points = snapshot
         .dps_history
@@ -2726,24 +2728,6 @@ fn dps_history_chart(
         .rev()
         .find_map(|point| point.estimated_step)
         .or_else(|| snapshot.has_step_estimate.then_some(snapshot.current_step));
-    let round_title = match (estimated_step, active_epoch == Some(selected_epoch)) {
-        (Some(step), true) => format_pattern(
-            text::CHART_CURRENT_ESTIMATED_ROUND,
-            language,
-            &[("step", step.to_string())],
-        ),
-        (Some(step), false) => format_pattern(
-            text::CHART_FINISHED_ESTIMATED_ROUND,
-            language,
-            &[("step", step.to_string())],
-        ),
-        (None, true) => text::CHART_CURRENT_ROUND.get(language).to_owned(),
-        (None, false) => text::CHART_FINISHED_ROUND.get(language).to_owned(),
-    };
-    Typography::new(round_title.clone())
-        .strong()
-        .color(SETTINGS_ACCENT)
-        .show(ui);
 
     let raw = selected_points
         .iter()
@@ -2753,8 +2737,6 @@ fn dps_history_chart(
     let reduced_trend = downsample_dps_trend(&trend, DPS_CHART_MAX_TREND_POINTS);
     let smooth_trend = smooth_chart_points(&reduced_trend, 4);
     let raw_peak = chart_peak(&raw).unwrap_or(raw[0]);
-    ui.add_space(6.0);
-
     // Bars need a meaningful zero baseline. The raw peak remains part of the
     // auto-fit even though the foreground line intentionally shows a trend.
     let mut view_points = raw.clone();
@@ -2782,14 +2764,14 @@ fn dps_history_chart(
     )
     .allow_hover(false);
     let glow = Line::new(
-        text::DPS_TREND.get(language),
+        text::DPS_AVERAGE.get(language),
         PlotPoints::new(smooth_trend.clone()),
     )
     .color(egui::Color32::from_rgba_unmultiplied(151, 122, 255, 70))
     .width(6.0)
     .allow_hover(false);
     let line = Line::new(
-        text::DPS_TREND.get(language),
+        text::DPS_AVERAGE.get(language),
         PlotPoints::new(smooth_trend.clone()),
     )
     .color(SETTINGS_CHART_LINE)
@@ -4044,14 +4026,35 @@ fn section_card(
     subtitle: &str,
     content: impl FnOnce(&mut egui::Ui),
 ) {
+    section_card_with_status(ui, title, subtitle, None, content);
+}
+
+fn section_card_with_status(
+    ui: &mut egui::Ui,
+    title: &str,
+    subtitle: &str,
+    status: Option<&str>,
+    content: impl FnOnce(&mut egui::Ui),
+) {
     let width = ui.available_width();
     egui_shadcn::Card::new().show(ui, |ui| {
         ui.set_min_width((width - 34.0).max(120.0));
-        Typography::new(title)
-            .font_size(16.0)
-            .strong()
-            .color(SETTINGS_HEADING)
-            .show(ui);
+        ui.allocate_ui_with_layout(
+            egui::vec2(ui.available_width(), 24.0),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                Typography::new(title)
+                    .font_size(16.0)
+                    .strong()
+                    .color(SETTINGS_HEADING)
+                    .show(ui);
+                if let Some(status) = status {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        Badge::new(status).variant(BadgeVariant::Secondary).show(ui);
+                    });
+                }
+            },
+        );
         Typography::muted(subtitle)
             .color(SETTINGS_TEXT_MUTED)
             .show(ui);
@@ -4120,12 +4123,6 @@ fn report_stat_column_count(available_width: f32, max_columns: usize) -> usize {
     const COLUMN_GAP: f32 = 10.0;
     (((available_width + COLUMN_GAP) / (MIN_STAT_WIDTH + COLUMN_GAP)).floor() as usize)
         .clamp(1, max_columns.max(1))
-}
-
-fn detail_row(ui: &mut egui::Ui, label: &str, value: &str) {
-    PropertyRow::new(label).show(ui, |ui| {
-        Typography::new(value).wrap().show(ui);
-    });
 }
 
 fn log_source_row(ui: &mut egui::Ui, source: Option<&str>, runtime: &Runtime, language: Language) {
@@ -5336,6 +5333,62 @@ mod tests {
             reduced.iter().map(|point| point[1]).fold(0.0, f64::max),
             200.0
         );
+    }
+
+    #[test]
+    fn chart_round_context_moves_between_current_and_completed_without_changing_identity() {
+        let mut snapshot = GameSnapshot {
+            phase: RoundPhase::Combat,
+            combat_round_epoch: 4,
+            dps_history: vec![
+                DpsHistoryPoint {
+                    elapsed_seconds: 10,
+                    dps: 100,
+                    combat_round_epoch: 3,
+                    estimated_step: Some(8),
+                },
+                DpsHistoryPoint {
+                    elapsed_seconds: 20,
+                    dps: 200,
+                    combat_round_epoch: 4,
+                    estimated_step: Some(9),
+                },
+            ],
+            ..GameSnapshot::default()
+        };
+
+        assert_eq!(
+            dps_chart_round_context(&snapshot, Language::Chinese),
+            Some((4, "当前预估第 9 回合".to_owned()))
+        );
+
+        snapshot.phase = RoundPhase::Lobby;
+        assert_eq!(
+            dps_chart_round_context(&snapshot, Language::Chinese),
+            Some((4, "刚结束的预估第 9 回合".to_owned()))
+        );
+    }
+
+    #[test]
+    fn chart_round_badge_does_not_add_a_vertical_layout_row() {
+        egui::__run_test_ui(|ui| {
+            ui.set_width(640.0);
+            let before_plain = ui.cursor().top();
+            section_card_with_status(ui, "DPS chart", "Description", None, |_| {});
+            let plain_height = ui.cursor().top() - before_plain;
+
+            let before_status = ui.cursor().top();
+            section_card_with_status(
+                ui,
+                "DPS chart",
+                "Description",
+                Some("Completed round"),
+                |_| {},
+            );
+            let status_height = ui.cursor().top() - before_status;
+
+            assert!((plain_height - status_height).abs() <= 0.5);
+        });
     }
 
     #[test]

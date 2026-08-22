@@ -15,6 +15,26 @@ system-event sinks. It uses rust-analyzer's syntax tree when that command is
 available and otherwise uses the bundled balanced-token fallback. Brand and
 protocol notation are explicitly allowlisted; game-log parsing is out of scope.
 
+## UI color semantics
+
+Color changes must preserve both forms of consistency:
+
+1. **The same data keeps the same color everywhere.** A metric shown on the
+   dashboard, Overlay, and round report must use the same shared `METRIC_*`
+   color. Do not assign a new local color for a different screen. The DPS chart
+   is an intentional exception because its colors distinguish graphical series,
+   not dashboard metrics.
+2. **A color must match the meaning of the data.** Red is reserved for damage,
+   danger, and errors; green indicates a positive or active state; yellow marks
+   an established highlight or warning; blue, cyan, and purple cover neutral
+   informational data. Different meanings shown together must remain visibly
+   distinct. For example, standstill duration must never look like damage taken.
+
+Template-variable chips use category colors because their purpose is to reveal
+groups rather than reproduce the dashboard. Every category gets a distinct hue;
+an associated `has_*` flag uses a darker step of that same hue. Color is always
+supporting information: labels and values must remain understandable without it.
+
 On macOS, the checked-in sample under `data/` is used for parser/UI development. Override it at runtime with:
 
 ```bash

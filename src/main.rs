@@ -111,7 +111,7 @@ const METRIC_BOSS_LOCK: egui::Color32 = egui::Color32::from_rgb(83, 211, 225);
 const METRIC_DURATION: egui::Color32 = SETTINGS_INFO;
 const METRIC_TOTAL_DAMAGE: egui::Color32 = SETTINGS_ACCENT;
 const METRIC_DPS_GROWTH: egui::Color32 = SETTINGS_SUCCESS;
-const METRIC_STANDSTILL: egui::Color32 = SETTINGS_WARNING;
+const METRIC_STANDSTILL: egui::Color32 = egui::Color32::from_rgb(154, 167, 216);
 const METRIC_HEART_RATE: egui::Color32 = SETTINGS_DANGER;
 const VARIABLE_HIGHEST_DPS: egui::Color32 = egui::Color32::from_rgb(143, 156, 255);
 const VARIABLE_BEST_AVERAGE_DPS: egui::Color32 = egui::Color32::from_rgb(218, 148, 255);
@@ -120,7 +120,7 @@ const VARIABLE_ALERT: egui::Color32 = egui::Color32::from_rgb(240, 140, 203);
 const VARIABLE_GAME_PROGRESS: egui::Color32 = egui::Color32::from_rgb(96, 210, 190);
 const VARIABLE_DURATION: egui::Color32 = egui::Color32::from_rgb(214, 207, 225);
 const VARIABLE_DPS_GROWTH: egui::Color32 = egui::Color32::from_rgb(141, 221, 248);
-const VARIABLE_STANDSTILL: egui::Color32 = egui::Color32::from_rgb(255, 153, 184);
+const VARIABLE_STANDSTILL: egui::Color32 = METRIC_STANDSTILL;
 const VARIABLE_ROUND_DAMAGE: egui::Color32 = egui::Color32::from_rgb(232, 133, 202);
 const VARIABLE_HEART_RATE: egui::Color32 = METRIC_HEART_RATE;
 
@@ -4881,9 +4881,9 @@ fn lock_card(
     egui::Response,
 ) {
     let color = if locked_self {
-        METRIC_DAMAGE_TAKEN
+        SETTINGS_DANGER
     } else {
-        METRIC_BOSS_LOCK
+        SETTINGS_WARNING
     };
     let width = ui.available_width();
     let frame = egui::Frame::new()
@@ -6525,9 +6525,11 @@ mod tests {
     }
 
     #[test]
-    fn familiar_round_report_highlights_stay_yellow() {
+    fn round_report_best_dps_stays_yellow_and_standstill_is_distinct_from_damage() {
         assert_eq!(METRIC_BEST_DPS, SETTINGS_WARNING);
-        assert_eq!(METRIC_STANDSTILL, SETTINGS_WARNING);
+        assert_ne!(METRIC_STANDSTILL, SETTINGS_WARNING);
+        assert_ne!(METRIC_STANDSTILL, METRIC_DAMAGE_TAKEN);
+        assert_eq!(METRIC_STANDSTILL, VARIABLE_STANDSTILL);
     }
 
     #[test]

@@ -23,7 +23,10 @@ use ecliptica_data_analyzer::{
     runtime::{AwayReason, EventLevel, EventPresentation, Runtime, SystemEvent, ToastLevel},
 };
 use eframe::egui;
-use egui_plot::{Bar, BarChart, HLine, Line, MarkerShape, Plot, PlotPoints, Points, VLine};
+use egui_plot::{
+    HLine, Line, MarkerShape, Plot, PlotBounds, PlotGeometry, PlotItem, PlotItemBase, PlotPoint,
+    PlotPoints, PlotTransform, Points, VLine,
+};
 use egui_shadcn::{
     Alert, AlertDialog, AlertDialogResult, AlertVariant, Badge, BadgeVariant,
     Button as ShadcnButton, ButtonVariant, ComponentSize, Dialog, Empty, Flex, Input, Item,
@@ -69,6 +72,8 @@ const SETTINGS_CHART_BG: egui::Color32 = egui::Color32::from_rgb(29, 23, 43);
 const SETTINGS_CHART_AXIS: egui::Color32 = egui::Color32::from_rgb(229, 222, 248);
 const SETTINGS_CHART_CURSOR: egui::Color32 = egui::Color32::from_rgb(221, 207, 255);
 const SETTINGS_CHART_LINE: egui::Color32 = egui::Color32::from_rgb(207, 190, 255);
+const SETTINGS_CHART_UPPER: egui::Color32 = egui::Color32::from_rgb(183, 151, 255);
+const SETTINGS_CHART_LOWER: egui::Color32 = egui::Color32::from_rgb(105, 190, 255);
 const DPS_CHART_AUTO_FIT_IDLE: Duration = Duration::from_secs(5);
 const DPS_CHART_AUTO_FIT_INTERVAL: Duration = Duration::from_secs(5);
 const DPS_CHART_RECENT_WINDOW_SECONDS: f64 = 5.0 * 60.0;
@@ -78,6 +83,8 @@ const DPS_CHART_X_AXIS_TITLE_GAP: f32 = 4.0;
 const DPS_CHART_X_MARGIN_FRACTION: f64 = 0.025;
 const DPS_CHART_Y_MARGIN_FRACTION: f64 = 0.10;
 const DPS_CHART_MIN_Y_SPAN: f64 = 10.0;
+const DPS_CHART_CLOUD_BUCKET_SECONDS: f64 = 10.0;
+const DPS_CHART_CURVE_SUBDIVISIONS: usize = 12;
 const TEMPLATE_PRESET_TAB_ROW_HEIGHT: f32 = 28.0;
 const TEMPLATE_PRESET_TAB_LABEL_MAX_CHARS: usize = 13;
 const ALERT_SOUND_LABEL_WIDTH_ENGLISH: f32 = 200.0;
@@ -174,7 +181,7 @@ fn main() -> anyhow::Result<()> {
             // Request alpha here so transparent deferred viewports work on macOS;
             // the settings window still paints an opaque SETTINGS_BG panel.
             .with_transparent(true)
-            .with_inner_size([940.0, 720.0])
+            .with_inner_size([940.0, 692.0])
             .with_min_inner_size([760.0, 600.0]),
         centered: true,
         renderer: eframe::Renderer::Glow,
@@ -2645,6 +2652,171 @@ fn dps_chart_round_context(snapshot: &GameSnapshot, language: Language) -> Optio
     Some((selected_epoch, title))
 }
 
+struct DpsCloudGradient {
+    base: PlotItemBase,
+    upper: Vec<PlotPoint>,
+    middle: Vec<PlotPoint>,
+    lower: Vec<PlotPoint>,
+}
+
+impl DpsCloudGradient {
+    fn new(upper: &[[f64; 2]], middle: &[[f64; 2]], lower: &[[f64; 2]]) -> Self {
+        Self {
+            base: PlotItemBase::new("dps-cloud-gradient".to_owned()),
+            upper: plot_points(upper),
+            middle: plot_points(middle),
+            lower: plot_points(lower),
+        }
+    }
+}
+
+fn plot_points(points: &[[f64; 2]]) -> Vec<PlotPoint> {
+    points
+        .iter()
+        .map(|point| PlotPoint::new(point[0], point[1]))
+        .collect()
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DpsCloudTrack {
+    Upper,
+    Middle,
+    Lower,
+}
+
+impl DpsCloudTrack {
+    fn color(self) -> egui::Color32 {
+        match self {
+            Self::Upper => SETTINGS_CHART_UPPER,
+            Self::Middle => SETTINGS_CHART_LINE,
+            Self::Lower => SETTINGS_CHART_LOWER,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct DpsCloudHover {
+    track: DpsCloudTrack,
+    point: [f64; 2],
+}
+
+fn nearest_dps_cloud_track(
+    pointer: PlotPoint,
+    upper: &[[f64; 2]],
+    middle: &[[f64; 2]],
+    lower: &[[f64; 2]],
+) -> Option<DpsCloudHover> {
+    let candidates = [
+        DpsCloudHover {
+            track: DpsCloudTrack::Middle,
+            point: chart_point_at_x_clamped(middle, pointer.x)?,
+        },
+        DpsCloudHover {
+            track: DpsCloudTrack::Upper,
+            point: chart_point_at_x_clamped(upper, pointer.x)?,
+        },
+        DpsCloudHover {
+            track: DpsCloudTrack::Lower,
+            point: chart_point_at_x_clamped(lower, pointer.x)?,
+        },
+    ];
+    candidates.into_iter().min_by(|left, right| {
+        (left.point[1] - pointer.y)
+            .abs()
+            .total_cmp(&(right.point[1] - pointer.y).abs())
+    })
+}
+
+impl PlotItem for DpsCloudGradient {
+    fn shapes(&self, _ui: &egui::Ui, transform: &PlotTransform, shapes: &mut Vec<egui::Shape>) {
+        if self.upper.len() < 2
+            || self.upper.len() != self.middle.len()
+            || self.upper.len() != self.lower.len()
+        {
+            return;
+        }
+
+        let upper_edge_color = egui::Color32::from_rgba_unmultiplied(
+            SETTINGS_CHART_UPPER.r(),
+            SETTINGS_CHART_UPPER.g(),
+            SETTINGS_CHART_UPPER.b(),
+            10,
+        );
+        let upper_center_color = egui::Color32::from_rgba_unmultiplied(
+            SETTINGS_CHART_UPPER.r(),
+            SETTINGS_CHART_UPPER.g(),
+            SETTINGS_CHART_UPPER.b(),
+            46,
+        );
+        let lower_center_color = egui::Color32::from_rgba_unmultiplied(
+            SETTINGS_CHART_LOWER.r(),
+            SETTINGS_CHART_LOWER.g(),
+            SETTINGS_CHART_LOWER.b(),
+            38,
+        );
+        let lower_edge_color = egui::Color32::from_rgba_unmultiplied(
+            SETTINGS_CHART_LOWER.r(),
+            SETTINGS_CHART_LOWER.g(),
+            SETTINGS_CHART_LOWER.b(),
+            8,
+        );
+        let mut mesh = egui::Mesh::default();
+        mesh.reserve_triangles((self.upper.len() - 1) * 4);
+        mesh.reserve_vertices((self.upper.len() - 1) * 8);
+
+        for index in 0..self.upper.len() - 1 {
+            let left_upper = transform.position_from_point(&self.upper[index]);
+            let right_upper = transform.position_from_point(&self.upper[index + 1]);
+            let left_middle = transform.position_from_point(&self.middle[index]);
+            let right_middle = transform.position_from_point(&self.middle[index + 1]);
+            let left_lower = transform.position_from_point(&self.lower[index]);
+            let right_lower = transform.position_from_point(&self.lower[index + 1]);
+            let vertex = mesh.vertices.len() as u32;
+
+            mesh.colored_vertex(left_upper, upper_edge_color);
+            mesh.colored_vertex(right_upper, upper_edge_color);
+            mesh.colored_vertex(left_middle, upper_center_color);
+            mesh.colored_vertex(right_middle, upper_center_color);
+            mesh.colored_vertex(left_middle, lower_center_color);
+            mesh.colored_vertex(right_middle, lower_center_color);
+            mesh.colored_vertex(left_lower, lower_edge_color);
+            mesh.colored_vertex(right_lower, lower_edge_color);
+            mesh.add_triangle(vertex, vertex + 2, vertex + 1);
+            mesh.add_triangle(vertex + 1, vertex + 2, vertex + 3);
+            mesh.add_triangle(vertex + 4, vertex + 6, vertex + 5);
+            mesh.add_triangle(vertex + 5, vertex + 6, vertex + 7);
+        }
+
+        shapes.push(egui::Shape::mesh(mesh));
+    }
+
+    fn initialize(&mut self, _x_range: std::ops::RangeInclusive<f64>) {}
+
+    fn color(&self) -> egui::Color32 {
+        SETTINGS_CHART_LINE
+    }
+
+    fn allow_hover(&self) -> bool {
+        false
+    }
+
+    fn geometry(&self) -> PlotGeometry<'_> {
+        PlotGeometry::None
+    }
+
+    fn bounds(&self) -> PlotBounds {
+        PlotBounds::NOTHING
+    }
+
+    fn base(&self) -> &PlotItemBase {
+        &self.base
+    }
+
+    fn base_mut(&mut self) -> &mut PlotItemBase {
+        &mut self.base
+    }
+}
+
 fn dps_history_chart(
     ui: &mut egui::Ui,
     snapshot: &GameSnapshot,
@@ -2704,12 +2876,14 @@ fn dps_history_chart(
         .iter()
         .map(|point| [point.elapsed_seconds as f64, point.dps as f64])
         .collect::<Vec<_>>();
-    let trend = dps_trend_points(&raw);
-    let reduced_trend = downsample_dps_trend(&trend, DPS_CHART_MAX_TREND_POINTS);
-    let smooth_trend = smooth_chart_points(&reduced_trend, 4);
+    let cloud = dps_cloud_tracks(&raw, DPS_CHART_CLOUD_BUCKET_SECONDS);
+    let reduced_cloud = downsample_dps_cloud(&cloud, DPS_CHART_MAX_TREND_POINTS);
+    let smooth_upper = smooth_chart_points(&reduced_cloud.upper, DPS_CHART_CURVE_SUBDIVISIONS);
+    let smooth_middle = smooth_chart_points(&reduced_cloud.middle, DPS_CHART_CURVE_SUBDIVISIONS);
+    let smooth_lower = smooth_chart_points(&reduced_cloud.lower, DPS_CHART_CURVE_SUBDIVISIONS);
     let raw_peak = chart_peak(&raw).unwrap_or(raw[0]);
-    // Bars need a meaningful zero baseline. The raw peak remains part of the
-    // auto-fit even though the foreground line intentionally shows a trend.
+    // Keep zero and the exact per-second peak in the automatic view even
+    // though the foreground representation is a recent high/average/low cloud.
     let mut view_points = raw.clone();
     view_points.push([raw.last().map_or(0.0, |point| point[0]), 0.0]);
     let best_view = chart_best_view_bounds(&view_points);
@@ -2721,29 +2895,30 @@ fn dps_history_chart(
         view.record_user_interaction(now);
     }
     let auto_fit_due = view.should_auto_fit(now);
-    let bars = BarChart::new(
-        text::DPS_PER_SECOND.get(language),
-        raw.iter()
-            .filter(|point| point[1] > 0.0)
-            .map(|point| {
-                Bar::new(point[0], point[1])
-                    .width(0.72)
-                    .fill(SETTINGS_ACCENT.gamma_multiply(0.24))
-                    .stroke(egui::Stroke::new(0.8, SETTINGS_ACCENT.gamma_multiply(0.42)))
-            })
-            .collect(),
+    let upper_line = Line::new(
+        text::DPS_CLOUD_HIGH.get(language),
+        PlotPoints::new(smooth_upper.clone()),
     )
+    .color(SETTINGS_CHART_UPPER.gamma_multiply(0.78))
+    .width(1.4)
+    .allow_hover(false);
+    let lower_line = Line::new(
+        text::DPS_CLOUD_LOW.get(language),
+        PlotPoints::new(smooth_lower.clone()),
+    )
+    .color(SETTINGS_CHART_LOWER.gamma_multiply(0.72))
+    .width(1.2)
     .allow_hover(false);
     let glow = Line::new(
         text::DPS_AVERAGE.get(language),
-        PlotPoints::new(smooth_trend.clone()),
+        PlotPoints::new(smooth_middle.clone()),
     )
     .color(egui::Color32::from_rgba_unmultiplied(151, 122, 255, 70))
     .width(6.0)
     .allow_hover(false);
     let line = Line::new(
         text::DPS_AVERAGE.get(language),
-        PlotPoints::new(smooth_trend.clone()),
+        PlotPoints::new(smooth_middle.clone()),
     )
     .color(SETTINGS_CHART_LINE)
     .width(2.4)
@@ -2827,7 +3002,13 @@ fn dps_history_chart(
                             plot_ui.set_plot_bounds_x(best_view.0.0..=best_view.0.1);
                             plot_ui.set_plot_bounds_y(best_view.1.0..=best_view.1.1);
                         }
-                        plot_ui.bar_chart(bars);
+                        plot_ui.add(DpsCloudGradient::new(
+                            &smooth_upper,
+                            &smooth_middle,
+                            &smooth_lower,
+                        ));
+                        plot_ui.line(upper_line);
+                        plot_ui.line(lower_line);
                         plot_ui.line(glow);
                         plot_ui.line(line);
                         plot_ui.points(
@@ -2848,66 +3029,62 @@ fn dps_history_chart(
                                     .allow_hover(false),
                             );
                         }
-                        if smooth_trend.len() == 1 {
+                        if smooth_middle.len() == 1 {
                             plot_ui.points(
-                                Points::new("", smooth_trend.clone())
+                                Points::new("", smooth_middle.clone())
                                     .color(SETTINGS_CHART_LINE)
                                     .radius(4.5)
                                     .allow_hover(false),
                             );
                         }
+                        let hovered_cloud = if peak_hovered {
+                            Some(DpsCloudHover {
+                                track: DpsCloudTrack::Upper,
+                                point: raw_peak,
+                            })
+                        } else {
+                            plot_ui.pointer_coordinate().and_then(|pointer| {
+                                nearest_dps_cloud_track(
+                                    pointer,
+                                    &smooth_upper,
+                                    &smooth_middle,
+                                    &smooth_lower,
+                                )
+                            })
+                        };
                         if plot_ui.response().hovered() && !plot_ui.response().dragged() {
-                            let hovered_raw_point = if peak_hovered {
-                                Some(raw_peak)
-                            } else {
-                                plot_ui
-                                    .pointer_coordinate()
-                                    .and_then(|pointer| chart_nearest_point_at_x(&raw, pointer.x))
-                            };
-                            if let Some(raw_point) = hovered_raw_point {
-                                let trend_point =
-                                    chart_point_at_x(&trend, raw_point[0]).unwrap_or(raw_point);
+                            if let Some(hovered) = hovered_cloud {
+                                let guide_color = if peak_hovered {
+                                    SETTINGS_WARNING
+                                } else {
+                                    hovered.track.color()
+                                };
                                 plot_ui.vline(
-                                    VLine::new("", raw_point[0])
-                                        .color(SETTINGS_CHART_CURSOR)
+                                    VLine::new("", hovered.point[0])
+                                        .color(guide_color.gamma_multiply(0.58))
                                         .width(1.0)
                                         .allow_hover(false),
                                 );
                                 plot_ui.hline(
-                                    HLine::new("", raw_point[1])
-                                        .color(SETTINGS_CHART_CURSOR)
+                                    HLine::new("", hovered.point[1])
+                                        .color(guide_color.gamma_multiply(0.58))
                                         .width(1.0)
                                         .allow_hover(false),
                                 );
-                                plot_ui.points(
-                                    Points::new("", vec![raw_point])
-                                        .shape(if peak_hovered {
-                                            MarkerShape::Diamond
-                                        } else {
-                                            MarkerShape::Square
-                                        })
-                                        .color(if peak_hovered {
-                                            SETTINGS_WARNING
-                                        } else {
-                                            SETTINGS_ACCENT
-                                        })
-                                        .radius(if peak_hovered { 8.0 } else { 4.0 })
-                                        .allow_hover(false),
-                                );
-                                plot_ui.points(
-                                    Points::new("", vec![trend_point])
-                                        .shape(MarkerShape::Circle)
-                                        .color(SETTINGS_CHART_AXIS)
-                                        .radius(3.5)
-                                        .allow_hover(false),
-                                );
+                                if !peak_hovered {
+                                    plot_ui.points(
+                                        Points::new("", vec![hovered.point])
+                                            .shape(MarkerShape::Circle)
+                                            .color(guide_color)
+                                            .radius(5.0)
+                                            .filled(true)
+                                            .allow_hover(false),
+                                    );
+                                }
                             }
                         }
                         (user_interacting, peak_hovered)
                     });
-                if response.inner.1 {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
-                }
                 response.response.widget_info(|| {
                     egui::WidgetInfo::labeled(
                         egui::WidgetType::Image,
@@ -2917,16 +3094,30 @@ fn dps_history_chart(
                 });
                 if response.response.hovered() && !response.response.dragged() {
                     let hovered_sample = response.response.hover_pos().and_then(|pointer_pos| {
-                        let raw_point = if response.inner.1 {
-                            raw_peak
+                        let hovered = if response.inner.1 {
+                            DpsCloudHover {
+                                track: DpsCloudTrack::Upper,
+                                point: raw_peak,
+                            }
                         } else {
                             let pointer = response.transform.value_from_position(pointer_pos);
-                            chart_nearest_point_at_x(&raw, pointer.x)?
+                            nearest_dps_cloud_track(
+                                pointer,
+                                &smooth_upper,
+                                &smooth_middle,
+                                &smooth_lower,
+                            )?
                         };
-                        let trend_point = chart_point_at_x(&trend, raw_point[0])?;
-                        Some((raw_point, trend_point))
+                        let upper_point =
+                            chart_point_at_x_clamped(&smooth_upper, hovered.point[0])?;
+                        let middle_point =
+                            chart_point_at_x_clamped(&smooth_middle, hovered.point[0])?;
+                        let lower_point =
+                            chart_point_at_x_clamped(&smooth_lower, hovered.point[0])?;
+                        Some((hovered, upper_point, middle_point, lower_point))
                     });
-                    if let Some((raw_point, trend_point)) = hovered_sample {
+                    if let Some((hovered, upper_point, middle_point, lower_point)) = hovered_sample
+                    {
                         paint_chart_tooltip(
                             ui,
                             &response.response,
@@ -2938,11 +3129,14 @@ fn dps_history_chart(
                                 },
                                 language,
                                 &[
-                                    ("time", format_chart_elapsed(raw_point[0], language)),
-                                    ("raw", format!("{:.0}", raw_point[1])),
-                                    ("trend", format!("{:.1}", trend_point[1])),
+                                    ("time", format_chart_elapsed(hovered.point[0], language)),
+                                    ("raw", format!("{:.0}", raw_peak[1])),
+                                    ("upper", format!("{:.0}", upper_point[1])),
+                                    ("trend", format!("{:.1}", middle_point[1])),
+                                    ("lower", format!("{:.0}", lower_point[1])),
                                 ],
                             ),
+                            hovered.track,
                         );
                     }
                 }
@@ -2987,7 +3181,12 @@ fn dps_history_chart(
         });
 }
 
-fn paint_chart_tooltip(ui: &egui::Ui, response: &egui::Response, text: String) {
+fn paint_chart_tooltip(
+    ui: &egui::Ui,
+    response: &egui::Response,
+    text: String,
+    highlighted_track: DpsCloudTrack,
+) {
     let Some(pointer) = response.hover_pos() else {
         return;
     };
@@ -2995,7 +3194,12 @@ fn paint_chart_tooltip(ui: &egui::Ui, response: &egui::Response, text: String) {
     let font_id = egui::TextStyle::Body.resolve(ui.style());
     let padding = egui::vec2(9.0, 6.0);
     let tooltip_width = (response.rect.width() - padding.x * 2.0 - 8.0).clamp(40.0, 260.0);
-    let galley = painter.layout(text, font_id, SETTINGS_CHART_AXIS, tooltip_width);
+    let galley = painter.layout_job(chart_tooltip_layout_job(
+        &text,
+        highlighted_track,
+        font_id,
+        tooltip_width,
+    ));
     let size = galley.size() + padding * 2.0;
     let mut position = pointer + egui::vec2(14.0, 14.0);
     let safe_rect = response.rect.shrink(4.0);
@@ -3022,6 +3226,42 @@ fn paint_chart_tooltip(ui: &egui::Ui, response: &egui::Response, text: String) {
     painter.galley(position + padding, galley, SETTINGS_CHART_AXIS);
 }
 
+fn chart_tooltip_layout_job(
+    text: &str,
+    highlighted_track: DpsCloudTrack,
+    font_id: egui::FontId,
+    width: f32,
+) -> egui::text::LayoutJob {
+    let highlighted_line = match highlighted_track {
+        DpsCloudTrack::Upper => 1,
+        DpsCloudTrack::Middle => 2,
+        DpsCloudTrack::Lower => 3,
+    };
+    let mut job = egui::text::LayoutJob::default();
+    job.wrap.max_width = width;
+    for (line_index, line) in text.lines().enumerate() {
+        if line_index > 0 {
+            job.append("\n", 0.0, egui::TextFormat::default());
+        }
+        let highlighted = line_index == highlighted_line;
+        let color = if highlighted {
+            highlighted_track.color()
+        } else {
+            SETTINGS_CHART_AXIS
+        };
+        job.append(
+            line,
+            0.0,
+            egui::TextFormat {
+                font_id: font_id.clone(),
+                color,
+                ..Default::default()
+            },
+        );
+    }
+    job
+}
+
 fn chart_point_at_x(points: &[[f64; 2]], x: f64) -> Option<[f64; 2]> {
     let first = *points.first()?;
     let last = *points.last()?;
@@ -3045,6 +3285,19 @@ fn chart_point_at_x(points: &[[f64; 2]], x: f64) -> Option<[f64; 2]> {
     }
 }
 
+fn chart_point_at_x_clamped(points: &[[f64; 2]], x: f64) -> Option<[f64; 2]> {
+    let first = *points.first()?;
+    let last = *points.last()?;
+    if x <= first[0] {
+        Some(first)
+    } else if x >= last[0] {
+        Some(last)
+    } else {
+        chart_point_at_x(points, x)
+    }
+}
+
+#[cfg(test)]
 fn chart_nearest_point_at_x(points: &[[f64; 2]], x: f64) -> Option<[f64; 2]> {
     let first = *points.first()?;
     let last = *points.last()?;
@@ -3244,22 +3497,57 @@ fn format_chart_y_tick(
     }
 }
 
-fn dps_trend_points(points: &[[f64; 2]]) -> Vec<[f64; 2]> {
-    let mut trend = 0.0;
-    points
-        .iter()
-        .map(|point| {
-            // Restore the original asymmetric smoothing: attacks remain
-            // responsive while releases decay slowly enough to show the
-            // sustained combat shape instead of every zero-to-hit transition.
-            let alpha = if point[1] >= trend { 0.28 } else { 0.12 };
-            trend += (point[1] - trend) * alpha;
-            if trend < 0.05 {
-                trend = 0.0;
-            }
-            [point[0], trend]
-        })
-        .collect()
+#[derive(Clone, Debug, Default, PartialEq)]
+struct DpsCloudTracks {
+    upper: Vec<[f64; 2]>,
+    middle: Vec<[f64; 2]>,
+    lower: Vec<[f64; 2]>,
+}
+
+fn dps_cloud_tracks(points: &[[f64; 2]], bucket_seconds: f64) -> DpsCloudTracks {
+    let mut tracks = DpsCloudTracks {
+        upper: Vec::new(),
+        middle: Vec::new(),
+        lower: Vec::new(),
+    };
+    let bucket_seconds = bucket_seconds.max(f64::EPSILON);
+    let mut start = 0;
+
+    while start < points.len() {
+        let bucket = (points[start][0] / bucket_seconds).floor();
+        let mut end = start + 1;
+        while end < points.len() && (points[end][0] / bucket_seconds).floor() == bucket {
+            end += 1;
+        }
+
+        let samples = &points[start..end];
+        let peak = samples
+            .iter()
+            .copied()
+            .reduce(|peak, point| if point[1] > peak[1] { point } else { peak })
+            .expect("DPS cloud buckets are non-empty");
+        let active_samples = samples
+            .iter()
+            .filter(|point| point[1] > 0.0)
+            .collect::<Vec<_>>();
+        let (middle, lower) = if active_samples.is_empty() {
+            (0.0, 0.0)
+        } else {
+            let middle = active_samples.iter().map(|point| point[1]).sum::<f64>()
+                / active_samples.len() as f64;
+            let lower = active_samples
+                .iter()
+                .map(|point| point[1])
+                .fold(f64::INFINITY, f64::min);
+            (middle, lower)
+        };
+        tracks.upper.push(peak);
+        tracks.middle.push([peak[0], middle]);
+        tracks.lower.push([peak[0], lower]);
+        start = end;
+    }
+
+    tracks
 }
 
 fn chart_peak(points: &[[f64; 2]]) -> Option<[f64; 2]> {
@@ -3269,22 +3557,48 @@ fn chart_peak(points: &[[f64; 2]]) -> Option<[f64; 2]> {
         .reduce(|peak, point| if point[1] > peak[1] { point } else { peak })
 }
 
-fn downsample_dps_trend(points: &[[f64; 2]], max_points: usize) -> Vec<[f64; 2]> {
-    if points.len() <= max_points || max_points < 3 {
-        return points.to_vec();
+fn downsample_dps_cloud(cloud: &DpsCloudTracks, max_points: usize) -> DpsCloudTracks {
+    let point_count = cloud.upper.len();
+    debug_assert_eq!(point_count, cloud.middle.len());
+    debug_assert_eq!(point_count, cloud.lower.len());
+    if point_count <= max_points || max_points < 3 {
+        return cloud.clone();
     }
     let interior_slots = max_points - 2;
-    let bucket_size = (points.len() - 2).div_ceil(interior_slots);
-    let mut reduced = Vec::with_capacity(max_points);
-    reduced.push(points[0]);
-    for bucket in points[1..points.len() - 1].chunks(bucket_size) {
-        let divisor = bucket.len() as f64;
-        reduced.push([
-            bucket.iter().map(|point| point[0]).sum::<f64>() / divisor,
-            bucket.iter().map(|point| point[1]).sum::<f64>() / divisor,
-        ]);
+    let bucket_size = (point_count - 2).div_ceil(interior_slots);
+    let mut reduced = DpsCloudTracks {
+        upper: Vec::with_capacity(max_points),
+        middle: Vec::with_capacity(max_points),
+        lower: Vec::with_capacity(max_points),
+    };
+    reduced.upper.push(cloud.upper[0]);
+    reduced.middle.push(cloud.middle[0]);
+    reduced.lower.push(cloud.lower[0]);
+
+    for start in (1..point_count - 1).step_by(bucket_size) {
+        let end = (start + bucket_size).min(point_count - 1);
+        let divisor = (end - start) as f64;
+        let upper_point = cloud.upper[start..end]
+            .iter()
+            .copied()
+            .reduce(|peak, point| if point[1] > peak[1] { point } else { peak })
+            .expect("cloud downsampling buckets are non-empty");
+        let middle = cloud.middle[start..end]
+            .iter()
+            .map(|point| point[1])
+            .sum::<f64>()
+            / divisor;
+        let lower = cloud.lower[start..end]
+            .iter()
+            .map(|point| point[1])
+            .fold(f64::INFINITY, f64::min);
+        reduced.upper.push(upper_point);
+        reduced.middle.push([upper_point[0], middle]);
+        reduced.lower.push([upper_point[0], lower]);
     }
-    reduced.push(points[points.len() - 1]);
+    reduced.upper.push(cloud.upper[point_count - 1]);
+    reduced.middle.push(cloud.middle[point_count - 1]);
+    reduced.lower.push(cloud.lower[point_count - 1]);
     reduced
 }
 
@@ -3292,18 +3606,87 @@ fn smooth_chart_points(points: &[[f64; 2]], subdivisions: usize) -> Vec<[f64; 2]
     if points.len() < 2 || subdivisions == 0 {
         return points.to_vec();
     }
+
+    let intervals = points
+        .windows(2)
+        .map(|pair| pair[1][0] - pair[0][0])
+        .collect::<Vec<_>>();
+    if intervals
+        .iter()
+        .any(|interval| !interval.is_finite() || *interval <= f64::EPSILON)
+    {
+        return points.to_vec();
+    }
+    let slopes = points
+        .windows(2)
+        .zip(&intervals)
+        .map(|(pair, interval)| (pair[1][1] - pair[0][1]) / interval)
+        .collect::<Vec<_>>();
+    let mut tangents = vec![0.0; points.len()];
+    if points.len() == 2 {
+        tangents.fill(slopes[0]);
+    } else {
+        tangents[0] = monotone_endpoint_tangent(intervals[0], intervals[1], slopes[0], slopes[1]);
+        let last = points.len() - 1;
+        tangents[last] = monotone_endpoint_tangent(
+            intervals[last - 1],
+            intervals[last - 2],
+            slopes[last - 1],
+            slopes[last - 2],
+        );
+        for index in 1..last {
+            let before = slopes[index - 1];
+            let after = slopes[index];
+            if before != 0.0 && after != 0.0 && before.signum() == after.signum() {
+                let weight_before = 2.0 * intervals[index] + intervals[index - 1];
+                let weight_after = intervals[index] + 2.0 * intervals[index - 1];
+                tangents[index] = (weight_before + weight_after)
+                    / (weight_before / before + weight_after / after);
+            }
+        }
+    }
+
     let mut output = Vec::with_capacity((points.len() - 1) * subdivisions + 1);
     for index in 0..points.len() - 1 {
-        let p1 = points[index];
-        let p2 = points[index + 1];
+        let left = points[index];
+        let right = points[index + 1];
+        let interval = intervals[index];
+        let y_range = left[1].min(right[1])..=left[1].max(right[1]);
         for step in 0..subdivisions {
             let t = step as f64 / subdivisions as f64;
-            let eased = t * t * (3.0 - 2.0 * t);
-            output.push([p1[0] + (p2[0] - p1[0]) * t, p1[1] + (p2[1] - p1[1]) * eased]);
+            let t2 = t * t;
+            let t3 = t2 * t;
+            let y = ((2.0 * t3 - 3.0 * t2 + 1.0) * left[1]
+                + (t3 - 2.0 * t2 + t) * interval * tangents[index]
+                + (-2.0 * t3 + 3.0 * t2) * right[1]
+                + (t3 - t2) * interval * tangents[index + 1])
+                .clamp(*y_range.start(), *y_range.end())
+                .max(0.0);
+            output.push([left[0] + interval * t, y]);
         }
     }
     output.push(points[points.len() - 1]);
     output
+}
+
+fn monotone_endpoint_tangent(
+    nearest_interval: f64,
+    next_interval: f64,
+    nearest_slope: f64,
+    next_slope: f64,
+) -> f64 {
+    let tangent = ((2.0 * nearest_interval + next_interval) * nearest_slope
+        - nearest_interval * next_slope)
+        / (nearest_interval + next_interval);
+    if tangent.signum() != nearest_slope.signum() {
+        0.0
+    } else if nearest_slope.signum() != next_slope.signum()
+        && tangent.abs() > 3.0 * nearest_slope.abs()
+    {
+        3.0 * nearest_slope
+    } else {
+        tangent
+    }
 }
 
 fn format_chart_elapsed(seconds: f64, language: Language) -> String {
@@ -5344,11 +5727,15 @@ mod tests {
         let raw = (0..30)
             .map(|second| [second as f64, if second == 5 { 200.0 } else { 0.0 }])
             .collect::<Vec<_>>();
-        let reduced = downsample_dps_trend(&raw, 600);
+        let cloud = dps_cloud_tracks(&raw, DPS_CHART_CLOUD_BUCKET_SECONDS);
+        let reduced = downsample_dps_cloud(&cloud, 600);
 
-        assert_eq!(reduced, raw);
         assert_eq!(
-            reduced.iter().map(|point| point[1]).fold(0.0, f64::max),
+            reduced
+                .upper
+                .iter()
+                .map(|point| point[1])
+                .fold(0.0, f64::max),
             200.0
         );
     }
@@ -5410,16 +5797,35 @@ mod tests {
     }
 
     #[test]
-    fn dps_trend_uses_the_original_slow_release_smoothing() {
-        let raw = (0..30)
-            .map(|second| [second as f64, if second == 5 { 900.0 } else { 0.0 }])
-            .collect::<Vec<_>>();
-        let trend = dps_trend_points(&raw);
+    fn dps_cloud_uses_bucketed_true_peak_active_average_and_positive_low() {
+        let raw = [
+            [0.0, 20.0],
+            [1.0, 80.0],
+            [2.0, 0.0],
+            [3.0, 40.0],
+            [12.0, 10.0],
+            [20.0, 0.0],
+            [21.0, 0.0],
+        ];
+        let cloud = dps_cloud_tracks(&raw, 10.0);
 
-        assert_eq!(trend[4][1], 0.0);
-        assert!((trend[5][1] - 252.0).abs() < 1e-9);
-        assert!(trend[6][1] < trend[5][1] && trend[6][1] > 0.0);
-        assert!(trend[12][1] < trend[6][1]);
+        assert_eq!(cloud.upper[0], [1.0, 80.0]);
+        assert_eq!(cloud.middle[0], [1.0, 140.0 / 3.0]);
+        assert_eq!(cloud.lower[0], [1.0, 20.0]);
+        assert_eq!(cloud.upper[1], [12.0, 10.0]);
+        assert_eq!(cloud.middle[1], [12.0, 10.0]);
+        assert_eq!(cloud.lower[1], [12.0, 10.0]);
+        assert_eq!(cloud.upper[2], [20.0, 0.0]);
+        assert_eq!(cloud.middle[2], [20.0, 0.0]);
+        assert_eq!(cloud.lower[2], [20.0, 0.0]);
+        assert!(
+            cloud
+                .upper
+                .iter()
+                .zip(&cloud.middle)
+                .zip(&cloud.lower)
+                .all(|((upper, middle), lower)| upper[1] >= middle[1] && middle[1] >= lower[1])
+        );
     }
 
     #[test]
@@ -5535,10 +5941,59 @@ mod tests {
         assert_eq!(chart_point_at_x(&points, 5.0), Some([5.0, 150.0]));
         assert_eq!(chart_point_at_x(&points, 15.0), Some([15.0, 160.0]));
         assert_eq!(chart_point_at_x(&points, 21.0), None);
+        assert_eq!(chart_point_at_x_clamped(&points, -5.0), Some([0.0, 100.0]));
+        assert_eq!(chart_point_at_x_clamped(&points, 25.0), Some([20.0, 120.0]));
         assert_eq!(chart_nearest_point_at_x(&points, -0.4), Some([0.0, 100.0]));
         assert_eq!(chart_nearest_point_at_x(&points, 4.0), Some([0.0, 100.0]));
         assert_eq!(chart_nearest_point_at_x(&points, 6.0), Some([10.0, 200.0]));
         assert_eq!(chart_nearest_point_at_x(&points, 20.6), None);
+    }
+
+    #[test]
+    fn chart_hover_targets_the_visually_nearest_cloud_track() {
+        let upper = [[0.0, 100.0], [10.0, 120.0]];
+        let middle = [[0.0, 60.0], [10.0, 70.0]];
+        let lower = [[0.0, 20.0], [10.0, 30.0]];
+
+        let upper_hover =
+            nearest_dps_cloud_track(PlotPoint::new(5.0, 105.0), &upper, &middle, &lower).unwrap();
+        assert_eq!(upper_hover.track, DpsCloudTrack::Upper);
+        assert_eq!(upper_hover.point, [5.0, 110.0]);
+
+        let middle_hover =
+            nearest_dps_cloud_track(PlotPoint::new(5.0, 62.0), &upper, &middle, &lower).unwrap();
+        assert_eq!(middle_hover.track, DpsCloudTrack::Middle);
+        assert_eq!(middle_hover.point, [5.0, 65.0]);
+
+        let lower_hover =
+            nearest_dps_cloud_track(PlotPoint::new(5.0, 22.0), &upper, &middle, &lower).unwrap();
+        assert_eq!(lower_hover.track, DpsCloudTrack::Lower);
+        assert_eq!(lower_hover.point, [5.0, 25.0]);
+    }
+
+    #[test]
+    fn chart_tooltip_highlights_only_the_hovered_track_row() {
+        let job = chart_tooltip_layout_job(
+            "1分\n最高 DPS：120\n平均 DPS：70\n最低 DPS：25",
+            DpsCloudTrack::Middle,
+            egui::FontId::proportional(14.0),
+            260.0,
+        );
+        let rows = job
+            .sections
+            .iter()
+            .filter_map(|section| {
+                let text = &job.text[section.byte_range.clone()];
+                (!text.trim().is_empty()).then_some((text, &section.format))
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(rows.len(), 4);
+        assert_eq!(rows[1].1.color, SETTINGS_CHART_AXIS);
+        assert_eq!(rows[2].1.color, SETTINGS_CHART_LINE);
+        assert_eq!(rows[2].1.background, egui::Color32::TRANSPARENT);
+        assert_eq!(rows[2].1.underline, egui::Stroke::NONE);
+        assert_eq!(rows[3].1.color, SETTINGS_CHART_AXIS);
     }
 
     #[test]
@@ -5630,8 +6085,9 @@ mod tests {
     #[test]
     fn one_dps_point_survives_chart_processing_without_a_step_estimate() {
         let raw = [[12.0, 180.0]];
-        let reduced = downsample_dps_trend(&raw, 600);
-        let smooth = smooth_chart_points(&reduced, 4);
+        let cloud = dps_cloud_tracks(&raw, DPS_CHART_CLOUD_BUCKET_SECONDS);
+        let reduced = downsample_dps_cloud(&cloud, 600);
+        let smooth = smooth_chart_points(&reduced.middle, 4);
 
         assert_eq!(smooth.len(), 1);
         assert_eq!(chart_point_at_x(&smooth, 12.0), Some(smooth[0]));
@@ -5639,7 +6095,7 @@ mod tests {
     }
 
     #[test]
-    fn chart_trend_downsampling_preserves_time_order_and_range() {
+    fn chart_cloud_downsampling_preserves_time_order_and_true_peak() {
         let points = (0..1_000)
             .map(|second| {
                 let dps = if second == 537 {
@@ -5650,21 +6106,42 @@ mod tests {
                 [second as f64, dps]
             })
             .collect::<Vec<_>>();
-        let reduced = downsample_dps_trend(&points, 100);
+        let cloud = dps_cloud_tracks(&points, DPS_CHART_CLOUD_BUCKET_SECONDS);
+        let reduced = downsample_dps_cloud(&cloud, 100);
 
-        assert_eq!(reduced.first(), points.first());
-        assert_eq!(reduced.last(), points.last());
-        assert!(reduced.len() <= 100);
-        assert!(reduced.windows(2).all(|pair| pair[0][0] < pair[1][0]));
+        assert_eq!(reduced.upper.first(), cloud.upper.first());
+        assert_eq!(reduced.upper.last(), cloud.upper.last());
+        assert!(reduced.upper.len() <= 100);
+        assert!(reduced.upper.windows(2).all(|pair| pair[0][0] < pair[1][0]));
+        assert_eq!(
+            reduced
+                .upper
+                .iter()
+                .map(|point| point[1])
+                .fold(0.0, f64::max),
+            1_234.0
+        );
+        assert!(reduced.upper.contains(&[537.0, 1_234.0]));
     }
 
     #[test]
-    fn smooth_chart_keeps_endpoints_and_never_invents_negative_dps() {
-        let points = [[0.0, 0.0], [1.0, 100.0], [2.0, 0.0]];
-        let smooth = smooth_chart_points(&points, 4);
+    fn smooth_chart_passes_through_true_peaks_without_overshoot() {
+        let points = [[0.0, 20.0], [1.0, 100.0], [3.0, 35.0], [4.0, 70.0]];
+        let smooth = smooth_chart_points(&points, DPS_CHART_CURVE_SUBDIVISIONS);
+
         assert_eq!(smooth.first(), points.first());
         assert_eq!(smooth.last(), points.last());
-        assert!(smooth.iter().all(|point| point[1] >= 0.0));
+        assert_eq!(smooth[DPS_CHART_CURVE_SUBDIVISIONS], points[1]);
+        assert_eq!(smooth[DPS_CHART_CURVE_SUBDIVISIONS * 2], points[2]);
+        assert!(
+            smooth
+                .iter()
+                .all(|point| (20.0..=100.0).contains(&point[1]))
+        );
+        assert_eq!(
+            smooth.iter().map(|point| point[1]).fold(0.0, f64::max),
+            100.0
+        );
     }
 
     #[test]

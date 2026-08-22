@@ -468,21 +468,23 @@ pub mod text {
     pair!(CHART_FINISHED_ROUND, "Round just ended", "回合刚结束");
     pair!(DPS_AVERAGE, "Average DPS", "平均 DPS");
     pair!(DPS_PER_SECOND, "Current DPS", "当时 DPS");
+    pair!(DPS_CLOUD_HIGH, "Highest DPS", "最高 DPS");
+    pair!(DPS_CLOUD_LOW, "Lowest DPS", "最低 DPS");
     pair!(DPS_ROUND_PEAK, "Highest DPS", "最高 DPS");
     pair!(
         DPS_CHART_TOOLTIP,
-        "{time}\nCurrent DPS: {raw}\nAverage DPS: {trend}",
-        "{time}\n当时 DPS：{raw}\n平均 DPS：{trend}"
+        "{time}\nHighest DPS: {upper}\nAverage DPS: {trend}\nLowest DPS: {lower}",
+        "{time}\n最高 DPS：{upper}\n平均 DPS：{trend}\n最低 DPS：{lower}"
     );
     pair!(
         DPS_CHART_PEAK_TOOLTIP,
-        "{time}\nHighest DPS: {raw}\nAverage DPS: {trend}",
-        "{time}\n最高 DPS：{raw}\n平均 DPS：{trend}"
+        "{time}\nHighest DPS: {raw}\nAverage DPS: {trend}\nLowest DPS: {lower}",
+        "{time}\n最高 DPS：{raw}\n平均 DPS：{trend}\n最低 DPS：{lower}"
     );
     pair!(
         DPS_CHART_ACCESSIBILITY,
-        "{round}. Bars show current DPS and the line shows average DPS. Highest DPS: {peak}, at {time}.",
-        "{round}。柱形是当时 DPS，曲线是平均 DPS。最高 DPS 为 {peak}，出现在{time}。"
+        "{round}. The cloud shows highest, average, and lowest DPS. Highest DPS: {peak}, at {time}.",
+        "{round}。云图显示最高、平均和最低 DPS。最高 DPS 为 {peak}，出现在{time}。"
     );
     pair!(SESSION_TIME, "Session time", "本局时间");
     pair!(

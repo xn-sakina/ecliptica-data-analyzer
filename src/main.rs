@@ -73,7 +73,8 @@ const DPS_CHART_Y_MARGIN_FRACTION: f64 = 0.10;
 const DPS_CHART_MIN_Y_SPAN: f64 = 10.0;
 const TEMPLATE_PRESET_TAB_ROW_HEIGHT: f32 = 28.0;
 const TEMPLATE_PRESET_TAB_LABEL_MAX_CHARS: usize = 13;
-const ALERT_SOUND_LABEL_WIDTH: f32 = 200.0;
+const ALERT_SOUND_LABEL_WIDTH_ENGLISH: f32 = 200.0;
+const ALERT_SOUND_LABEL_WIDTH_CHINESE: f32 = 124.0;
 const HEART_RATE_GUIDE_URL: &str =
     "https://github.com/xn-sakina/ecliptica-data-analyzer/blob/main/resources/heart-rate/README.md";
 const SETTINGS_TEXT: egui::Color32 = egui::Color32::from_rgb(246, 243, 255);
@@ -84,6 +85,13 @@ const SETTINGS_SUCCESS: egui::Color32 = egui::Color32::from_rgb(105, 221, 153);
 const SETTINGS_INFO: egui::Color32 = egui::Color32::from_rgb(119, 181, 255);
 const SETTINGS_WARNING: egui::Color32 = egui::Color32::from_rgb(255, 204, 102);
 const SETTINGS_DANGER: egui::Color32 = egui::Color32::from_rgb(255, 132, 146);
+
+fn alert_sound_label_width(language: Language) -> f32 {
+    match language {
+        Language::English => ALERT_SOUND_LABEL_WIDTH_ENGLISH,
+        Language::Chinese => ALERT_SOUND_LABEL_WIDTH_CHINESE,
+    }
+}
 const SIDEBAR_FOOTER_BASE_HEIGHT: f32 = 116.0;
 const SIDEBAR_ERROR_DETAILS_HEIGHT: f32 = 34.0;
 const SETTINGS_STATUS_SLOT_WIDTH: f32 = 104.0;
@@ -1228,7 +1236,7 @@ impl AnalyzerApp {
                         color: SETTINGS_WARNING,
                     },
                 ];
-                report_stat_group(ui, &stats, 4);
+                report_stat_group(ui, &stats, 3);
             });
             ui.add_space(14.0);
         }
@@ -1924,7 +1932,7 @@ impl AnalyzerApp {
                 });
                 ui.add_space(8.0);
                 PropertyRow::new(text::LOCK_SOUND.get(self.draft.language))
-                    .label_width(ALERT_SOUND_LABEL_WIDTH)
+                    .label_width(alert_sound_label_width(self.draft.language))
                     .show(ui, |ui| {
                         let options = AlertSoundStyle::ALL
                             .map(|style| AlertSoundStyleChoice(style, self.draft.language));
@@ -1959,7 +1967,7 @@ impl AnalyzerApp {
                         });
                     });
                 PropertyRow::new(text::RELEASE_SOUND.get(self.draft.language))
-                    .label_width(ALERT_SOUND_LABEL_WIDTH)
+                    .label_width(alert_sound_label_width(self.draft.language))
                     .show(ui, |ui| {
                         let options = AlertSoundStyle::ALL
                             .map(|style| AlertSoundStyleChoice(style, self.draft.language));
@@ -2756,6 +2764,7 @@ fn dps_history_chart(
                     egui::Stroke::new(1.0, SETTINGS_CHART_AXIS);
 
                 let x_axis_width = ui.available_width();
+                let x_axis_title_center_x = ui.available_rect_before_wrap().center().x;
                 let response = Plot::new("overview-dps-history")
                     .height(250.0)
                     .show_background(false)
@@ -2944,11 +2953,21 @@ fn dps_history_chart(
                     ui.ctx().request_repaint_after(next_auto_fit);
                 }
                 ui.add_space(DPS_CHART_X_AXIS_TITLE_GAP);
-                ui.horizontal_centered(|ui| {
-                    Typography::new(text::SESSION_TIME.get(language))
-                        .color(SETTINGS_CHART_AXIS)
-                        .show(ui);
-                });
+                let title_galley = ui.painter().layout_no_wrap(
+                    text::SESSION_TIME.get(language).to_owned(),
+                    egui::TextStyle::Body.resolve(ui.style()),
+                    SETTINGS_CHART_AXIS,
+                );
+                let (_, title_rect) =
+                    ui.allocate_space(egui::vec2(ui.available_width(), title_galley.size().y));
+                ui.painter().galley(
+                    egui::pos2(
+                        x_axis_title_center_x - title_galley.size().x / 2.0,
+                        title_rect.top(),
+                    ),
+                    title_galley,
+                    SETTINGS_CHART_AXIS,
+                );
             });
         });
 }
@@ -3444,6 +3463,7 @@ const VARIABLE_GROUP_COLUMN_GAP: f32 = 14.0;
 #[cfg_attr(not(test), allow(dead_code))]
 struct VariableGroupRowLayout {
     label_rect: egui::Rect,
+    label_text_rect: egui::Rect,
     buttons_start_x: f32,
     button_rects: Vec<egui::Rect>,
 }
@@ -3599,22 +3619,21 @@ fn variable_help_group_row(
 ) -> VariableGroupRowLayout {
     ui.horizontal_top(|ui| {
         ui.spacing_mut().item_spacing.x = VARIABLE_GROUP_COLUMN_GAP;
-        let label_rect = ui
-            .allocate_ui_with_layout(
-                egui::vec2(VARIABLE_GROUP_LABEL_WIDTH, 23.0),
-                egui::Layout::top_down(egui::Align::LEFT),
-                |ui| {
-                    ui.set_min_width(VARIABLE_GROUP_LABEL_WIDTH);
-                    ui.set_max_width(VARIABLE_GROUP_LABEL_WIDTH);
-                    Typography::small(format!("{:02} · {}", index + 1, group.title))
-                        .strong()
-                        .color(SETTINGS_TEXT_SECONDARY)
-                        .wrap()
-                        .show(ui);
-                },
-            )
-            .response
-            .rect;
+        let label_area = ui.allocate_ui_with_layout(
+            egui::vec2(VARIABLE_GROUP_LABEL_WIDTH, 23.0),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                ui.set_min_width(VARIABLE_GROUP_LABEL_WIDTH);
+                ui.set_max_width(VARIABLE_GROUP_LABEL_WIDTH);
+                Typography::small(format!("{:02} · {}", index + 1, group.title))
+                    .strong()
+                    .color(SETTINGS_TEXT_SECONDARY)
+                    .truncate()
+                    .show(ui)
+            },
+        );
+        let label_rect = label_area.response.rect;
+        let label_text_rect = label_area.inner.rect;
 
         let mut buttons_start_x = 0.0;
         let mut button_rects = Vec::with_capacity(group.variables.len());
@@ -3634,6 +3653,7 @@ fn variable_help_group_row(
 
         VariableGroupRowLayout {
             label_rect,
+            label_text_rect,
             buttons_start_x,
             button_rects,
         }
@@ -5200,13 +5220,17 @@ mod tests {
             let mut release_control_left = 0.0;
 
             PropertyRow::new(text::LOCK_SOUND.get(Language::Chinese))
-                .label_width(ALERT_SOUND_LABEL_WIDTH)
+                .label_width(alert_sound_label_width(Language::Chinese))
                 .show(ui, |ui| lock_control_left = ui.cursor().left());
             PropertyRow::new(text::RELEASE_SOUND.get(Language::Chinese))
-                .label_width(ALERT_SOUND_LABEL_WIDTH)
+                .label_width(alert_sound_label_width(Language::Chinese))
                 .show(ui, |ui| release_control_left = ui.cursor().left());
 
             assert!((lock_control_left - release_control_left).abs() <= 0.5);
+            assert!(
+                alert_sound_label_width(Language::Chinese)
+                    < alert_sound_label_width(Language::English)
+            );
         });
     }
 
@@ -5878,6 +5902,12 @@ mod tests {
         assert!((first.buttons_start_x - second.buttons_start_x).abs() <= 0.5);
         assert!(first.label_rect.right() < first.buttons_start_x);
         assert!(first.button_rects.len() >= 3);
+        assert!(
+            (first.label_text_rect.center().y - first.button_rects[0].center().y).abs() <= 0.5,
+            "label {:?} should align with the first button row {:?}",
+            first.label_text_rect,
+            first.button_rects[0]
+        );
         assert!(
             first
                 .button_rects

@@ -197,13 +197,13 @@ pub mod text {
         "Keep the main window above other windows",
         "让主窗口始终显示在其他窗口上方"
     );
-    pair!(LIVE_DPS, "Current DPS", "当前 DPS");
+    pair!(LIVE_DPS, "Live DPS", "实时 DPS");
     pair!(AVERAGE_DPS_30S, "Average DPS", "平均 DPS");
     pair!(ROUND_EFFECTIVE_DPS, "Active DPS", "持续输出 DPS");
     pair!(ROUND_BURST_10S, "Best average DPS", "最佳平均 DPS");
     pair!(ROUND_DAMAGE_TAKEN, "Damage taken this round", "本回合承伤");
     pair!(BOSS_LOCK, "BOSS LOCK", "Boss 锁定");
-    pair!(SESSION_DPS_CHART, "DPS trend", "DPS 走势");
+    pair!(SESSION_DPS_CHART, "DPS chart", "DPS 图表");
     pair!(
         PREVIOUS_ROUND_REPORT,
         "Previous round report",
@@ -997,7 +997,7 @@ pub const HEART_RATE_VARIABLE_GROUPS: &[VariableCopyGroup] = &[VariableCopyGroup
 
 pub const LIVE_VARIABLE_GROUPS: &[VariableCopyGroup] = &[
     VariableCopyGroup {
-        title: p("Current DPS", "当前 DPS"),
+        title: p("Live DPS", "实时 DPS"),
         variables: &[
             variable!(
                 "Value",
@@ -1010,8 +1010,8 @@ pub const LIVE_VARIABLE_GROUPS: &[VariableCopyGroup] = &[
                 "Show when",
                 "显示条件",
                 "has_latest_dps",
-                "Show this content when current DPS is available.",
-                "有当前 DPS 时显示这段内容。"
+                "Show this content when live DPS is available.",
+                "有实时 DPS 时显示这段内容。"
             ),
         ],
     },
@@ -1031,25 +1031,6 @@ pub const LIVE_VARIABLE_GROUPS: &[VariableCopyGroup] = &[
                 "has_avg_dps",
                 "Show this content when average DPS is available.",
                 "有平均 DPS 时显示这段内容。"
-            ),
-        ],
-    },
-    VariableCopyGroup {
-        title: p("Current round average DPS", "本回合平均 DPS"),
-        variables: &[
-            variable!(
-                "Value",
-                "数值",
-                "round_avg_dps",
-                "Average DPS from the first damage of this round until now. Displays “-” when unavailable.",
-                "本回合从开始输出到现在的平均 DPS。没有数据时显示“-”。"
-            ),
-            variable!(
-                "Show when",
-                "显示条件",
-                "has_round_avg_dps",
-                "Show this content when this round's average DPS is available.",
-                "有本回合平均 DPS 时显示这段内容。"
             ),
         ],
     },
@@ -1230,25 +1211,6 @@ pub const REPORT_VARIABLE_GROUPS: &[VariableCopyGroup] = &[
         ],
     },
     VariableCopyGroup {
-        title: p("Average DPS", "平均 DPS"),
-        variables: &[
-            variable!(
-                "Value",
-                "数值",
-                "round_report_avg_dps",
-                "Average DPS for the round that just ended.",
-                "这一回合的平均 DPS。"
-            ),
-            variable!(
-                "Show when",
-                "显示条件",
-                "has_round_report_avg_dps",
-                "Show this content when average DPS is available.",
-                "有平均 DPS 时显示这段内容。"
-            ),
-        ],
-    },
-    VariableCopyGroup {
         title: p("Highest DPS", "最高 DPS"),
         variables: &[
             variable!(
@@ -1367,13 +1329,13 @@ pub const REPORT_VARIABLE_GROUPS: &[VariableCopyGroup] = &[
 pub const TEMPLATE_SYNTAX_EXAMPLES: &[SyntaxCopy] = &[
     SyntaxCopy {
         title: p("1 · Insert data", "1 · 插入数据"),
-        code: p("Current DPS: {{latest_dps}}", "当前 DPS: {{latest_dps}}"),
+        code: p("Live DPS: {{latest_dps}}", "实时 DPS: {{latest_dps}}"),
     },
     SyntaxCopy {
         title: p("2 · Show only when needed", "2 · 需要时才显示"),
         code: p(
-            "{{#if has_latest_dps}}\nCurrent DPS: {{latest_dps}}\n{{/if}}",
-            "{{#if has_latest_dps}}\n当前 DPS: {{latest_dps}}\n{{/if}}",
+            "{{#if has_latest_dps}}\nLive DPS: {{latest_dps}}\n{{/if}}",
+            "{{#if has_latest_dps}}\n实时 DPS: {{latest_dps}}\n{{/if}}",
         ),
     },
     SyntaxCopy {
@@ -1386,8 +1348,22 @@ pub const TEMPLATE_SYNTAX_EXAMPLES: &[SyntaxCopy] = &[
     SyntaxCopy {
         title: p("4 · Compare or combine conditions", "4 · 比较或组合条件"),
         code: p(
-            "{{#if (gt round_damage_taken 50)}}Damage taken exceeds 50{{/if}}\n{{#if (or rapid_damage_danger no_dps_for_10s)}}⚠ Check combat status{{/if}}",
-            "{{#if (gt round_damage_taken 50)}}承伤超过 50{{/if}}\n{{#if (or rapid_damage_danger no_dps_for_10s)}}⚠ 注意战斗状态{{/if}}",
+            "{{#if (eq until_boss_step \"0\")}}Jim is next{{/if}}\n{{#if (gt round_damage_taken 50)}}Damage taken exceeds 50{{/if}}\n{{#if (or rapid_damage_danger no_dps_for_10s)}}⚠ Check combat status{{/if}}",
+            "{{#if (eq until_boss_step \"0\")}}下一战是 Jim{{/if}}\n{{#if (gt round_damage_taken 50)}}承伤超过 50{{/if}}\n{{#if (or rapid_damage_danger no_dps_for_10s)}}⚠ 注意战斗状态{{/if}}",
+        ),
+    },
+    SyntaxCopy {
+        title: p("Common comparisons", "常用比较写法"),
+        code: p(
+            "eq a b  equal\nne a b  not equal\ngt a b  greater than\ngte a b greater than or equal\nlt a b  less than\nlte a b less than or equal",
+            "eq a b  等于\nne a b  不等于\ngt a b  大于\ngte a b 大于等于\nlt a b  小于\nlte a b 小于等于",
+        ),
+    },
+    SyntaxCopy {
+        title: p("Combine conditions", "组合多个条件"),
+        code: p(
+            "and a b  both are true\nor a b   either is true\nnot a    reverse the result",
+            "and a b  两个都满足\nor a b   满足任意一个\nnot a    结果取反",
         ),
     },
 ];

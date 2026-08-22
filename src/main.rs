@@ -44,6 +44,13 @@ const OVERLAY_REPORT_WITH_ALERT_HEIGHT: f32 = 300.0;
 const OVERLAY_CONTENT_WIDTH: f32 = 296.0;
 const OVERLAY_ITEM_SPACING: egui::Vec2 = egui::vec2(6.0, 4.0);
 const OVERLAY_SCALE_OPTIONS: [f32; 6] = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+const OVERLAY_STATUS_DOT_COLOR: egui::Color32 = egui::Color32::from_rgb(83, 211, 225);
+const UI_SPACE_1: f32 = 4.0;
+const UI_SPACE_2: f32 = 8.0;
+const UI_SPACE_3: f32 = 12.0;
+const UI_SPACE_4: f32 = 16.0;
+const UI_SPACE_5: f32 = 20.0;
+const UI_SPACE_6: f32 = 24.0;
 const CJK_FONT_FAMILY: &str = "system-cjk";
 const EXTENDED_TEXT_FONT_FAMILY: &str = "system-extended-text";
 const SYMBOL_FONT_FAMILY: &str = "system-symbols";
@@ -93,21 +100,22 @@ const METRIC_AVERAGE_DPS: egui::Color32 = SETTINGS_ACCENT;
 const METRIC_ACTIVE_DPS: egui::Color32 = SETTINGS_SUCCESS;
 const METRIC_BEST_DPS: egui::Color32 = SETTINGS_WARNING;
 const METRIC_DAMAGE_TAKEN: egui::Color32 = SETTINGS_DANGER;
-const METRIC_BOSS_LOCK: egui::Color32 = SETTINGS_WARNING;
+const METRIC_BOSS_LOCK: egui::Color32 = egui::Color32::from_rgb(83, 211, 225);
 const METRIC_DURATION: egui::Color32 = SETTINGS_INFO;
 const METRIC_TOTAL_DAMAGE: egui::Color32 = SETTINGS_ACCENT;
 const METRIC_DPS_GROWTH: egui::Color32 = SETTINGS_SUCCESS;
 const METRIC_STANDSTILL: egui::Color32 = SETTINGS_WARNING;
 const METRIC_HEART_RATE: egui::Color32 = SETTINGS_DANGER;
-const VARIABLE_HIGHEST_DPS: egui::Color32 = egui::Color32::from_rgb(255, 164, 112);
-const VARIABLE_COMBAT: egui::Color32 = egui::Color32::from_rgb(83, 211, 225);
-const VARIABLE_ALERT: egui::Color32 = egui::Color32::from_rgb(224, 156, 255);
+const VARIABLE_HIGHEST_DPS: egui::Color32 = egui::Color32::from_rgb(143, 156, 255);
+const VARIABLE_BEST_AVERAGE_DPS: egui::Color32 = egui::Color32::from_rgb(218, 148, 255);
+const VARIABLE_COMBAT: egui::Color32 = METRIC_BOSS_LOCK;
+const VARIABLE_ALERT: egui::Color32 = egui::Color32::from_rgb(240, 140, 203);
 const VARIABLE_GAME_PROGRESS: egui::Color32 = egui::Color32::from_rgb(96, 210, 190);
 const VARIABLE_DURATION: egui::Color32 = egui::Color32::from_rgb(214, 207, 225);
-const VARIABLE_DPS_GROWTH: egui::Color32 = egui::Color32::from_rgb(176, 218, 112);
-const VARIABLE_STANDSTILL: egui::Color32 = egui::Color32::from_rgb(255, 183, 122);
-const VARIABLE_ROUND_DAMAGE: egui::Color32 = egui::Color32::from_rgb(238, 128, 174);
-const VARIABLE_HEART_RATE: egui::Color32 = egui::Color32::from_rgb(255, 147, 177);
+const VARIABLE_DPS_GROWTH: egui::Color32 = egui::Color32::from_rgb(141, 221, 248);
+const VARIABLE_STANDSTILL: egui::Color32 = egui::Color32::from_rgb(255, 153, 184);
+const VARIABLE_ROUND_DAMAGE: egui::Color32 = egui::Color32::from_rgb(232, 133, 202);
+const VARIABLE_HEART_RATE: egui::Color32 = METRIC_HEART_RATE;
 
 fn alert_sound_label_width(language: Language) -> f32 {
     match language {
@@ -702,9 +710,9 @@ impl AnalyzerApp {
                 egui::Frame::new()
                     .fill(SETTINGS_SIDEBAR_BG)
                     .inner_margin(egui::Margin {
-                        left: 14,
-                        right: 14,
-                        top: 16,
+                        left: UI_SPACE_4 as i8,
+                        right: UI_SPACE_4 as i8,
+                        top: UI_SPACE_4 as i8,
                         bottom: 0,
                     })
                     .stroke(egui::Stroke::NONE),
@@ -728,7 +736,7 @@ impl AnalyzerApp {
                 };
                 let sidebar_content_rect = ui.max_rect();
                 ui.painter().vline(
-                    sidebar_content_rect.right() + 14.0,
+                    sidebar_content_rect.right() + UI_SPACE_4,
                     management_rect.y_range(),
                     egui::Stroke::new(1.0, SETTINGS_BORDER),
                 );
@@ -736,7 +744,8 @@ impl AnalyzerApp {
                 let notice_height = save_notice
                     .as_ref()
                     .map(|(message, _)| {
-                        sidebar_notice_height(ui, message.as_str(), sidebar_rect.width()) + 8.0
+                        sidebar_notice_height(ui, message.as_str(), sidebar_rect.width())
+                            + UI_SPACE_2
                     })
                     .unwrap_or_default()
                     + if has_save_error {
@@ -760,13 +769,13 @@ impl AnalyzerApp {
                         .max_rect(footer_rect)
                         .layout(egui::Layout::bottom_up(egui::Align::LEFT)),
                 );
-                footer_ui.add_space(12.0);
+                footer_ui.add_space(UI_SPACE_3);
                 if ShadcnButton::new(text::RESTORE_DEFAULTS.get(language))
                     .icon(LucideIcon::RotateCcw)
                     .variant(ButtonVariant::Outline)
                     .full_width()
                     .height(40.0)
-                    .horizontal_padding(14.0)
+                    .horizontal_padding(UI_SPACE_3)
                     .corner_radius(6.0)
                     .show(&mut footer_ui)
                     .on_hover_text(text::RESTORE_DEFAULTS_HINT.get(language))
@@ -774,7 +783,7 @@ impl AnalyzerApp {
                 {
                     self.reset_confirm_open = true;
                 }
-                footer_ui.add_space(8.0);
+                footer_ui.add_space(UI_SPACE_2);
                 let (save_label, save_icon, save_variant) = if has_unsaved_changes {
                     (
                         text::SAVE_AND_APPLY.get(language),
@@ -794,7 +803,7 @@ impl AnalyzerApp {
                     .enabled(has_unsaved_changes)
                     .full_width()
                     .height(40.0)
-                    .horizontal_padding(14.0)
+                    .horizontal_padding(UI_SPACE_3)
                     .corner_radius(6.0)
                     .show(&mut footer_ui)
                     .on_hover_text(if has_unsaved_changes {
@@ -807,7 +816,7 @@ impl AnalyzerApp {
                     self.save();
                 }
                 if let Some((message, tone)) = save_notice.as_ref() {
-                    footer_ui.add_space(8.0);
+                    footer_ui.add_space(UI_SPACE_2);
                     if has_save_error {
                         if ShadcnButton::new(text::VIEW_FULL_ERROR.get(language))
                             .icon(LucideIcon::CircleAlert)
@@ -818,7 +827,7 @@ impl AnalyzerApp {
                         {
                             self.save_error_detail_open = true;
                         }
-                        footer_ui.add_space(6.0);
+                        footer_ui.add_space(UI_SPACE_1);
                     }
                     sidebar_notice(&mut footer_ui, message, *tone);
                 }
@@ -834,7 +843,7 @@ impl AnalyzerApp {
                         .font_size(16.0)
                         .strong()
                         .show(ui);
-                    ui.add_space(4.0);
+                    ui.add_space(UI_SPACE_1);
                     ui.horizontal(|ui| {
                         Typography::small("DATA ANALYZER")
                             .color(SETTINGS_TEXT_SECONDARY)
@@ -850,11 +859,11 @@ impl AnalyzerApp {
                 {
                     self.register_developer_logo_click(ctx);
                 }
-                body_ui.add_space(26.0);
+                body_ui.add_space(UI_SPACE_6);
                 Typography::small(text::WORKSPACE.get(language))
                     .color(SETTINGS_TEXT_SECONDARY)
                     .show(&mut body_ui);
-                body_ui.add_space(8.0);
+                body_ui.add_space(UI_SPACE_2);
                 nav_button(
                     &mut body_ui,
                     &mut self.page,
@@ -898,12 +907,12 @@ impl AnalyzerApp {
             .frame(
                 egui::Frame::new()
                     .fill(SETTINGS_SURFACE)
-                    .inner_margin(egui::Margin::symmetric(26, 0))
+                    .inner_margin(egui::Margin::symmetric(UI_SPACE_6 as i8, 0))
                     .stroke(egui::Stroke::NONE),
             )
             .show(ctx, |ui| {
                 ui.painter().hline(
-                    ui.max_rect().expand2(egui::vec2(26.0, 0.0)).x_range(),
+                    ui.max_rect().expand2(egui::vec2(UI_SPACE_6, 0.0)).x_range(),
                     ui.max_rect().bottom() - 1.0,
                     egui::Stroke::new(1.0, SETTINGS_BORDER),
                 );
@@ -925,7 +934,7 @@ impl AnalyzerApp {
                                     SETTINGS_TEXT_SECONDARY
                                 })
                                 .show(ui);
-                            ui.add_space(8.0);
+                            ui.add_space(UI_SPACE_2);
                             let mut selected_language = self.draft.language;
                             let language_response =
                                 SelectValue::new(&mut selected_language, &Language::ALL)
@@ -952,7 +961,7 @@ impl AnalyzerApp {
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         egui::Frame::NONE
-                            .inner_margin(egui::Margin::same(26))
+                            .inner_margin(egui::Margin::same(UI_SPACE_6 as i8))
                             .show(ui, |ui| match self.page {
                                 SettingsPage::Overview => self.overview_page(ui, snapshot),
                                 SettingsPage::Message => self.message_page(ui, snapshot),
@@ -1148,7 +1157,7 @@ impl AnalyzerApp {
                 }
             });
         });
-        ui.add_space(20.0);
+        ui.add_space(UI_SPACE_5);
         ui.columns(3, |columns| {
             dashboard_stat(
                 &mut columns[0],
@@ -1156,7 +1165,7 @@ impl AnalyzerApp {
                 &snapshot.realtime_dps_text(),
                 METRIC_LIVE_DPS,
             );
-            columns[0].add_space(10.0);
+            columns[0].add_space(UI_SPACE_3);
             dashboard_stat(
                 &mut columns[0],
                 text::AVERAGE_DPS_30S.get(language),
@@ -1169,7 +1178,7 @@ impl AnalyzerApp {
                 &snapshot.round_effective_dps_text(),
                 METRIC_ACTIVE_DPS,
             );
-            columns[1].add_space(10.0);
+            columns[1].add_space(UI_SPACE_3);
             dashboard_stat(
                 &mut columns[1],
                 text::ROUND_BURST_10S.get(language),
@@ -1182,7 +1191,7 @@ impl AnalyzerApp {
                 &snapshot.round_damage_taken.to_string(),
                 METRIC_DAMAGE_TAKEN,
             );
-            columns[2].add_space(10.0);
+            columns[2].add_space(UI_SPACE_3);
             dashboard_stat(
                 &mut columns[2],
                 text::BOSS_LOCK.get(language),
@@ -1190,7 +1199,7 @@ impl AnalyzerApp {
                 METRIC_BOSS_LOCK,
             );
         });
-        ui.add_space(14.0);
+        ui.add_space(UI_SPACE_4);
         let chart_round_context = dps_chart_round_context(snapshot, language);
         section_card_with_status(
             ui,
@@ -1203,7 +1212,7 @@ impl AnalyzerApp {
                 dps_history_chart(ui, snapshot, &mut self.dps_chart_view, language);
             },
         );
-        ui.add_space(14.0);
+        ui.add_space(UI_SPACE_4);
         if let Some(report) = &snapshot.round_report {
             section_card(ui, text::PREVIOUS_ROUND_REPORT.get(language), None, |ui| {
                 let stats = [
@@ -1253,7 +1262,7 @@ impl AnalyzerApp {
                 ];
                 report_stat_group(ui, &stats, 3);
             });
-            ui.add_space(14.0);
+            ui.add_space(UI_SPACE_4);
         }
         section_card(ui, text::GAME_LOG.get(language), None, |ui| {
             log_source_row(ui, snapshot.source.as_deref(), &self.runtime, language);
@@ -1348,7 +1357,7 @@ impl AnalyzerApp {
                                                 Typography::small(text::AWAY_REASON.get(language))
                                                     .color(SETTINGS_TEXT_MUTED)
                                                     .show(ui);
-                                                ui.add_space(6.0);
+                                                ui.add_space(UI_SPACE_2);
                                                 let reasons = [
                                                     AwayReasonChoice(
                                                         AwayReason::Restroom,
@@ -1379,7 +1388,7 @@ impl AnalyzerApp {
                                                 )
                                                 .color(SETTINGS_TEXT_MUTED)
                                                 .show(ui);
-                                                ui.add_space(6.0);
+                                                ui.add_space(UI_SPACE_2);
                                                 let durations = AwayDuration::ALL.map(|duration| {
                                                     AwayDurationChoice(duration, language)
                                                 });
@@ -1400,7 +1409,7 @@ impl AnalyzerApp {
                                             });
                                         });
 
-                                        ui.add_space(18.0);
+                                        ui.add_space(UI_SPACE_5);
                                         let preview = active_session.as_ref().map_or_else(
                                             || {
                                                 render_away_preview(
@@ -1425,7 +1434,7 @@ impl AnalyzerApp {
                                             )
                                             .color(SETTINGS_TEXT_MUTED)
                                             .show(ui);
-                                            ui.add_space(6.0);
+                                            ui.add_space(UI_SPACE_2);
                                             let editor_width =
                                                 (ui.available_width() - 24.0).max(120.0);
                                             ui.allocate_ui_with_layout(
@@ -1445,7 +1454,7 @@ impl AnalyzerApp {
                                                 },
                                             );
 
-                                            ui.add_space(6.0);
+                                            ui.add_space(UI_SPACE_2);
                                             let custom_missing =
                                                 self.away_dialog.custom_message.trim().is_empty();
                                             Typography::small(if custom_missing {
@@ -1460,14 +1469,14 @@ impl AnalyzerApp {
                                             })
                                             .show(ui);
 
-                                            ui.add_space(14.0);
+                                            ui.add_space(UI_SPACE_4);
                                         }
 
                                         Typography::new(text::AWAY_MESSAGE.get(language))
                                             .strong()
                                             .color(SETTINGS_HEADING)
                                             .show(ui);
-                                        ui.add_space(8.0);
+                                        ui.add_space(UI_SPACE_2);
                                         let preview_width = ui.available_width();
                                         egui::Frame::NONE
                                             .fill(SETTINGS_BG)
@@ -1623,7 +1632,7 @@ impl AnalyzerApp {
                 }
             });
         });
-        ui.add_space(20.0);
+        ui.add_space(UI_SPACE_5);
         section_card(
             ui,
             text::SEND_SETTINGS.get(self.draft.language),
@@ -1632,7 +1641,7 @@ impl AnalyzerApp {
                 Switch::new(&mut self.draft.osc_enabled)
                     .label(text::ENABLE_OSC.get(self.draft.language))
                     .show(ui);
-                ui.add_space(12.0);
+                ui.add_space(UI_SPACE_3);
                 let options = [
                     SendIntervalChoice(SendInterval::One, self.draft.language),
                     SendIntervalChoice(SendInterval::OnePointFive, self.draft.language),
@@ -1657,7 +1666,7 @@ impl AnalyzerApp {
                 });
             },
         );
-        ui.add_space(14.0);
+        ui.add_space(UI_SPACE_4);
         section_card(
             ui,
             text::NORMAL_MESSAGE_TEMPLATE.get(language),
@@ -1678,7 +1687,7 @@ impl AnalyzerApp {
                             .applied_index(applied_message_preset)
                             .draft_changed(message_draft_changed)
                             .show(ui, &mut selected);
-                            ui.add_space(6.0);
+                            ui.add_space(UI_SPACE_2);
                             ShadcnButton::new(text::RESET_SELECTED_PRESET.get(language))
                                 .icon(LucideIcon::RotateCcw)
                                 .variant(ButtonVariant::Ghost)
@@ -1728,7 +1737,7 @@ impl AnalyzerApp {
                             *name = name.trim().to_owned();
                         }
                     });
-                ui.add_space(10.0);
+                ui.add_space(UI_SPACE_3);
                 let width = ui.available_width();
                 Textarea::new(&mut self.draft.message_template)
                     .id_salt("osc-message-template")
@@ -1738,10 +1747,10 @@ impl AnalyzerApp {
                     .max_height(360.0)
                     .monospace()
                     .show(ui);
-                ui.add_space(12.0);
+                ui.add_space(UI_SPACE_3);
                 Typography::muted(text::LIVE_VARIABLES_HINT.get(language)).show(ui);
                 template_help_button(ui, &mut self.template_help_open, language);
-                ui.add_space(10.0);
+                ui.add_space(UI_SPACE_2);
                 let clipboard = &mut self.clipboard;
                 let toast_state = &mut self.toast_state;
                 live_variable_help(
@@ -1753,7 +1762,7 @@ impl AnalyzerApp {
                 );
             },
         );
-        ui.add_space(14.0);
+        ui.add_space(UI_SPACE_4);
         section_card(ui, text::ROUND_REPORT_TEMPLATE.get(language), None, |ui| {
             PropertyRow::new(text::REPORT_PRESET.get(language))
                 .label_width(84.0)
@@ -1770,7 +1779,7 @@ impl AnalyzerApp {
                         .applied_index(applied_report_preset)
                         .draft_changed(report_draft_changed)
                         .show(ui, &mut selected);
-                        ui.add_space(6.0);
+                        ui.add_space(UI_SPACE_2);
                         ShadcnButton::new(text::RESET_SELECTED_PRESET.get(language))
                             .icon(LucideIcon::RotateCcw)
                             .variant(ButtonVariant::Ghost)
@@ -1819,7 +1828,7 @@ impl AnalyzerApp {
                         *name = name.trim().to_owned();
                     }
                 });
-            ui.add_space(10.0);
+            ui.add_space(UI_SPACE_3);
             let width = ui.available_width();
             Textarea::new(&mut self.draft.round_report_template)
                 .id_salt("osc-round-report-template")
@@ -1829,10 +1838,10 @@ impl AnalyzerApp {
                 .max_height(360.0)
                 .monospace()
                 .show(ui);
-            ui.add_space(12.0);
+            ui.add_space(UI_SPACE_3);
             Typography::muted(text::REPORT_VARIABLES_HINT.get(language)).show(ui);
             template_help_button(ui, &mut self.template_help_open, language);
-            ui.add_space(10.0);
+            ui.add_space(UI_SPACE_2);
             let clipboard = &mut self.clipboard;
             let toast_state = &mut self.toast_state;
             report_variable_help(
@@ -1843,7 +1852,7 @@ impl AnalyzerApp {
                 snapshot.has_heart_rate,
             );
         });
-        ui.add_space(14.0);
+        ui.add_space(UI_SPACE_4);
         section_card(ui, text::LIVE_PREVIEW.get(language), None, |ui| {
             PropertyRow::new(text::SIMULATED_STATE.get(language))
                 .label_width(84.0)
@@ -1865,7 +1874,7 @@ impl AnalyzerApp {
                         _ => TemplatePreviewState::Normal,
                     };
                 });
-            ui.add_space(12.0);
+            ui.add_space(UI_SPACE_3);
             let preview_snapshot =
                 preview_snapshot_for_state(snapshot, self.template_preview_state);
             match ecliptica_data_analyzer::osc::render_configured_message(
@@ -1898,7 +1907,7 @@ impl AnalyzerApp {
                 }
             }
         });
-        ui.add_space(14.0);
+        ui.add_space(UI_SPACE_4);
         heart_rate_auxiliary_panel(
             ui,
             &mut self.draft.heart_rate_enabled,
@@ -1923,14 +1932,14 @@ impl AnalyzerApp {
                     .show(ui);
             },
         );
-        ui.add_space(14.0);
+        ui.add_space(UI_SPACE_4);
         section_card(
             ui,
             text::ALERT_SOUNDS.get(self.draft.language),
             None,
             |ui| {
                 PropertyRow::new(text::VOLUME.get(self.draft.language)).show(ui, |ui| {
-                    Flex::row().align_center().gap(10.0).show(ui, |flex| {
+                    Flex::row().align_center().gap(UI_SPACE_2).show(ui, |flex| {
                         flex.ui(|ui| {
                             ShadcnSlider::f32(&mut self.draft.alert_volume, 0.0..=1.0)
                                 .label(text::ALERT_VOLUME.get(self.draft.language))
@@ -1945,7 +1954,6 @@ impl AnalyzerApp {
                         });
                     });
                 });
-                ui.add_space(8.0);
                 PropertyRow::new(text::LOCK_SOUND.get(self.draft.language))
                     .label_width(alert_sound_label_width(self.draft.language))
                     .show(ui, |ui| {
@@ -2052,12 +2060,12 @@ impl AnalyzerApp {
                 }
             }
             if draggable {
-                ui.add_space(6.0);
+                ui.add_space(UI_SPACE_2);
                 Typography::new(text::DRAG_OVERLAY_HINT.get(language))
                     .color(SETTINGS_INFO)
                     .show(ui);
             }
-            ui.add_space(12.0);
+            ui.add_space(UI_SPACE_3);
             let options = OVERLAY_SCALE_OPTIONS.map(OverlayScaleChoice);
             let mut selected = OverlayScaleChoice(self.draft.overlay_scale);
             PropertyRow::new(text::OVERLAY_SIZE.get(language)).show(ui, |ui| {
@@ -2070,7 +2078,7 @@ impl AnalyzerApp {
                 }
             });
         });
-        ui.add_space(14.0);
+        ui.add_space(UI_SPACE_4);
         section_card(ui, text::SCREEN_POSITION.get(language), None, |ui| {
             PropertyRow::new(text::HORIZONTAL_POSITION.get(language)).show(ui, |ui| {
                 let response = NumberInput::f32(&mut self.draft.overlay_x)
@@ -2125,7 +2133,7 @@ impl AnalyzerApp {
                 }
             });
         });
-        ui.add_space(20.0);
+        ui.add_space(UI_SPACE_5);
         section_card(ui, text::EVENT_STREAM.get(language), None, |ui| {
             for row in &self.logs {
                 log_line(ui, row, language);
@@ -2197,7 +2205,6 @@ impl AnalyzerApp {
                                 overlay_header(
                                     ui,
                                     snapshot.has_heart_rate.then_some(snapshot.heart_rate),
-                                    snapshot.status,
                                     overlay_scale,
                                     language,
                                 );
@@ -3447,7 +3454,7 @@ fn nav_button(
     if response.clicked() {
         *page = target;
     }
-    ui.add_space(6.0);
+    ui.add_space(UI_SPACE_1);
 }
 
 struct VariableHelp<'a> {
@@ -3464,7 +3471,7 @@ struct VariableHelpGroup<'a> {
 }
 
 const VARIABLE_GROUP_LABEL_WIDTH: f32 = 142.0;
-const VARIABLE_GROUP_COLUMN_GAP: f32 = 14.0;
+const VARIABLE_GROUP_COLUMN_GAP: f32 = UI_SPACE_4;
 
 #[cfg_attr(not(test), allow(dead_code))]
 struct VariableGroupRowLayout {
@@ -3479,7 +3486,7 @@ fn variable_group_color(group: &ecliptica_data_analyzer::i18n::VariableCopyGroup
         Some("latest_dps") => METRIC_LIVE_DPS,
         Some("avg_dps") => METRIC_AVERAGE_DPS,
         Some("round_effective_dps" | "round_report_effective_dps") => METRIC_ACTIVE_DPS,
-        Some("round_burst_10s" | "round_report_burst_10s") => METRIC_BEST_DPS,
+        Some("round_burst_10s" | "round_report_burst_10s") => VARIABLE_BEST_AVERAGE_DPS,
         Some("round_damage_taken") => METRIC_DAMAGE_TAKEN,
         Some("max_dps" | "round_max_dps") => VARIABLE_HIGHEST_DPS,
         Some("boss_lock") => VARIABLE_COMBAT,
@@ -3683,7 +3690,7 @@ fn variable_help_group_row(
             ui.set_width(ui.available_width());
             buttons_start_x = ui.cursor().left();
             ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
+                ui.spacing_mut().item_spacing = egui::vec2(UI_SPACE_2, UI_SPACE_2);
                 for variable in &group.variables {
                     button_rects.push(
                         variable_chip(ui, variable, group.color, clipboard, toast_state, language)
@@ -3712,7 +3719,7 @@ fn variable_help_groups(
 ) {
     for (index, group) in groups.iter().enumerate() {
         variable_help_group_row(ui, index, group, clipboard, toast_state, language);
-        ui.add_space(6.0);
+        ui.add_space(UI_SPACE_2);
     }
 }
 
@@ -3786,12 +3793,12 @@ fn heart_rate_auxiliary_panel(
     egui_shadcn::Card::new().show(ui, |ui| {
         ui.set_min_width((width - 34.0).max(120.0));
         heart_rate_title_row(ui, language);
-        ui.add_space(10.0);
+        ui.add_space(UI_SPACE_3);
         Switch::new(enabled)
             .label(text::ENABLE_HEART_RATE.get(language))
             .show(ui)
             .on_hover_text(text::ENABLE_HEART_RATE_HINT.get(language));
-        ui.add_space(12.0);
+        ui.add_space(UI_SPACE_3);
         let groups = localized_variable_groups(
             ecliptica_data_analyzer::i18n::HEART_RATE_VARIABLE_GROUPS,
             language,
@@ -3799,7 +3806,7 @@ fn heart_rate_auxiliary_panel(
         );
         if let Some(group) = groups.first() {
             ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
+                ui.spacing_mut().item_spacing = egui::vec2(UI_SPACE_2, UI_SPACE_2);
                 for variable in &group.variables {
                     variable_chip(ui, variable, group.color, clipboard, toast_state, language);
                 }
@@ -3838,7 +3845,7 @@ fn open_heart_rate_guide(context: &egui::Context) {
 }
 
 fn template_help_button(ui: &mut egui::Ui, template_help_open: &mut bool, language: Language) {
-    ui.add_space(8.0);
+    ui.add_space(UI_SPACE_2);
     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
         if ShadcnButton::new(text::TEMPLATE_SYNTAX_HELP.get(language))
             .icon(LucideIcon::BookOpenText)
@@ -3862,7 +3869,7 @@ fn save_error_detail_dialog(ui: &mut egui::Ui, error: &str, language: Language) 
                 .wrap()
                 .show(ui);
         });
-    ui.add_space(12.0);
+    ui.add_space(UI_SPACE_3);
     ShadcnScrollArea::new(380.0)
         .id_salt("save-error-detail-scroll")
         .framed(true)
@@ -3890,19 +3897,24 @@ fn template_syntax_help(ui: &mut egui::Ui, language: Language, height: f32) {
         .fill_available(true)
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            for example in ecliptica_data_analyzer::i18n::TEMPLATE_SYNTAX_EXAMPLES {
+            for (index, example) in ecliptica_data_analyzer::i18n::TEMPLATE_SYNTAX_EXAMPLES
+                .iter()
+                .enumerate()
+            {
+                if index > 0 {
+                    ui.add_space(UI_SPACE_4);
+                }
                 syntax_example(ui, example.title.get(language), example.code.get(language));
             }
         });
 }
 
 fn syntax_example(ui: &mut egui::Ui, title: &str, code: &str) {
-    ui.add_space(10.0);
     Typography::new(title)
         .strong()
         .color(SETTINGS_TEXT)
         .show(ui);
-    ui.add_space(5.0);
+    ui.add_space(UI_SPACE_1);
     preview_panel(ui, |ui| {
         Typography::new(code)
             .monospace()
@@ -3929,10 +3941,10 @@ fn preview_panel(ui: &mut egui::Ui, content: impl FnOnce(&mut egui::Ui)) -> egui
     egui::Frame::new()
         .fill(SETTINGS_PREVIEW_BG)
         .inner_margin(egui::Margin {
-            left: 16,
-            right: 16,
-            top: 12,
-            bottom: 12,
+            left: UI_SPACE_4 as i8,
+            right: UI_SPACE_4 as i8,
+            top: UI_SPACE_3 as i8,
+            bottom: UI_SPACE_3 as i8,
         })
         .corner_radius(6.0)
         .stroke(egui::Stroke::new(1.0, SETTINGS_PREVIEW_BORDER))
@@ -3945,7 +3957,7 @@ fn preview_panel(ui: &mut egui::Ui, content: impl FnOnce(&mut egui::Ui)) -> egui
 
 fn page_heading(ui: &mut egui::Ui, title: &str) {
     Typography::h3(title).color(SETTINGS_HEADING).show(ui);
-    ui.add_space(20.0);
+    ui.add_space(UI_SPACE_5);
 }
 
 fn section_card(
@@ -3987,9 +3999,9 @@ fn section_card_with_status(
             Typography::muted(description)
                 .color(SETTINGS_TEXT_MUTED)
                 .show(ui);
-            ui.add_space(14.0);
+            ui.add_space(UI_SPACE_3);
         } else {
-            ui.add_space(10.0);
+            ui.add_space(UI_SPACE_3);
         }
         content(ui);
     });
@@ -4003,7 +4015,7 @@ fn dashboard_stat(ui: &mut egui::Ui, label: &str, value: &str, color: egui::Colo
         Typography::new(label)
             .color(SETTINGS_TEXT_SECONDARY)
             .show(ui);
-        ui.add_space(3.0);
+        ui.add_space(UI_SPACE_1);
         Typography::new(short_text(value, 16))
             .variant(TypographyVariant::H4)
             .color(color)
@@ -4040,7 +4052,7 @@ fn report_stat_group(ui: &mut egui::Ui, items: &[ReportStatItem<'_>], max_column
     let columns = report_stat_column_count(ui.available_width(), max_columns);
     for (row_index, row) in items.chunks(columns).enumerate() {
         if row_index > 0 {
-            ui.add_space(14.0);
+            ui.add_space(UI_SPACE_4);
         }
         ui.columns(columns, |column_uis| {
             for (column, item) in column_uis.iter_mut().zip(row) {
@@ -4052,7 +4064,7 @@ fn report_stat_group(ui: &mut egui::Ui, items: &[ReportStatItem<'_>], max_column
 
 fn report_stat_column_count(available_width: f32, max_columns: usize) -> usize {
     const MIN_STAT_WIDTH: f32 = 150.0;
-    const COLUMN_GAP: f32 = 10.0;
+    const COLUMN_GAP: f32 = UI_SPACE_2;
     (((available_width + COLUMN_GAP) / (MIN_STAT_WIDTH + COLUMN_GAP)).floor() as usize)
         .clamp(1, max_columns.max(1))
 }
@@ -4239,7 +4251,6 @@ fn overlay_height(has_report: bool, has_alert: bool) -> f32 {
 fn overlay_header(
     ui: &mut egui::Ui,
     heart_rate: Option<u16>,
-    status: DataStatus,
     scale: f32,
     language: Language,
 ) -> (egui::Response, Option<egui::Response>) {
@@ -4247,7 +4258,7 @@ fn overlay_header(
     let row = ui
         .horizontal(|ui| {
             ui.colored_label(
-                overlay_status_color(status),
+                OVERLAY_STATUS_DOT_COLOR,
                 egui::RichText::new("●").size(9.0 * scale),
             );
             ui.label(
@@ -4262,14 +4273,6 @@ fn overlay_header(
         overlay_heart_rate_tag(ui, heart_rate, row.rect.center().y, right, scale, language)
     });
     (row, tag)
-}
-
-fn overlay_status_color(status: DataStatus) -> egui::Color32 {
-    match status {
-        DataStatus::Live => SETTINGS_SUCCESS,
-        DataStatus::Stale => SETTINGS_WARNING,
-        DataStatus::Searching | DataStatus::Recovering | DataStatus::Error => SETTINGS_INFO,
-    }
 }
 
 fn overlay_heart_rate_tag(
@@ -4791,7 +4794,7 @@ fn install_theme(ctx: &egui::Context) {
     ctx.set_visuals(visuals);
 
     ctx.style_mut(|style| {
-        style.spacing.item_spacing = egui::vec2(10.0, 8.0);
+        style.spacing.item_spacing = egui::vec2(UI_SPACE_2, UI_SPACE_2);
         style.spacing.button_padding = egui::vec2(12.0, 8.0);
         style.spacing.interact_size.y = 36.0;
     });
@@ -5991,16 +5994,17 @@ mod tests {
     }
 
     #[test]
-    fn overlay_status_dot_follows_live_stale_and_default_status_colors() {
-        assert_eq!(overlay_status_color(DataStatus::Live), SETTINGS_SUCCESS);
-        assert_eq!(overlay_status_color(DataStatus::Stale), SETTINGS_WARNING);
-        for status in [
-            DataStatus::Searching,
-            DataStatus::Recovering,
-            DataStatus::Error,
-        ] {
-            assert_eq!(overlay_status_color(status), SETTINGS_INFO);
-        }
+    fn overlay_status_dot_keeps_its_original_fixed_color() {
+        assert_eq!(
+            OVERLAY_STATUS_DOT_COLOR,
+            egui::Color32::from_rgb(83, 211, 225)
+        );
+    }
+
+    #[test]
+    fn familiar_round_report_highlights_stay_yellow() {
+        assert_eq!(METRIC_BEST_DPS, SETTINGS_WARNING);
+        assert_eq!(METRIC_STANDSTILL, SETTINGS_WARNING);
     }
 
     #[test]
@@ -6020,6 +6024,7 @@ mod tests {
             for pair in groups.windows(2) {
                 assert_ne!(pair[0].color, pair[1].color);
             }
+            assert!(groups.iter().all(|group| group.color != SETTINGS_WARNING));
         }
         assert_eq!(live[2].color, report[3].color);
         assert_eq!(live[3].color, report[4].color);
@@ -6067,10 +6072,8 @@ mod tests {
                 ui.set_width(OVERLAY_CONTENT_WIDTH * scale);
                 let content_left = ui.max_rect().left();
                 let content_right = ui.max_rect().right();
-                let (offline, offline_tag) =
-                    overlay_header(ui, None, DataStatus::Live, scale, Language::English);
-                let (online, online_tag) =
-                    overlay_header(ui, Some(999), DataStatus::Live, scale, Language::English);
+                let (offline, offline_tag) = overlay_header(ui, None, scale, Language::English);
+                let (online, online_tag) = overlay_header(ui, Some(999), scale, Language::English);
                 let online_tag = online_tag.expect("online heart rate should render a tag");
 
                 assert!(offline_tag.is_none());

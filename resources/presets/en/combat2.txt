@@ -1,9 +1,6 @@
 {{#if is_self_boss_locked}}
 【Boss is targeting me — attack it!】
 {{/if}}
-{{#if no_wasd_for_10s}}
-【Chat, I think I'm cooked 💀】
-{{/if}}
 {{#if no_dps_for_10s}}
 【On my union-mandated DPS break】
 {{/if}}

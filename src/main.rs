@@ -61,6 +61,7 @@ const SETTINGS_PREVIEW_BORDER: egui::Color32 = egui::Color32::from_rgb(94, 81, 1
 const SETTINGS_CHART_BG: egui::Color32 = egui::Color32::from_rgb(29, 23, 43);
 const SETTINGS_CHART_AXIS: egui::Color32 = egui::Color32::from_rgb(229, 222, 248);
 const SETTINGS_CHART_CURSOR: egui::Color32 = egui::Color32::from_rgb(221, 207, 255);
+const SETTINGS_CHART_LINE: egui::Color32 = egui::Color32::from_rgb(207, 190, 255);
 const DPS_CHART_AUTO_FIT_IDLE: Duration = Duration::from_secs(5);
 const DPS_CHART_AUTO_FIT_INTERVAL: Duration = Duration::from_secs(5);
 const DPS_CHART_RECENT_WINDOW_SECONDS: f64 = 5.0 * 60.0;
@@ -84,8 +85,9 @@ const SETTINGS_SUCCESS: egui::Color32 = egui::Color32::from_rgb(105, 221, 153);
 const SETTINGS_INFO: egui::Color32 = egui::Color32::from_rgb(119, 181, 255);
 const SETTINGS_WARNING: egui::Color32 = egui::Color32::from_rgb(255, 204, 102);
 const SETTINGS_DANGER: egui::Color32 = egui::Color32::from_rgb(255, 132, 146);
-// One semantic palette is shared by the dashboard, chart, Overlay, reports,
-// and template-variable chips.
+// Shared metric colors keep the dashboard, Overlay, and reports consistent.
+// The chart and template-variable categories intentionally have their own
+// palettes because they need different kinds of visual separation.
 const METRIC_LIVE_DPS: egui::Color32 = SETTINGS_INFO;
 const METRIC_AVERAGE_DPS: egui::Color32 = SETTINGS_ACCENT;
 const METRIC_ACTIVE_DPS: egui::Color32 = SETTINGS_SUCCESS;
@@ -96,8 +98,16 @@ const METRIC_DURATION: egui::Color32 = SETTINGS_INFO;
 const METRIC_TOTAL_DAMAGE: egui::Color32 = SETTINGS_ACCENT;
 const METRIC_DPS_GROWTH: egui::Color32 = SETTINGS_SUCCESS;
 const METRIC_STANDSTILL: egui::Color32 = SETTINGS_WARNING;
-const METRIC_GAME_PROGRESS: egui::Color32 = SETTINGS_INFO;
 const METRIC_HEART_RATE: egui::Color32 = SETTINGS_DANGER;
+const VARIABLE_HIGHEST_DPS: egui::Color32 = egui::Color32::from_rgb(255, 164, 112);
+const VARIABLE_COMBAT: egui::Color32 = egui::Color32::from_rgb(83, 211, 225);
+const VARIABLE_ALERT: egui::Color32 = egui::Color32::from_rgb(224, 156, 255);
+const VARIABLE_GAME_PROGRESS: egui::Color32 = egui::Color32::from_rgb(96, 210, 190);
+const VARIABLE_DURATION: egui::Color32 = egui::Color32::from_rgb(214, 207, 225);
+const VARIABLE_DPS_GROWTH: egui::Color32 = egui::Color32::from_rgb(176, 218, 112);
+const VARIABLE_STANDSTILL: egui::Color32 = egui::Color32::from_rgb(255, 183, 122);
+const VARIABLE_ROUND_DAMAGE: egui::Color32 = egui::Color32::from_rgb(238, 128, 174);
+const VARIABLE_HEART_RATE: egui::Color32 = egui::Color32::from_rgb(255, 147, 177);
 
 fn alert_sound_label_width(language: Language) -> f32 {
     match language {
@@ -2709,8 +2719,8 @@ fn dps_history_chart(
             .map(|point| {
                 Bar::new(point[0], point[1])
                     .width(0.72)
-                    .fill(METRIC_LIVE_DPS.gamma_multiply(0.24))
-                    .stroke(egui::Stroke::new(0.8, METRIC_LIVE_DPS.gamma_multiply(0.42)))
+                    .fill(SETTINGS_ACCENT.gamma_multiply(0.24))
+                    .stroke(egui::Stroke::new(0.8, SETTINGS_ACCENT.gamma_multiply(0.42)))
             })
             .collect(),
     )
@@ -2719,14 +2729,14 @@ fn dps_history_chart(
         text::DPS_AVERAGE.get(language),
         PlotPoints::new(smooth_trend.clone()),
     )
-    .color(METRIC_AVERAGE_DPS.gamma_multiply(0.28))
+    .color(egui::Color32::from_rgba_unmultiplied(151, 122, 255, 70))
     .width(6.0)
     .allow_hover(false);
     let line = Line::new(
         text::DPS_AVERAGE.get(language),
         PlotPoints::new(smooth_trend.clone()),
     )
-    .color(METRIC_AVERAGE_DPS)
+    .color(SETTINGS_CHART_LINE)
     .width(2.4)
     .allow_hover(false);
     let accessibility_summary = format_pattern(
@@ -2814,7 +2824,7 @@ fn dps_history_chart(
                         plot_ui.points(
                             Points::new(text::DPS_ROUND_PEAK.get(language), vec![raw_peak])
                                 .shape(MarkerShape::Diamond)
-                                .color(METRIC_BEST_DPS)
+                                .color(SETTINGS_WARNING)
                                 .radius(if peak_hovered { 8.0 } else { 5.5 })
                                 .filled(true)
                                 .allow_hover(false),
@@ -2832,7 +2842,7 @@ fn dps_history_chart(
                         if smooth_trend.len() == 1 {
                             plot_ui.points(
                                 Points::new("", smooth_trend.clone())
-                                    .color(METRIC_AVERAGE_DPS)
+                                    .color(SETTINGS_CHART_LINE)
                                     .radius(4.5)
                                     .allow_hover(false),
                             );
@@ -2868,9 +2878,9 @@ fn dps_history_chart(
                                             MarkerShape::Square
                                         })
                                         .color(if peak_hovered {
-                                            METRIC_BEST_DPS
+                                            SETTINGS_WARNING
                                         } else {
-                                            METRIC_LIVE_DPS
+                                            SETTINGS_ACCENT
                                         })
                                         .radius(if peak_hovered { 8.0 } else { 4.0 })
                                         .allow_hover(false),
@@ -3449,6 +3459,7 @@ struct VariableHelp<'a> {
 
 struct VariableHelpGroup<'a> {
     title: &'a str,
+    color: egui::Color32,
     variables: Vec<VariableHelp<'a>>,
 }
 
@@ -3463,47 +3474,51 @@ struct VariableGroupRowLayout {
     button_rects: Vec<egui::Rect>,
 }
 
-fn variable_metric_color(name: &str) -> egui::Color32 {
-    match name {
-        "latest_dps" | "has_latest_dps" => METRIC_LIVE_DPS,
-        "avg_dps" | "has_avg_dps" => METRIC_AVERAGE_DPS,
-        "round_effective_dps"
-        | "has_round_effective_dps"
-        | "round_report_effective_dps"
-        | "has_round_report_effective_dps" => METRIC_ACTIVE_DPS,
-        "round_burst_10s"
-        | "has_round_burst_10s"
-        | "round_report_burst_10s"
-        | "has_round_report_burst_10s"
-        | "max_dps"
-        | "has_max_dps"
-        | "round_max_dps"
-        | "has_round_max_dps" => METRIC_BEST_DPS,
-        "round_damage_taken"
-        | "has_round_damage_taken"
-        | "round_report_damage_taken"
-        | "rapid_damage_danger" => METRIC_DAMAGE_TAKEN,
-        "boss_lock" | "boss" | "is_self_boss_locked" => METRIC_BOSS_LOCK,
-        "no_dps_for_10s" | "no_wasd_for_10s" => SETTINGS_WARNING,
-        "has_step_estimate" | "current_step" | "until_boss_step" => METRIC_GAME_PROGRESS,
-        "round_duration" | "has_round_duration" => METRIC_DURATION,
-        "dps_growth_rate" | "has_dps_growth_rate" => METRIC_DPS_GROWTH,
-        "round_longest_standstill" | "has_round_longest_standstill" => METRIC_STANDSTILL,
-        "round_total_damage" => METRIC_TOTAL_DAMAGE,
-        "heart_rate" | "has_heart_rate" => METRIC_HEART_RATE,
+fn variable_group_color(group: &ecliptica_data_analyzer::i18n::VariableCopyGroup) -> egui::Color32 {
+    match group.variables.first().map(|variable| variable.name) {
+        Some("latest_dps") => METRIC_LIVE_DPS,
+        Some("avg_dps") => METRIC_AVERAGE_DPS,
+        Some("round_effective_dps" | "round_report_effective_dps") => METRIC_ACTIVE_DPS,
+        Some("round_burst_10s" | "round_report_burst_10s") => METRIC_BEST_DPS,
+        Some("round_damage_taken") => METRIC_DAMAGE_TAKEN,
+        Some("max_dps" | "round_max_dps") => VARIABLE_HIGHEST_DPS,
+        Some("boss_lock") => VARIABLE_COMBAT,
+        Some("is_self_boss_locked") => VARIABLE_ALERT,
+        Some("has_step_estimate") => VARIABLE_GAME_PROGRESS,
+        Some("round_duration") => VARIABLE_DURATION,
+        Some("dps_growth_rate") => VARIABLE_DPS_GROWTH,
+        Some("round_longest_standstill") => VARIABLE_STANDSTILL,
+        Some("round_total_damage") => VARIABLE_ROUND_DAMAGE,
+        Some("heart_rate") => VARIABLE_HEART_RATE,
         _ => SETTINGS_TEXT_SECONDARY,
     }
+}
+
+fn variable_chip_color(group_color: egui::Color32, name: &str) -> egui::Color32 {
+    if !name.starts_with("has_") {
+        return group_color;
+    }
+
+    // Availability flags remain in their category's hue, but sit one step
+    // darker than the value they guard.
+    const FLAG_SHADE: f32 = 0.78;
+    egui::Color32::from_rgb(
+        (f32::from(group_color.r()) * FLAG_SHADE).round() as u8,
+        (f32::from(group_color.g()) * FLAG_SHADE).round() as u8,
+        (f32::from(group_color.b()) * FLAG_SHADE).round() as u8,
+    )
 }
 
 fn variable_chip(
     ui: &mut egui::Ui,
     variable: &VariableHelp<'_>,
+    group_color: egui::Color32,
     clipboard: &mut Option<Clipboard>,
     toast_state: &mut ToastState,
     language: Language,
 ) -> egui::Response {
     let name = variable.name;
-    let color = variable_metric_color(name);
+    let color = variable_chip_color(group_color, name);
     let token = format!("{{{{{name}}}}}");
     let role = match variable.role {
         role if role == text::ROLE_CONDITION.get(language) => text::ROLE_JUDGMENT.get(language),
@@ -3670,8 +3685,10 @@ fn variable_help_group_row(
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
                 for variable in &group.variables {
-                    button_rects
-                        .push(variable_chip(ui, variable, clipboard, toast_state, language).rect);
+                    button_rects.push(
+                        variable_chip(ui, variable, group.color, clipboard, toast_state, language)
+                            .rect,
+                    );
                 }
             });
         });
@@ -3720,6 +3737,7 @@ fn localized_variable_groups(
                 .collect::<Vec<_>>();
             VariableHelpGroup {
                 title: group.title.get(language),
+                color: variable_group_color(group),
                 variables,
             }
         })
@@ -3783,7 +3801,7 @@ fn heart_rate_auxiliary_panel(
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
                 for variable in &group.variables {
-                    variable_chip(ui, variable, clipboard, toast_state, language);
+                    variable_chip(ui, variable, group.color, clipboard, toast_state, language);
                 }
             });
         }
@@ -5881,6 +5899,7 @@ mod tests {
         ];
         let group = VariableHelpGroup {
             title: "测试变量组",
+            color: SETTINGS_ACCENT,
             variables: variables.into(),
         };
 
@@ -5985,25 +6004,33 @@ mod tests {
     }
 
     #[test]
-    fn template_variables_use_the_shared_metric_palette() {
-        assert_eq!(variable_metric_color("latest_dps"), METRIC_LIVE_DPS);
-        assert_eq!(variable_metric_color("avg_dps"), METRIC_AVERAGE_DPS);
-        assert_eq!(
-            variable_metric_color("round_report_effective_dps"),
-            METRIC_ACTIVE_DPS
+    fn template_variables_are_colored_by_category_with_darker_has_flags() {
+        let live = localized_variable_groups(
+            ecliptica_data_analyzer::i18n::LIVE_VARIABLE_GROUPS,
+            Language::Chinese,
+            true,
         );
-        assert_eq!(
-            variable_metric_color("round_report_burst_10s"),
-            METRIC_BEST_DPS
+        let report = localized_variable_groups(
+            ecliptica_data_analyzer::i18n::REPORT_VARIABLE_GROUPS,
+            Language::Chinese,
+            true,
         );
-        assert_eq!(
-            variable_metric_color("round_report_damage_taken"),
-            METRIC_DAMAGE_TAKEN
-        );
-        assert_eq!(
-            variable_metric_color("round_total_damage"),
-            METRIC_TOTAL_DAMAGE
-        );
+
+        for groups in [&live, &report] {
+            for pair in groups.windows(2) {
+                assert_ne!(pair[0].color, pair[1].color);
+            }
+        }
+        assert_eq!(live[2].color, report[3].color);
+        assert_eq!(live[3].color, report[4].color);
+
+        let value_color = variable_chip_color(live[0].color, "latest_dps");
+        let flag_color = variable_chip_color(live[0].color, "has_latest_dps");
+        assert_eq!(value_color, live[0].color);
+        assert_ne!(flag_color, value_color);
+        assert!(flag_color.r() < value_color.r());
+        assert!(flag_color.g() < value_color.g());
+        assert!(flag_color.b() < value_color.b());
     }
 
     #[test]

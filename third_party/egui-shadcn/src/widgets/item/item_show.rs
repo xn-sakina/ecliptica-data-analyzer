@@ -15,8 +15,8 @@ impl super::item::Item {
             .inner_margin(egui::Margin {
                 left: 12, // px-3
                 right: 12,
-                top: 10, // py-2.5
-                bottom: 10,
+                top: 8, // py-2
+                bottom: 8,
             })
             .corner_radius(egui::CornerRadius::same(cr))
             .stroke(egui::Stroke::new(1.0, border_color));

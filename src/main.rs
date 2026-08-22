@@ -27,7 +27,7 @@ use egui_plot::{Bar, BarChart, HLine, Line, MarkerShape, Plot, PlotPoints, Point
 use egui_shadcn::{
     Alert, AlertDialog, AlertDialogResult, AlertVariant, Badge, BadgeVariant,
     Button as ShadcnButton, ButtonVariant, ComponentSize, Dialog, Empty, Flex, Input, Item,
-    ItemVariant, LucideIcon, NumberInput, PropertyRow, ScrollArea as ShadcnScrollArea, SelectValue,
+    LucideIcon, NumberInput, PropertyRow, ScrollArea as ShadcnScrollArea, SelectValue,
     ShadcnThemeExt, Slider as ShadcnSlider, Switch, Textarea, ToastState, ToastVariant,
     ToggleGroup, ToggleVariant, Typography, TypographyVariant,
 };
@@ -50,7 +50,6 @@ const UI_SPACE_2: f32 = 8.0;
 const UI_SPACE_3: f32 = 12.0;
 const UI_SPACE_4: f32 = 16.0;
 const UI_SPACE_5: f32 = 20.0;
-const UI_SPACE_6: f32 = 24.0;
 const CJK_FONT_FAMILY: &str = "system-cjk";
 const EXTENDED_TEXT_FONT_FAMILY: &str = "system-extended-text";
 const SYMBOL_FONT_FAMILY: &str = "system-symbols";
@@ -65,6 +64,7 @@ const SETTINGS_BORDER: egui::Color32 = egui::Color32::from_rgb(53, 47, 67);
 const SETTINGS_ACCENT: egui::Color32 = egui::Color32::from_rgb(190, 174, 255);
 const SETTINGS_PREVIEW_BG: egui::Color32 = egui::Color32::from_rgb(33, 28, 45);
 const SETTINGS_PREVIEW_BORDER: egui::Color32 = egui::Color32::from_rgb(94, 81, 129);
+const SETTINGS_INSET_BORDER: egui::Color32 = egui::Color32::from_rgba_premultiplied(34, 31, 46, 46);
 const SETTINGS_CHART_BG: egui::Color32 = egui::Color32::from_rgb(29, 23, 43);
 const SETTINGS_CHART_AXIS: egui::Color32 = egui::Color32::from_rgb(229, 222, 248);
 const SETTINGS_CHART_CURSOR: egui::Color32 = egui::Color32::from_rgb(221, 207, 255);
@@ -710,9 +710,9 @@ impl AnalyzerApp {
                 egui::Frame::new()
                     .fill(SETTINGS_SIDEBAR_BG)
                     .inner_margin(egui::Margin {
-                        left: UI_SPACE_4 as i8,
-                        right: UI_SPACE_4 as i8,
-                        top: UI_SPACE_4 as i8,
+                        left: UI_SPACE_3 as i8,
+                        right: UI_SPACE_3 as i8,
+                        top: UI_SPACE_3 as i8,
                         bottom: 0,
                     })
                     .stroke(egui::Stroke::NONE),
@@ -736,7 +736,7 @@ impl AnalyzerApp {
                 };
                 let sidebar_content_rect = ui.max_rect();
                 ui.painter().vline(
-                    sidebar_content_rect.right() + UI_SPACE_4,
+                    sidebar_content_rect.right() + UI_SPACE_3,
                     management_rect.y_range(),
                     egui::Stroke::new(1.0, SETTINGS_BORDER),
                 );
@@ -769,7 +769,7 @@ impl AnalyzerApp {
                         .max_rect(footer_rect)
                         .layout(egui::Layout::bottom_up(egui::Align::LEFT)),
                 );
-                footer_ui.add_space(UI_SPACE_3);
+                footer_ui.add_space(UI_SPACE_2);
                 if ShadcnButton::new(text::RESTORE_DEFAULTS.get(language))
                     .icon(LucideIcon::RotateCcw)
                     .variant(ButtonVariant::Outline)
@@ -859,7 +859,7 @@ impl AnalyzerApp {
                 {
                     self.register_developer_logo_click(ctx);
                 }
-                body_ui.add_space(UI_SPACE_6);
+                body_ui.add_space(UI_SPACE_5);
                 Typography::small(text::WORKSPACE.get(language))
                     .color(SETTINGS_TEXT_SECONDARY)
                     .show(&mut body_ui);
@@ -907,12 +907,12 @@ impl AnalyzerApp {
             .frame(
                 egui::Frame::new()
                     .fill(SETTINGS_SURFACE)
-                    .inner_margin(egui::Margin::symmetric(UI_SPACE_6 as i8, 0))
+                    .inner_margin(egui::Margin::symmetric(UI_SPACE_5 as i8, 0))
                     .stroke(egui::Stroke::NONE),
             )
             .show(ctx, |ui| {
                 ui.painter().hline(
-                    ui.max_rect().expand2(egui::vec2(UI_SPACE_6, 0.0)).x_range(),
+                    ui.max_rect().expand2(egui::vec2(UI_SPACE_5, 0.0)).x_range(),
                     ui.max_rect().bottom() - 1.0,
                     egui::Stroke::new(1.0, SETTINGS_BORDER),
                 );
@@ -961,7 +961,7 @@ impl AnalyzerApp {
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         egui::Frame::NONE
-                            .inner_margin(egui::Margin::same(UI_SPACE_6 as i8))
+                            .inner_margin(egui::Margin::same(UI_SPACE_5 as i8))
                             .show(ui, |ui| match self.page {
                                 SettingsPage::Overview => self.overview_page(ui, snapshot),
                                 SettingsPage::Message => self.message_page(ui, snapshot),
@@ -1157,7 +1157,7 @@ impl AnalyzerApp {
                 }
             });
         });
-        ui.add_space(UI_SPACE_5);
+        ui.add_space(UI_SPACE_4);
         ui.columns(3, |columns| {
             dashboard_stat(
                 &mut columns[0],
@@ -1165,7 +1165,7 @@ impl AnalyzerApp {
                 &snapshot.realtime_dps_text(),
                 METRIC_LIVE_DPS,
             );
-            columns[0].add_space(UI_SPACE_3);
+            columns[0].add_space(UI_SPACE_2);
             dashboard_stat(
                 &mut columns[0],
                 text::AVERAGE_DPS_30S.get(language),
@@ -1178,7 +1178,7 @@ impl AnalyzerApp {
                 &snapshot.round_effective_dps_text(),
                 METRIC_ACTIVE_DPS,
             );
-            columns[1].add_space(UI_SPACE_3);
+            columns[1].add_space(UI_SPACE_2);
             dashboard_stat(
                 &mut columns[1],
                 text::ROUND_BURST_10S.get(language),
@@ -1191,7 +1191,7 @@ impl AnalyzerApp {
                 &snapshot.round_damage_taken.to_string(),
                 METRIC_DAMAGE_TAKEN,
             );
-            columns[2].add_space(UI_SPACE_3);
+            columns[2].add_space(UI_SPACE_2);
             dashboard_stat(
                 &mut columns[2],
                 text::BOSS_LOCK.get(language),
@@ -1199,7 +1199,7 @@ impl AnalyzerApp {
                 METRIC_BOSS_LOCK,
             );
         });
-        ui.add_space(UI_SPACE_4);
+        ui.add_space(UI_SPACE_3);
         let chart_round_context = dps_chart_round_context(snapshot, language);
         section_card_with_status(
             ui,
@@ -1212,7 +1212,7 @@ impl AnalyzerApp {
                 dps_history_chart(ui, snapshot, &mut self.dps_chart_view, language);
             },
         );
-        ui.add_space(UI_SPACE_4);
+        ui.add_space(UI_SPACE_3);
         if let Some(report) = &snapshot.round_report {
             section_card(ui, text::PREVIOUS_ROUND_REPORT.get(language), None, |ui| {
                 let stats = [
@@ -1262,7 +1262,7 @@ impl AnalyzerApp {
                 ];
                 report_stat_group(ui, &stats, 3);
             });
-            ui.add_space(UI_SPACE_4);
+            ui.add_space(UI_SPACE_3);
         }
         section_card(ui, text::GAME_LOG.get(language), None, |ui| {
             log_source_row(ui, snapshot.source.as_deref(), &self.runtime, language);
@@ -1409,7 +1409,7 @@ impl AnalyzerApp {
                                             });
                                         });
 
-                                        ui.add_space(UI_SPACE_5);
+                                        ui.add_space(UI_SPACE_4);
                                         let preview = active_session.as_ref().map_or_else(
                                             || {
                                                 render_away_preview(
@@ -1469,7 +1469,7 @@ impl AnalyzerApp {
                                             })
                                             .show(ui);
 
-                                            ui.add_space(UI_SPACE_4);
+                                            ui.add_space(UI_SPACE_3);
                                         }
 
                                         Typography::new(text::AWAY_MESSAGE.get(language))
@@ -1632,7 +1632,7 @@ impl AnalyzerApp {
                 }
             });
         });
-        ui.add_space(UI_SPACE_5);
+        ui.add_space(UI_SPACE_4);
         section_card(
             ui,
             text::SEND_SETTINGS.get(self.draft.language),
@@ -1641,7 +1641,7 @@ impl AnalyzerApp {
                 Switch::new(&mut self.draft.osc_enabled)
                     .label(text::ENABLE_OSC.get(self.draft.language))
                     .show(ui);
-                ui.add_space(UI_SPACE_3);
+                ui.add_space(UI_SPACE_2);
                 let options = [
                     SendIntervalChoice(SendInterval::One, self.draft.language),
                     SendIntervalChoice(SendInterval::OnePointFive, self.draft.language),
@@ -1666,7 +1666,7 @@ impl AnalyzerApp {
                 });
             },
         );
-        ui.add_space(UI_SPACE_4);
+        ui.add_space(UI_SPACE_3);
         section_card(
             ui,
             text::NORMAL_MESSAGE_TEMPLATE.get(language),
@@ -1737,7 +1737,7 @@ impl AnalyzerApp {
                             *name = name.trim().to_owned();
                         }
                     });
-                ui.add_space(UI_SPACE_3);
+                ui.add_space(UI_SPACE_2);
                 let width = ui.available_width();
                 Textarea::new(&mut self.draft.message_template)
                     .id_salt("osc-message-template")
@@ -1747,7 +1747,7 @@ impl AnalyzerApp {
                     .max_height(360.0)
                     .monospace()
                     .show(ui);
-                ui.add_space(UI_SPACE_3);
+                ui.add_space(UI_SPACE_2);
                 Typography::muted(text::LIVE_VARIABLES_HINT.get(language)).show(ui);
                 template_help_button(ui, &mut self.template_help_open, language);
                 ui.add_space(UI_SPACE_2);
@@ -1762,7 +1762,7 @@ impl AnalyzerApp {
                 );
             },
         );
-        ui.add_space(UI_SPACE_4);
+        ui.add_space(UI_SPACE_3);
         section_card(ui, text::ROUND_REPORT_TEMPLATE.get(language), None, |ui| {
             PropertyRow::new(text::REPORT_PRESET.get(language))
                 .label_width(84.0)
@@ -1828,7 +1828,7 @@ impl AnalyzerApp {
                         *name = name.trim().to_owned();
                     }
                 });
-            ui.add_space(UI_SPACE_3);
+            ui.add_space(UI_SPACE_2);
             let width = ui.available_width();
             Textarea::new(&mut self.draft.round_report_template)
                 .id_salt("osc-round-report-template")
@@ -1838,7 +1838,7 @@ impl AnalyzerApp {
                 .max_height(360.0)
                 .monospace()
                 .show(ui);
-            ui.add_space(UI_SPACE_3);
+            ui.add_space(UI_SPACE_2);
             Typography::muted(text::REPORT_VARIABLES_HINT.get(language)).show(ui);
             template_help_button(ui, &mut self.template_help_open, language);
             ui.add_space(UI_SPACE_2);
@@ -1852,7 +1852,7 @@ impl AnalyzerApp {
                 snapshot.has_heart_rate,
             );
         });
-        ui.add_space(UI_SPACE_4);
+        ui.add_space(UI_SPACE_3);
         section_card(ui, text::LIVE_PREVIEW.get(language), None, |ui| {
             PropertyRow::new(text::SIMULATED_STATE.get(language))
                 .label_width(84.0)
@@ -1874,7 +1874,7 @@ impl AnalyzerApp {
                         _ => TemplatePreviewState::Normal,
                     };
                 });
-            ui.add_space(UI_SPACE_3);
+            ui.add_space(UI_SPACE_2);
             let preview_snapshot =
                 preview_snapshot_for_state(snapshot, self.template_preview_state);
             match ecliptica_data_analyzer::osc::render_configured_message(
@@ -1907,7 +1907,7 @@ impl AnalyzerApp {
                 }
             }
         });
-        ui.add_space(UI_SPACE_4);
+        ui.add_space(UI_SPACE_3);
         heart_rate_auxiliary_panel(
             ui,
             &mut self.draft.heart_rate_enabled,
@@ -1932,7 +1932,7 @@ impl AnalyzerApp {
                     .show(ui);
             },
         );
-        ui.add_space(UI_SPACE_4);
+        ui.add_space(UI_SPACE_3);
         section_card(
             ui,
             text::ALERT_SOUNDS.get(self.draft.language),
@@ -2065,7 +2065,7 @@ impl AnalyzerApp {
                     .color(SETTINGS_INFO)
                     .show(ui);
             }
-            ui.add_space(UI_SPACE_3);
+            ui.add_space(UI_SPACE_2);
             let options = OVERLAY_SCALE_OPTIONS.map(OverlayScaleChoice);
             let mut selected = OverlayScaleChoice(self.draft.overlay_scale);
             PropertyRow::new(text::OVERLAY_SIZE.get(language)).show(ui, |ui| {
@@ -2078,7 +2078,7 @@ impl AnalyzerApp {
                 }
             });
         });
-        ui.add_space(UI_SPACE_4);
+        ui.add_space(UI_SPACE_3);
         section_card(ui, text::SCREEN_POSITION.get(language), None, |ui| {
             PropertyRow::new(text::HORIZONTAL_POSITION.get(language)).show(ui, |ui| {
                 let response = NumberInput::f32(&mut self.draft.overlay_x)
@@ -2133,16 +2133,18 @@ impl AnalyzerApp {
                 }
             });
         });
-        ui.add_space(UI_SPACE_5);
+        ui.add_space(UI_SPACE_4);
         section_card(ui, text::EVENT_STREAM.get(language), None, |ui| {
-            for row in &self.logs {
-                log_line(ui, row, language);
-            }
-            if self.logs.is_empty() {
-                Empty::show(ui, |ui| {
-                    Typography::muted(text::NO_SYSTEM_EVENTS.get(language)).show(ui);
-                });
-            }
+            inset_surface(ui, SETTINGS_PREVIEW_BG, |ui| {
+                for row in &self.logs {
+                    log_line(ui, row, language);
+                }
+                if self.logs.is_empty() {
+                    Empty::show(ui, |ui| {
+                        Typography::muted(text::NO_SYSTEM_EVENTS.get(language)).show(ui);
+                    });
+                }
+            });
         });
     }
 
@@ -2763,8 +2765,8 @@ fn dps_history_chart(
     egui::Frame::NONE
         .fill(SETTINGS_CHART_BG)
         .corner_radius(8.0)
-        .stroke(egui::Stroke::new(1.0, SETTINGS_PREVIEW_BORDER))
-        .inner_margin(egui::Margin::same(10))
+        .stroke(egui::Stroke::new(1.0, SETTINGS_INSET_BORDER))
+        .inner_margin(egui::Margin::same(UI_SPACE_2 as i8))
         .show(ui, |ui| {
             ui.scope(|ui| {
                 let visuals = &mut ui.style_mut().visuals;
@@ -3471,7 +3473,7 @@ struct VariableHelpGroup<'a> {
 }
 
 const VARIABLE_GROUP_LABEL_WIDTH: f32 = 142.0;
-const VARIABLE_GROUP_COLUMN_GAP: f32 = UI_SPACE_4;
+const VARIABLE_GROUP_COLUMN_GAP: f32 = UI_SPACE_3;
 
 #[cfg_attr(not(test), allow(dead_code))]
 struct VariableGroupRowLayout {
@@ -3793,12 +3795,12 @@ fn heart_rate_auxiliary_panel(
     egui_shadcn::Card::new().show(ui, |ui| {
         ui.set_min_width((width - 34.0).max(120.0));
         heart_rate_title_row(ui, language);
-        ui.add_space(UI_SPACE_3);
+        ui.add_space(UI_SPACE_2);
         Switch::new(enabled)
             .label(text::ENABLE_HEART_RATE.get(language))
             .show(ui)
             .on_hover_text(text::ENABLE_HEART_RATE_HINT.get(language));
-        ui.add_space(UI_SPACE_3);
+        ui.add_space(UI_SPACE_2);
         let groups = localized_variable_groups(
             ecliptica_data_analyzer::i18n::HEART_RATE_VARIABLE_GROUPS,
             language,
@@ -3902,7 +3904,7 @@ fn template_syntax_help(ui: &mut egui::Ui, language: Language, height: f32) {
                 .enumerate()
             {
                 if index > 0 {
-                    ui.add_space(UI_SPACE_4);
+                    ui.add_space(UI_SPACE_3);
                 }
                 syntax_example(ui, example.title.get(language), example.code.get(language));
             }
@@ -3927,13 +3929,29 @@ fn syntax_example(ui: &mut egui::Ui, title: &str, code: &str) {
 }
 
 fn preview_text(ui: &mut egui::Ui, preview: &str) {
-    Typography::new(preview)
-        .monospace()
-        .font_size(14.0)
-        .line_height(22.0)
-        .color(SETTINGS_TEXT)
-        .wrap()
-        .show(ui);
+    ui.add(
+        egui::Label::new(preview_text_layout_job(preview))
+            .wrap()
+            .selectable(true),
+    );
+}
+
+fn preview_text_layout_job(preview: &str) -> egui::text::LayoutJob {
+    let mut job = egui::text::LayoutJob::default();
+    job.append(
+        preview,
+        0.0,
+        egui::TextFormat {
+            font_id: egui::FontId::monospace(14.0),
+            color: SETTINGS_TEXT,
+            line_height: Some(20.0),
+            // epaint otherwise bottom-aligns glyphs inside an explicit line
+            // height, which leaves the selection area looking bottom-heavy.
+            valign: egui::Align::Center,
+            ..Default::default()
+        },
+    );
+    job
 }
 
 fn preview_panel(ui: &mut egui::Ui, content: impl FnOnce(&mut egui::Ui)) -> egui::Response {
@@ -3941,15 +3959,33 @@ fn preview_panel(ui: &mut egui::Ui, content: impl FnOnce(&mut egui::Ui)) -> egui
     egui::Frame::new()
         .fill(SETTINGS_PREVIEW_BG)
         .inner_margin(egui::Margin {
-            left: UI_SPACE_4 as i8,
-            right: UI_SPACE_4 as i8,
-            top: UI_SPACE_3 as i8,
-            bottom: UI_SPACE_3 as i8,
+            left: UI_SPACE_3 as i8,
+            right: UI_SPACE_3 as i8,
+            top: UI_SPACE_2 as i8,
+            bottom: UI_SPACE_2 as i8,
         })
         .corner_radius(6.0)
-        .stroke(egui::Stroke::new(1.0, SETTINGS_PREVIEW_BORDER))
+        .stroke(egui::Stroke::new(1.0, SETTINGS_INSET_BORDER))
         .show(ui, |ui| {
-            ui.set_width((available_width - 34.0).max(1.0));
+            ui.set_width((available_width - 26.0).max(1.0));
+            content(ui);
+        })
+        .response
+}
+
+fn inset_surface(
+    ui: &mut egui::Ui,
+    fill: egui::Color32,
+    content: impl FnOnce(&mut egui::Ui),
+) -> egui::Response {
+    let available_width = ui.available_width();
+    egui::Frame::NONE
+        .fill(fill)
+        .inner_margin(egui::Margin::same(UI_SPACE_1 as i8))
+        .corner_radius(8.0)
+        .stroke(egui::Stroke::new(1.0, SETTINGS_INSET_BORDER))
+        .show(ui, |ui| {
+            ui.set_min_width((available_width - UI_SPACE_2 - 2.0).max(1.0));
             content(ui);
         })
         .response
@@ -3957,7 +3993,7 @@ fn preview_panel(ui: &mut egui::Ui, content: impl FnOnce(&mut egui::Ui)) -> egui
 
 fn page_heading(ui: &mut egui::Ui, title: &str) {
     Typography::h3(title).color(SETTINGS_HEADING).show(ui);
-    ui.add_space(UI_SPACE_5);
+    ui.add_space(UI_SPACE_4);
 }
 
 fn section_card(
@@ -3999,9 +4035,9 @@ fn section_card_with_status(
             Typography::muted(description)
                 .color(SETTINGS_TEXT_MUTED)
                 .show(ui);
-            ui.add_space(UI_SPACE_3);
+            ui.add_space(UI_SPACE_2);
         } else {
-            ui.add_space(UI_SPACE_3);
+            ui.add_space(UI_SPACE_2);
         }
         content(ui);
     });
@@ -4052,7 +4088,7 @@ fn report_stat_group(ui: &mut egui::Ui, items: &[ReportStatItem<'_>], max_column
     let columns = report_stat_column_count(ui.available_width(), max_columns);
     for (row_index, row) in items.chunks(columns).enumerate() {
         if row_index > 0 {
-            ui.add_space(UI_SPACE_4);
+            ui.add_space(UI_SPACE_3);
         }
         ui.columns(columns, |column_uis| {
             for (column, item) in column_uis.iter_mut().zip(row) {
@@ -4530,8 +4566,9 @@ fn log_line(ui: &mut egui::Ui, row: &LogRow, language: Language) -> egui::Respon
         EventLevel::Error => (text::ERROR.get(language), BadgeVariant::Destructive),
     };
     let item_width = ui.available_width();
-    let response = Item::new().variant(ItemVariant::Outline).show(ui, |ui| {
-        // Item has 12px inner margins plus a 1px stroke on each side.
+    let response = Item::new().show(ui, |ui| {
+        // Keep log rows flat inside the surrounding section card. Item still
+        // provides row padding, but its default border is transparent.
         ui.set_width((item_width - 26.0).max(120.0));
         Flex::row()
             .align_center()
@@ -4556,7 +4593,7 @@ fn log_line(ui: &mut egui::Ui, row: &LogRow, language: Language) -> egui::Respon
                     });
                 }
             });
-        ui.add_space(7.0);
+        ui.add_space(UI_SPACE_1);
         Typography::new(&row.message)
             .color(SETTINGS_TEXT)
             .line_height(20.0)
@@ -5682,6 +5719,15 @@ mod tests {
             assert!(long_height > short_height);
             assert!(long_height <= 168.5);
         });
+    }
+
+    #[test]
+    fn preview_text_centers_glyphs_inside_a_compact_line_box() {
+        let job = preview_text_layout_job("first line\nsecond line");
+        let format = &job.sections[0].format;
+
+        assert_eq!(format.line_height, Some(20.0));
+        assert_eq!(format.valign, egui::Align::Center);
     }
 
     #[test]

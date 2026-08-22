@@ -10,7 +10,7 @@ impl super::card::Card {
         let frame = egui::Frame::NONE
             .fill(theme.card)
             .inner_margin(egui::Margin {
-                left: 16,
+                left: 16, // p-4
                 right: 16,
                 top: 16,
                 bottom: 16,

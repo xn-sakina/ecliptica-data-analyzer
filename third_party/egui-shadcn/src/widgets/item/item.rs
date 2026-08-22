@@ -1,6 +1,6 @@
 //! Item builder struct — a list item container.
 
-/// A list item: `rounded-lg border text-sm gap-2.5 px-3 py-2.5`.
+/// A list item: `rounded-lg border text-sm gap-2 px-3 py-2`.
 pub struct Item {
     pub(crate) variant: crate::tokens::item_variant::ItemVariant,
 }

@@ -213,11 +213,7 @@ pub mod text {
     pair!(TOTAL_DAMAGE, "Total damage", "总伤害");
     pair!(EFFECTIVE_DPS, "Active DPS", "持续输出 DPS");
     pair!(BURST_10S, "Best average DPS", "最佳平均 DPS");
-    pair!(
-        EFFECTIVE_DPS_GROWTH,
-        "Active DPS change",
-        "持续输出 DPS 变化"
-    );
+    pair!(EFFECTIVE_DPS_GROWTH, "DPS growth rate", "DPS增长率");
     pair!(DAMAGE_TAKEN, "Damage taken", "承伤");
     pair!(LONGEST_STANDSTILL, "Longest standstill", "最长站桩");
     pair!(GAME_LOG, "Game log", "游戏日志");
@@ -1268,14 +1264,14 @@ pub const REPORT_VARIABLE_GROUPS: &[VariableCopyGroup] = &[
         ],
     },
     VariableCopyGroup {
-        title: p("Active DPS change", "持续输出 DPS 变化"),
+        title: p("DPS growth rate", "DPS增长率"),
         variables: &[
             variable!(
                 "Value",
                 "数值",
                 "dps_growth_rate",
-                "Change in active DPS from the previous round. The template receives a number without the percent sign.",
-                "持续输出 DPS 比上一回合高了或低了多少；填入模板的是数字，不带百分号。"
+                "DPS change from the previous round. The template receives a number without the percent sign.",
+                "DPS 比上一回合增长或下降了多少；填入模板的是数字，不带百分号。"
             ),
             variable!(
                 "Show when",

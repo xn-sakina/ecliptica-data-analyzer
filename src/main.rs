@@ -61,7 +61,6 @@ const SETTINGS_PREVIEW_BORDER: egui::Color32 = egui::Color32::from_rgb(94, 81, 1
 const SETTINGS_CHART_BG: egui::Color32 = egui::Color32::from_rgb(29, 23, 43);
 const SETTINGS_CHART_AXIS: egui::Color32 = egui::Color32::from_rgb(229, 222, 248);
 const SETTINGS_CHART_CURSOR: egui::Color32 = egui::Color32::from_rgb(221, 207, 255);
-const SETTINGS_CHART_LINE: egui::Color32 = egui::Color32::from_rgb(207, 190, 255);
 const DPS_CHART_AUTO_FIT_IDLE: Duration = Duration::from_secs(5);
 const DPS_CHART_AUTO_FIT_INTERVAL: Duration = Duration::from_secs(5);
 const DPS_CHART_RECENT_WINDOW_SECONDS: f64 = 5.0 * 60.0;
@@ -85,6 +84,20 @@ const SETTINGS_SUCCESS: egui::Color32 = egui::Color32::from_rgb(105, 221, 153);
 const SETTINGS_INFO: egui::Color32 = egui::Color32::from_rgb(119, 181, 255);
 const SETTINGS_WARNING: egui::Color32 = egui::Color32::from_rgb(255, 204, 102);
 const SETTINGS_DANGER: egui::Color32 = egui::Color32::from_rgb(255, 132, 146);
+// One semantic palette is shared by the dashboard, chart, Overlay, reports,
+// and template-variable chips.
+const METRIC_LIVE_DPS: egui::Color32 = SETTINGS_INFO;
+const METRIC_AVERAGE_DPS: egui::Color32 = SETTINGS_ACCENT;
+const METRIC_ACTIVE_DPS: egui::Color32 = SETTINGS_SUCCESS;
+const METRIC_BEST_DPS: egui::Color32 = SETTINGS_WARNING;
+const METRIC_DAMAGE_TAKEN: egui::Color32 = SETTINGS_DANGER;
+const METRIC_BOSS_LOCK: egui::Color32 = SETTINGS_WARNING;
+const METRIC_DURATION: egui::Color32 = SETTINGS_INFO;
+const METRIC_TOTAL_DAMAGE: egui::Color32 = SETTINGS_ACCENT;
+const METRIC_DPS_GROWTH: egui::Color32 = SETTINGS_SUCCESS;
+const METRIC_STANDSTILL: egui::Color32 = SETTINGS_WARNING;
+const METRIC_GAME_PROGRESS: egui::Color32 = SETTINGS_INFO;
+const METRIC_HEART_RATE: egui::Color32 = SETTINGS_DANGER;
 
 fn alert_sound_label_width(language: Language) -> f32 {
     match language {
@@ -96,9 +109,6 @@ const SIDEBAR_FOOTER_BASE_HEIGHT: f32 = 116.0;
 const SIDEBAR_ERROR_DETAILS_HEIGHT: f32 = 34.0;
 const SETTINGS_STATUS_SLOT_WIDTH: f32 = 104.0;
 
-// Overlay colors are intentionally separate from the management-window theme.
-// The Overlay remains on its existing dark translucent visual system.
-const ACCENT: egui::Color32 = egui::Color32::from_rgb(83, 211, 225);
 // Keep secondary copy comfortably readable on both opaque settings panels and
 // the translucent overlay. Avoid egui's default 60% weak-text treatment.
 const TEXT_SECONDARY: egui::Color32 = egui::Color32::from_gray(196);
@@ -891,11 +901,6 @@ impl AnalyzerApp {
                     ui.available_size(),
                     egui::Layout::left_to_right(egui::Align::Center),
                     |ui| {
-                        Typography::new(settings_page_title(self.page, language))
-                            .font_size(15.0)
-                            .strong()
-                            .color(SETTINGS_HEADING)
-                            .show(ui);
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             settings_status_pill(ui, snapshot.status, language);
                             let world = if snapshot.in_ecliptica {
@@ -1139,40 +1144,40 @@ impl AnalyzerApp {
                 &mut columns[0],
                 text::LIVE_DPS.get(language),
                 &snapshot.realtime_dps_text(),
-                SETTINGS_ACCENT,
+                METRIC_LIVE_DPS,
             );
             columns[0].add_space(10.0);
             dashboard_stat(
                 &mut columns[0],
                 text::AVERAGE_DPS_30S.get(language),
                 &snapshot.average_dps_text(),
-                SETTINGS_INFO,
+                METRIC_AVERAGE_DPS,
             );
             dashboard_stat(
                 &mut columns[1],
                 text::ROUND_EFFECTIVE_DPS.get(language),
                 &snapshot.round_effective_dps_text(),
-                SETTINGS_SUCCESS,
+                METRIC_ACTIVE_DPS,
             );
             columns[1].add_space(10.0);
             dashboard_stat(
                 &mut columns[1],
                 text::ROUND_BURST_10S.get(language),
                 &snapshot.round_burst_10s_dps_text(),
-                SETTINGS_WARNING,
+                METRIC_BEST_DPS,
             );
             dashboard_stat(
                 &mut columns[2],
                 text::ROUND_DAMAGE_TAKEN.get(language),
                 &snapshot.round_damage_taken.to_string(),
-                SETTINGS_DANGER,
+                METRIC_DAMAGE_TAKEN,
             );
             columns[2].add_space(10.0);
             dashboard_stat(
                 &mut columns[2],
                 text::BOSS_LOCK.get(language),
                 snapshot.boss_lock.as_deref().unwrap_or("-"),
-                SETTINGS_WARNING,
+                METRIC_BOSS_LOCK,
             );
         });
         ui.add_space(14.0);
@@ -1195,22 +1200,22 @@ impl AnalyzerApp {
                     ReportStatItem {
                         label: text::DURATION.get(language),
                         value: report.duration_text(),
-                        color: SETTINGS_INFO,
+                        color: METRIC_DURATION,
                     },
                     ReportStatItem {
                         label: text::TOTAL_DAMAGE.get(language),
                         value: report.total_damage.to_string(),
-                        color: SETTINGS_SUCCESS,
+                        color: METRIC_TOTAL_DAMAGE,
                     },
                     ReportStatItem {
                         label: text::EFFECTIVE_DPS.get(language),
                         value: report.effective_dps_text(),
-                        color: SETTINGS_SUCCESS,
+                        color: METRIC_ACTIVE_DPS,
                     },
                     ReportStatItem {
                         label: text::BURST_10S.get(language),
                         value: report.burst_10s_dps_text(),
-                        color: SETTINGS_WARNING,
+                        color: METRIC_BEST_DPS,
                     },
                     ReportStatItem {
                         label: text::EFFECTIVE_DPS_GROWTH.get(language),
@@ -1220,20 +1225,20 @@ impl AnalyzerApp {
                             "-".to_owned()
                         },
                         color: if report.dps_growth_rate >= 0.0 {
-                            SETTINGS_SUCCESS
+                            METRIC_DPS_GROWTH
                         } else {
-                            SETTINGS_DANGER
+                            METRIC_DAMAGE_TAKEN
                         },
                     },
                     ReportStatItem {
                         label: text::DAMAGE_TAKEN.get(language),
                         value: report.damage_taken.to_string(),
-                        color: SETTINGS_DANGER,
+                        color: METRIC_DAMAGE_TAKEN,
                     },
                     ReportStatItem {
                         label: text::LONGEST_STANDSTILL.get(language),
                         value: localized_standstill(report, language),
-                        color: SETTINGS_WARNING,
+                        color: METRIC_STANDSTILL,
                     },
                 ];
                 report_stat_group(ui, &stats, 3);
@@ -2182,6 +2187,7 @@ impl AnalyzerApp {
                                 overlay_header(
                                     ui,
                                     snapshot.has_heart_rate.then_some(snapshot.heart_rate),
+                                    snapshot.status,
                                     overlay_scale,
                                     language,
                                 );
@@ -2189,7 +2195,7 @@ impl AnalyzerApp {
                                 if let Some(report) = &snapshot.round_report {
                                     ui.horizontal(|ui| {
                                         ui.colored_label(
-                                            egui::Color32::from_rgb(255, 199, 92),
+                                            METRIC_BEST_DPS,
                                             egui::RichText::new(
                                                 text::ROUND_REPORT_HEADING.get(language),
                                             )
@@ -2228,7 +2234,7 @@ impl AnalyzerApp {
                                             text::TIME_USED.get(language),
                                             &duration,
                                             &duration,
-                                            egui::Color32::from_rgb(95, 220, 255),
+                                            METRIC_DURATION,
                                             overlay_scale,
                                             language,
                                         );
@@ -2237,7 +2243,7 @@ impl AnalyzerApp {
                                             text::TOTAL_DAMAGE.get(language),
                                             &total_compact,
                                             &total_exact,
-                                            egui::Color32::from_rgb(152, 235, 174),
+                                            METRIC_TOTAL_DAMAGE,
                                             overlay_scale,
                                             language,
                                         );
@@ -2246,7 +2252,7 @@ impl AnalyzerApp {
                                             text::LONGEST_STANDSTILL.get(language),
                                             &standstill,
                                             &standstill,
-                                            egui::Color32::from_rgb(255, 199, 92),
+                                            METRIC_STANDSTILL,
                                             overlay_scale,
                                             language,
                                         );
@@ -2258,7 +2264,7 @@ impl AnalyzerApp {
                                             text::EFFECTIVE_DPS.get(language),
                                             &effective_compact,
                                             &effective_exact,
-                                            egui::Color32::from_rgb(152, 235, 174),
+                                            METRIC_ACTIVE_DPS,
                                             overlay_scale,
                                             language,
                                         );
@@ -2267,7 +2273,7 @@ impl AnalyzerApp {
                                             text::BURST_10S.get(language),
                                             &burst_compact,
                                             &burst_exact,
-                                            egui::Color32::from_rgb(190, 174, 255),
+                                            METRIC_BEST_DPS,
                                             overlay_scale,
                                             language,
                                         );
@@ -2276,7 +2282,7 @@ impl AnalyzerApp {
                                             text::DAMAGE_TAKEN_SHORT.get(language),
                                             &taken_compact,
                                             &taken_exact,
-                                            egui::Color32::from_rgb(255, 164, 112),
+                                            METRIC_DAMAGE_TAKEN,
                                             overlay_scale,
                                             language,
                                         );
@@ -2309,7 +2315,7 @@ impl AnalyzerApp {
                                             text::LIVE_DPS.get(language),
                                             &latest_display,
                                             &latest_exact,
-                                            egui::Color32::from_rgb(95, 220, 255),
+                                            METRIC_LIVE_DPS,
                                             overlay_scale,
                                             language,
                                         );
@@ -2319,7 +2325,7 @@ impl AnalyzerApp {
                                             text::ROUND_EFFECTIVE_DPS.get(language),
                                             &effective_display,
                                             &effective_exact,
-                                            egui::Color32::from_rgb(152, 235, 174),
+                                            METRIC_ACTIVE_DPS,
                                             overlay_scale,
                                             language,
                                         );
@@ -2329,7 +2335,7 @@ impl AnalyzerApp {
                                             text::ROUND_BURST_10S.get(language),
                                             &burst_display,
                                             &burst_exact,
-                                            egui::Color32::from_rgb(190, 174, 255),
+                                            METRIC_BEST_DPS,
                                             overlay_scale,
                                             language,
                                         );
@@ -2339,7 +2345,7 @@ impl AnalyzerApp {
                                             text::ROUND_DAMAGE_TAKEN_TOTAL.get(language),
                                             &taken_display,
                                             &taken_exact,
-                                            egui::Color32::from_rgb(255, 164, 112),
+                                            METRIC_DAMAGE_TAKEN,
                                             overlay_scale,
                                             language,
                                         );
@@ -2354,9 +2360,9 @@ impl AnalyzerApp {
                                 if let Some((message, _, level)) = &alert {
                                     ui.add_space(8.0 * overlay_scale);
                                     let alert_color = if *level == EventLevel::Error {
-                                        egui::Color32::from_rgb(255, 105, 105)
+                                        SETTINGS_DANGER
                                     } else {
-                                        egui::Color32::from_rgb(255, 199, 92)
+                                        SETTINGS_WARNING
                                     };
                                     egui::Frame::new()
                                         .fill(alert_color.gamma_multiply(0.12))
@@ -2586,16 +2592,6 @@ fn overlay_window_title(language: Language) -> String {
     )
 }
 
-fn settings_page_title(page: SettingsPage, language: Language) -> &'static str {
-    match page {
-        SettingsPage::Overview => text::OVERVIEW.get(language),
-        SettingsPage::Message => text::OSC_MESSAGES.get(language),
-        SettingsPage::Player => text::PLAYER_ALERTS.get(language),
-        SettingsPage::Overlay => text::OVERLAY.get(language),
-        SettingsPage::Logs => text::SYSTEM_LOGS.get(language),
-    }
-}
-
 fn dps_chart_round_context(snapshot: &GameSnapshot, language: Language) -> Option<(u64, String)> {
     let active_epoch = (snapshot.phase == RoundPhase::Combat)
         .then_some(snapshot.combat_round_epoch)
@@ -2713,8 +2709,8 @@ fn dps_history_chart(
             .map(|point| {
                 Bar::new(point[0], point[1])
                     .width(0.72)
-                    .fill(SETTINGS_ACCENT.gamma_multiply(0.24))
-                    .stroke(egui::Stroke::new(0.8, SETTINGS_ACCENT.gamma_multiply(0.42)))
+                    .fill(METRIC_LIVE_DPS.gamma_multiply(0.24))
+                    .stroke(egui::Stroke::new(0.8, METRIC_LIVE_DPS.gamma_multiply(0.42)))
             })
             .collect(),
     )
@@ -2723,14 +2719,14 @@ fn dps_history_chart(
         text::DPS_AVERAGE.get(language),
         PlotPoints::new(smooth_trend.clone()),
     )
-    .color(egui::Color32::from_rgba_unmultiplied(151, 122, 255, 70))
+    .color(METRIC_AVERAGE_DPS.gamma_multiply(0.28))
     .width(6.0)
     .allow_hover(false);
     let line = Line::new(
         text::DPS_AVERAGE.get(language),
         PlotPoints::new(smooth_trend.clone()),
     )
-    .color(SETTINGS_CHART_LINE)
+    .color(METRIC_AVERAGE_DPS)
     .width(2.4)
     .allow_hover(false);
     let accessibility_summary = format_pattern(
@@ -2818,7 +2814,7 @@ fn dps_history_chart(
                         plot_ui.points(
                             Points::new(text::DPS_ROUND_PEAK.get(language), vec![raw_peak])
                                 .shape(MarkerShape::Diamond)
-                                .color(SETTINGS_WARNING)
+                                .color(METRIC_BEST_DPS)
                                 .radius(if peak_hovered { 8.0 } else { 5.5 })
                                 .filled(true)
                                 .allow_hover(false),
@@ -2836,7 +2832,7 @@ fn dps_history_chart(
                         if smooth_trend.len() == 1 {
                             plot_ui.points(
                                 Points::new("", smooth_trend.clone())
-                                    .color(SETTINGS_CHART_LINE)
+                                    .color(METRIC_AVERAGE_DPS)
                                     .radius(4.5)
                                     .allow_hover(false),
                             );
@@ -2872,9 +2868,9 @@ fn dps_history_chart(
                                             MarkerShape::Square
                                         })
                                         .color(if peak_hovered {
-                                            SETTINGS_WARNING
+                                            METRIC_BEST_DPS
                                         } else {
-                                            SETTINGS_ACCENT
+                                            METRIC_LIVE_DPS
                                         })
                                         .radius(if peak_hovered { 8.0 } else { 4.0 })
                                         .allow_hover(false),
@@ -3453,7 +3449,6 @@ struct VariableHelp<'a> {
 
 struct VariableHelpGroup<'a> {
     title: &'a str,
-    color: egui::Color32,
     variables: Vec<VariableHelp<'a>>,
 }
 
@@ -3468,15 +3463,47 @@ struct VariableGroupRowLayout {
     button_rects: Vec<egui::Rect>,
 }
 
+fn variable_metric_color(name: &str) -> egui::Color32 {
+    match name {
+        "latest_dps" | "has_latest_dps" => METRIC_LIVE_DPS,
+        "avg_dps" | "has_avg_dps" => METRIC_AVERAGE_DPS,
+        "round_effective_dps"
+        | "has_round_effective_dps"
+        | "round_report_effective_dps"
+        | "has_round_report_effective_dps" => METRIC_ACTIVE_DPS,
+        "round_burst_10s"
+        | "has_round_burst_10s"
+        | "round_report_burst_10s"
+        | "has_round_report_burst_10s"
+        | "max_dps"
+        | "has_max_dps"
+        | "round_max_dps"
+        | "has_round_max_dps" => METRIC_BEST_DPS,
+        "round_damage_taken"
+        | "has_round_damage_taken"
+        | "round_report_damage_taken"
+        | "rapid_damage_danger" => METRIC_DAMAGE_TAKEN,
+        "boss_lock" | "boss" | "is_self_boss_locked" => METRIC_BOSS_LOCK,
+        "no_dps_for_10s" | "no_wasd_for_10s" => SETTINGS_WARNING,
+        "has_step_estimate" | "current_step" | "until_boss_step" => METRIC_GAME_PROGRESS,
+        "round_duration" | "has_round_duration" => METRIC_DURATION,
+        "dps_growth_rate" | "has_dps_growth_rate" => METRIC_DPS_GROWTH,
+        "round_longest_standstill" | "has_round_longest_standstill" => METRIC_STANDSTILL,
+        "round_total_damage" => METRIC_TOTAL_DAMAGE,
+        "heart_rate" | "has_heart_rate" => METRIC_HEART_RATE,
+        _ => SETTINGS_TEXT_SECONDARY,
+    }
+}
+
 fn variable_chip(
     ui: &mut egui::Ui,
     variable: &VariableHelp<'_>,
-    color: egui::Color32,
     clipboard: &mut Option<Clipboard>,
     toast_state: &mut ToastState,
     language: Language,
 ) -> egui::Response {
     let name = variable.name;
+    let color = variable_metric_color(name);
     let token = format!("{{{{{name}}}}}");
     let role = match variable.role {
         role if role == text::ROLE_CONDITION.get(language) => text::ROLE_JUDGMENT.get(language),
@@ -3643,10 +3670,8 @@ fn variable_help_group_row(
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
                 for variable in &group.variables {
-                    button_rects.push(
-                        variable_chip(ui, variable, group.color, clipboard, toast_state, language)
-                            .rect,
-                    );
+                    button_rects
+                        .push(variable_chip(ui, variable, clipboard, toast_state, language).rect);
                 }
             });
         });
@@ -3679,22 +3704,9 @@ fn localized_variable_groups(
     language: Language,
     has_heart_rate: bool,
 ) -> Vec<VariableHelpGroup<'static>> {
-    const COLORS: [egui::Color32; 10] = [
-        egui::Color32::from_rgb(119, 181, 255),
-        egui::Color32::from_rgb(255, 204, 102),
-        egui::Color32::from_rgb(105, 221, 153),
-        egui::Color32::from_rgb(190, 174, 255),
-        egui::Color32::from_rgb(255, 164, 112),
-        egui::Color32::from_rgb(255, 132, 146),
-        egui::Color32::from_rgb(83, 211, 225),
-        egui::Color32::from_rgb(214, 207, 225),
-        egui::Color32::from_rgb(255, 183, 122),
-        egui::Color32::from_rgb(255, 199, 92),
-    ];
     source
         .iter()
-        .enumerate()
-        .map(|(index, group)| {
+        .map(|group| {
             let variables = group
                 .variables
                 .iter()
@@ -3708,7 +3720,6 @@ fn localized_variable_groups(
                 .collect::<Vec<_>>();
             VariableHelpGroup {
                 title: group.title.get(language),
-                color: COLORS[index % COLORS.len()],
                 variables,
             }
         })
@@ -3772,7 +3783,7 @@ fn heart_rate_auxiliary_panel(
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
                 for variable in &group.variables {
-                    variable_chip(ui, variable, group.color, clipboard, toast_state, language);
+                    variable_chip(ui, variable, clipboard, toast_state, language);
                 }
             });
         }
@@ -4210,13 +4221,17 @@ fn overlay_height(has_report: bool, has_alert: bool) -> f32 {
 fn overlay_header(
     ui: &mut egui::Ui,
     heart_rate: Option<u16>,
+    status: DataStatus,
     scale: f32,
     language: Language,
 ) -> (egui::Response, Option<egui::Response>) {
     let right = ui.max_rect().right();
     let row = ui
         .horizontal(|ui| {
-            ui.colored_label(ACCENT, egui::RichText::new("●").size(9.0 * scale));
+            ui.colored_label(
+                overlay_status_color(status),
+                egui::RichText::new("●").size(9.0 * scale),
+            );
             ui.label(
                 egui::RichText::new(format!("ECLIPTICA  v{APP_VERSION}"))
                     .strong()
@@ -4231,6 +4246,14 @@ fn overlay_header(
     (row, tag)
 }
 
+fn overlay_status_color(status: DataStatus) -> egui::Color32 {
+    match status {
+        DataStatus::Live => SETTINGS_SUCCESS,
+        DataStatus::Stale => SETTINGS_WARNING,
+        DataStatus::Searching | DataStatus::Recovering | DataStatus::Error => SETTINGS_INFO,
+    }
+}
+
 fn overlay_heart_rate_tag(
     ui: &mut egui::Ui,
     heart_rate: u16,
@@ -4239,7 +4262,7 @@ fn overlay_heart_rate_tag(
     scale: f32,
     language: Language,
 ) -> egui::Response {
-    let color = egui::Color32::from_rgb(255, 150, 165);
+    let color = METRIC_HEART_RATE;
     let galley = ui.painter().layout_no_wrap(
         format!("♥ {heart_rate}"),
         egui::FontId::proportional(10.0 * scale),
@@ -4418,9 +4441,9 @@ fn lock_card(
     egui::Response,
 ) {
     let color = if locked_self {
-        egui::Color32::from_rgb(255, 90, 103)
+        METRIC_DAMAGE_TAKEN
     } else {
-        egui::Color32::from_rgb(255, 205, 112)
+        METRIC_BOSS_LOCK
     };
     let width = ui.available_width();
     let frame = egui::Frame::new()
@@ -5858,7 +5881,6 @@ mod tests {
         ];
         let group = VariableHelpGroup {
             title: "测试变量组",
-            color: SETTINGS_ACCENT,
             variables: variables.into(),
         };
 
@@ -5950,6 +5972,41 @@ mod tests {
     }
 
     #[test]
+    fn overlay_status_dot_follows_live_stale_and_default_status_colors() {
+        assert_eq!(overlay_status_color(DataStatus::Live), SETTINGS_SUCCESS);
+        assert_eq!(overlay_status_color(DataStatus::Stale), SETTINGS_WARNING);
+        for status in [
+            DataStatus::Searching,
+            DataStatus::Recovering,
+            DataStatus::Error,
+        ] {
+            assert_eq!(overlay_status_color(status), SETTINGS_INFO);
+        }
+    }
+
+    #[test]
+    fn template_variables_use_the_shared_metric_palette() {
+        assert_eq!(variable_metric_color("latest_dps"), METRIC_LIVE_DPS);
+        assert_eq!(variable_metric_color("avg_dps"), METRIC_AVERAGE_DPS);
+        assert_eq!(
+            variable_metric_color("round_report_effective_dps"),
+            METRIC_ACTIVE_DPS
+        );
+        assert_eq!(
+            variable_metric_color("round_report_burst_10s"),
+            METRIC_BEST_DPS
+        );
+        assert_eq!(
+            variable_metric_color("round_report_damage_taken"),
+            METRIC_DAMAGE_TAKEN
+        );
+        assert_eq!(
+            variable_metric_color("round_total_damage"),
+            METRIC_TOTAL_DAMAGE
+        );
+    }
+
+    #[test]
     fn regular_overlay_stays_compact_without_losing_expanded_states() {
         assert_eq!(OVERLAY_WIDTH, 340.0);
         assert_eq!(overlay_height(false, false), 204.0);
@@ -5983,8 +6040,10 @@ mod tests {
                 ui.set_width(OVERLAY_CONTENT_WIDTH * scale);
                 let content_left = ui.max_rect().left();
                 let content_right = ui.max_rect().right();
-                let (offline, offline_tag) = overlay_header(ui, None, scale, Language::English);
-                let (online, online_tag) = overlay_header(ui, Some(999), scale, Language::English);
+                let (offline, offline_tag) =
+                    overlay_header(ui, None, DataStatus::Live, scale, Language::English);
+                let (online, online_tag) =
+                    overlay_header(ui, Some(999), DataStatus::Live, scale, Language::English);
                 let online_tag = online_tag.expect("online heart rate should render a tag");
 
                 assert!(offline_tag.is_none());

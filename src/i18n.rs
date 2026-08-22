@@ -592,7 +592,24 @@ pub mod text {
     );
     pair!(CHART_CURRENT_ROUND, "Current round", "当前回合");
     pair!(CHART_FINISHED_ROUND, "Completed round", "刚结束的回合");
-    pair!(DPS_TREND, "DPS trend", "DPS 趋势");
+    pair!(DPS_TREND, "Smoothed trend", "平滑趋势");
+    pair!(DPS_PER_SECOND, "Per-second DPS", "秒级 DPS");
+    pair!(DPS_ROUND_PEAK, "Highest DPS", "最高 DPS");
+    pair!(
+        DPS_CHART_TOOLTIP,
+        "{time}\nPer-second DPS: {raw}\nSmoothed trend: {trend}",
+        "{time}\n秒级 DPS：{raw}\n平滑趋势：{trend}"
+    );
+    pair!(
+        DPS_CHART_PEAK_TOOLTIP,
+        "{time}\nHighest DPS: {raw}\nSmoothed trend: {trend}",
+        "{time}\n最高 DPS：{raw}\n平滑趋势：{trend}"
+    );
+    pair!(
+        DPS_CHART_ACCESSIBILITY,
+        "{round}. Interactive DPS chart. Translucent bars show per-second DPS and the solid line shows the smoothed trend. Highest DPS: {peak}, at {time}. Hover for exact values; drag or zoom to inspect a range.",
+        "{round}。交互式 DPS 图表。半透明柱显示秒级 DPS，实线显示平滑趋势。最高 DPS 为 {peak}，出现在{time}。悬停可查看精确数值，拖动或缩放可检查时间区间。"
+    );
     pair!(SESSION_TIME, "Session time", "本局时间");
     pair!(
         ELAPSED_HOURS_MINUTES,

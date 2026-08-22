@@ -23,7 +23,7 @@ use ecliptica_data_analyzer::{
     runtime::{AwayReason, EventLevel, EventPresentation, Runtime, SystemEvent, ToastLevel},
 };
 use eframe::egui;
-use egui_plot::{HLine, Line, Plot, PlotPoints, Points, VLine};
+use egui_plot::{Bar, BarChart, HLine, Line, MarkerShape, Plot, PlotPoints, Points, VLine};
 use egui_shadcn::{
     Alert, AlertDialog, AlertDialogResult, AlertVariant, Badge, BadgeVariant,
     Button as ShadcnButton, ButtonVariant, ComponentSize, Dialog, Empty, Flex, Input, Item,
@@ -61,9 +61,12 @@ const SETTINGS_PREVIEW_BORDER: egui::Color32 = egui::Color32::from_rgb(94, 81, 1
 const SETTINGS_CHART_BG: egui::Color32 = egui::Color32::from_rgb(29, 23, 43);
 const SETTINGS_CHART_AXIS: egui::Color32 = egui::Color32::from_rgb(229, 222, 248);
 const SETTINGS_CHART_CURSOR: egui::Color32 = egui::Color32::from_rgb(221, 207, 255);
+const SETTINGS_CHART_LINE: egui::Color32 = egui::Color32::from_rgb(207, 190, 255);
 const DPS_CHART_AUTO_FIT_IDLE: Duration = Duration::from_secs(5);
 const DPS_CHART_AUTO_FIT_INTERVAL: Duration = Duration::from_secs(5);
 const DPS_CHART_RECENT_WINDOW_SECONDS: f64 = 5.0 * 60.0;
+const DPS_CHART_MAX_TREND_POINTS: usize = 600;
+const DPS_CHART_PEAK_HIT_RADIUS: f32 = 12.0;
 const DPS_CHART_X_MARGIN_FRACTION: f64 = 0.025;
 const DPS_CHART_Y_MARGIN_FRACTION: f64 = 0.10;
 const DPS_CHART_MIN_Y_SPAN: f64 = 10.0;
@@ -331,11 +334,12 @@ struct OverlayPositionState {
     last_observed: Option<egui::Pos2>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 struct DpsChartViewState {
     selected_epoch: Option<u64>,
     last_user_interaction: Option<Instant>,
     last_auto_fit: Option<Instant>,
+    interaction_rect: Option<egui::Rect>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -348,16 +352,6 @@ enum TemplatePresetResetKind {
 struct ChartRoundMarker {
     start_seconds: f64,
     step: u32,
-}
-
-impl Default for DpsChartViewState {
-    fn default() -> Self {
-        Self {
-            selected_epoch: None,
-            last_user_interaction: None,
-            last_auto_fit: None,
-        }
-    }
 }
 
 impl DpsChartViewState {
@@ -384,6 +378,17 @@ impl DpsChartViewState {
 
     fn record_auto_fit(&mut self, now: Instant) {
         self.last_auto_fit = Some(now);
+    }
+
+    fn pointer_is_in_chart(&self, ui: &egui::Ui) -> bool {
+        self.interaction_rect.is_some_and(|rect| {
+            ui.input(|input| {
+                input
+                    .pointer
+                    .hover_pos()
+                    .is_some_and(|position| rect.contains(position))
+            })
+        })
     }
 
     fn next_auto_fit_in(&self, now: Instant) -> Duration {
@@ -2735,34 +2740,70 @@ fn dps_history_chart(
         (None, true) => text::CHART_CURRENT_ROUND.get(language).to_owned(),
         (None, false) => text::CHART_FINISHED_ROUND.get(language).to_owned(),
     };
-    Typography::new(round_title)
+    Typography::new(round_title.clone())
         .strong()
         .color(SETTINGS_ACCENT)
         .show(ui);
-    ui.add_space(6.0);
 
-    let raw = snapshot
-        .dps_history
+    let raw = selected_points
         .iter()
         .map(|point| [point.elapsed_seconds as f64, point.dps as f64])
         .collect::<Vec<_>>();
     let trend = dps_trend_points(&raw);
-    let reduced = downsample_dps_trend(&trend, 600);
-    let smooth = smooth_chart_points(&reduced, 4);
-    let best_view = chart_best_view_bounds(&smooth);
+    let reduced_trend = downsample_dps_trend(&trend, DPS_CHART_MAX_TREND_POINTS);
+    let smooth_trend = smooth_chart_points(&reduced_trend, 4);
+    let raw_peak = chart_peak(&raw).unwrap_or(raw[0]);
+    ui.add_space(6.0);
+
+    // Bars need a meaningful zero baseline. The raw peak remains part of the
+    // auto-fit even though the foreground line intentionally shows a trend.
+    let mut view_points = raw.clone();
+    view_points.push([raw.last().map_or(0.0, |point| point[0]), 0.0]);
+    let best_view = chart_best_view_bounds(&view_points);
     let now = Instant::now();
+    // The previous frame's expanded rect includes the x/y axis widgets. Record
+    // pointer presence before Plot::show so an auto-fit due on the same frame
+    // cannot overwrite an axis drag or resize.
+    if view.pointer_is_in_chart(ui) {
+        view.record_user_interaction(now);
+    }
     let auto_fit_due = view.should_auto_fit(now);
+    let bars = BarChart::new(
+        text::DPS_PER_SECOND.get(language),
+        raw.iter()
+            .filter(|point| point[1] > 0.0)
+            .map(|point| {
+                Bar::new(point[0], point[1])
+                    .width(0.72)
+                    .fill(SETTINGS_ACCENT.gamma_multiply(0.24))
+                    .stroke(egui::Stroke::new(0.8, SETTINGS_ACCENT.gamma_multiply(0.42)))
+            })
+            .collect(),
+    )
+    .allow_hover(false);
     let glow = Line::new(
         text::DPS_TREND.get(language),
-        PlotPoints::new(smooth.clone()),
+        PlotPoints::new(smooth_trend.clone()),
     )
     .color(egui::Color32::from_rgba_unmultiplied(151, 122, 255, 70))
     .width(6.0)
     .allow_hover(false);
-    let line = Line::new("DPS", PlotPoints::new(smooth.clone()))
-        .color(egui::Color32::from_rgb(207, 190, 255))
-        .width(2.4)
-        .allow_hover(false);
+    let line = Line::new(
+        text::DPS_TREND.get(language),
+        PlotPoints::new(smooth_trend.clone()),
+    )
+    .color(SETTINGS_CHART_LINE)
+    .width(2.4)
+    .allow_hover(false);
+    let accessibility_summary = format_pattern(
+        text::DPS_CHART_ACCESSIBILITY,
+        language,
+        &[
+            ("round", round_title),
+            ("peak", format!("{:.0}", raw_peak[1])),
+            ("time", format_chart_elapsed(raw_peak[0], language)),
+        ],
+    );
     let round_markers = chart_round_markers(
         &snapshot.dps_history,
         estimated_step.map(|step| (selected_epoch, step)),
@@ -2820,61 +2861,134 @@ fn dps_history_chart(
                             && plot_ui
                                 .ctx()
                                 .input(|input| input.zoom_delta_2d() != egui::Vec2::splat(1.0));
-                        let user_interacting = plot_ui.response().dragged() || zooming;
+                        let user_interacting =
+                            plot_ui.response().hovered() || plot_ui.response().dragged() || zooming;
+                        let peak_screen_position = plot_ui
+                            .screen_from_plot(egui_plot::PlotPoint::new(raw_peak[0], raw_peak[1]));
+                        // Give the small peak marker a 24-point hit target so it
+                        // remains easy to acquire at dense or zoomed-out scales.
+                        let peak_hovered = plot_ui.response().hover_pos().is_some_and(|pointer| {
+                            chart_peak_is_hovered(pointer, peak_screen_position)
+                        });
                         if auto_fit_due && !user_interacting {
                             plot_ui.set_plot_bounds_x(best_view.0.0..=best_view.0.1);
                             plot_ui.set_plot_bounds_y(best_view.1.0..=best_view.1.1);
                         }
+                        plot_ui.bar_chart(bars);
                         plot_ui.line(glow);
                         plot_ui.line(line);
-                        if smooth.len() == 1 {
+                        plot_ui.points(
+                            Points::new(text::DPS_ROUND_PEAK.get(language), vec![raw_peak])
+                                .shape(MarkerShape::Diamond)
+                                .color(SETTINGS_WARNING)
+                                .radius(if peak_hovered { 8.0 } else { 5.5 })
+                                .filled(true)
+                                .allow_hover(false),
+                        );
+                        if peak_hovered {
                             plot_ui.points(
-                                Points::new("", smooth.clone())
-                                    .color(egui::Color32::from_rgb(207, 190, 255))
+                                Points::new("", vec![raw_peak])
+                                    .shape(MarkerShape::Diamond)
+                                    .color(SETTINGS_CHART_AXIS)
+                                    .radius(10.0)
+                                    .filled(false)
+                                    .allow_hover(false),
+                            );
+                        }
+                        if smooth_trend.len() == 1 {
+                            plot_ui.points(
+                                Points::new("", smooth_trend.clone())
+                                    .color(SETTINGS_CHART_LINE)
                                     .radius(4.5)
                                     .allow_hover(false),
                             );
                         }
                         if plot_ui.response().hovered() && !plot_ui.response().dragged() {
-                            if let Some(point) = plot_ui
-                                .pointer_coordinate()
-                                .and_then(|pointer| chart_point_at_x(&smooth, pointer.x))
-                            {
+                            let hovered_raw_point = if peak_hovered {
+                                Some(raw_peak)
+                            } else {
+                                plot_ui
+                                    .pointer_coordinate()
+                                    .and_then(|pointer| chart_nearest_point_at_x(&raw, pointer.x))
+                            };
+                            if let Some(raw_point) = hovered_raw_point {
+                                let trend_point =
+                                    chart_point_at_x(&trend, raw_point[0]).unwrap_or(raw_point);
                                 plot_ui.vline(
-                                    VLine::new("", point[0])
+                                    VLine::new("", raw_point[0])
                                         .color(SETTINGS_CHART_CURSOR)
                                         .width(1.0)
                                         .allow_hover(false),
                                 );
                                 plot_ui.hline(
-                                    HLine::new("", point[1])
+                                    HLine::new("", raw_point[1])
                                         .color(SETTINGS_CHART_CURSOR)
                                         .width(1.0)
                                         .allow_hover(false),
                                 );
                                 plot_ui.points(
-                                    Points::new("", vec![point])
-                                        .color(egui::Color32::from_rgb(243, 238, 255))
-                                        .radius(4.5)
+                                    Points::new("", vec![raw_point])
+                                        .shape(if peak_hovered {
+                                            MarkerShape::Diamond
+                                        } else {
+                                            MarkerShape::Square
+                                        })
+                                        .color(if peak_hovered {
+                                            SETTINGS_WARNING
+                                        } else {
+                                            SETTINGS_ACCENT
+                                        })
+                                        .radius(if peak_hovered { 8.0 } else { 4.0 })
+                                        .allow_hover(false),
+                                );
+                                plot_ui.points(
+                                    Points::new("", vec![trend_point])
+                                        .shape(MarkerShape::Circle)
+                                        .color(SETTINGS_CHART_AXIS)
+                                        .radius(3.5)
                                         .allow_hover(false),
                                 );
                             }
                         }
-                        user_interacting
+                        (user_interacting, peak_hovered)
                     });
+                if response.inner.1 {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+                }
+                response.response.widget_info(|| {
+                    egui::WidgetInfo::labeled(
+                        egui::WidgetType::Image,
+                        ui.is_enabled(),
+                        accessibility_summary.clone(),
+                    )
+                });
                 if response.response.hovered() && !response.response.dragged() {
-                    let hovered_point = response.response.hover_pos().and_then(|pointer_pos| {
-                        let pointer = response.transform.value_from_position(pointer_pos);
-                        chart_point_at_x(&smooth, pointer.x)
+                    let hovered_sample = response.response.hover_pos().and_then(|pointer_pos| {
+                        let raw_point = if response.inner.1 {
+                            raw_peak
+                        } else {
+                            let pointer = response.transform.value_from_position(pointer_pos);
+                            chart_nearest_point_at_x(&raw, pointer.x)?
+                        };
+                        let trend_point = chart_point_at_x(&trend, raw_point[0])?;
+                        Some((raw_point, trend_point))
                     });
-                    if let Some(point) = hovered_point {
+                    if let Some((raw_point, trend_point)) = hovered_sample {
                         paint_chart_tooltip(
                             ui,
                             &response.response,
-                            format!(
-                                "{} · DPS {}",
-                                format_chart_elapsed(point[0], language),
-                                format_compact_number(point[1], language)
+                            format_pattern(
+                                if response.inner.1 {
+                                    text::DPS_CHART_PEAK_TOOLTIP
+                                } else {
+                                    text::DPS_CHART_TOOLTIP
+                                },
+                                language,
+                                &[
+                                    ("time", format_chart_elapsed(raw_point[0], language)),
+                                    ("raw", format!("{:.0}", raw_point[1])),
+                                    ("trend", format!("{:.1}", trend_point[1])),
+                                ],
                             ),
                         );
                     }
@@ -2883,6 +2997,7 @@ fn dps_history_chart(
                 // include their surrounding bands when detecting manual
                 // range changes.
                 let complete_chart_rect = response.response.rect.expand2(egui::vec2(64.0, 48.0));
+                view.interaction_rect = Some(complete_chart_rect);
                 let axis_or_plot_dragging = ui.input(|input| {
                     input.pointer.is_decidedly_dragging()
                         && input
@@ -2890,7 +3005,7 @@ fn dps_history_chart(
                             .interact_pos()
                             .is_some_and(|position| complete_chart_rect.contains(position))
                 });
-                if response.inner || axis_or_plot_dragging {
+                if response.response.hovered() || response.inner.0 || axis_or_plot_dragging {
                     view.record_user_interaction(now);
                 } else if auto_fit_due {
                     view.record_auto_fit(now);
@@ -2909,8 +3024,9 @@ fn paint_chart_tooltip(ui: &egui::Ui, response: &egui::Response, text: String) {
     };
     let painter = ui.painter();
     let font_id = egui::TextStyle::Body.resolve(ui.style());
-    let galley = painter.layout_no_wrap(text, font_id, SETTINGS_CHART_AXIS);
     let padding = egui::vec2(9.0, 6.0);
+    let tooltip_width = (response.rect.width() - padding.x * 2.0 - 8.0).clamp(40.0, 260.0);
+    let galley = painter.layout(text, font_id, SETTINGS_CHART_AXIS, tooltip_width);
     let size = galley.size() + padding * 2.0;
     let mut position = pointer + egui::vec2(14.0, 14.0);
     let safe_rect = response.rect.shrink(4.0);
@@ -2958,6 +3074,32 @@ fn chart_point_at_x(points: &[[f64; 2]], x: f64) -> Option<[f64; 2]> {
         }
         _ => None,
     }
+}
+
+fn chart_nearest_point_at_x(points: &[[f64; 2]], x: f64) -> Option<[f64; 2]> {
+    let first = *points.first()?;
+    let last = *points.last()?;
+    if x < first[0] - 0.5 || x > last[0] + 0.5 {
+        return None;
+    }
+    let x = x.clamp(first[0], last[0]);
+    match points.binary_search_by(|point| point[0].total_cmp(&x)) {
+        Ok(index) => Some(points[index]),
+        Err(upper) if upper > 0 && upper < points.len() => {
+            let left = points[upper - 1];
+            let right = points[upper];
+            if x - left[0] <= right[0] - x {
+                Some(left)
+            } else {
+                Some(right)
+            }
+        }
+        _ => None,
+    }
+}
+
+fn chart_peak_is_hovered(pointer: egui::Pos2, peak: egui::Pos2) -> bool {
+    pointer.distance(peak) <= DPS_CHART_PEAK_HIT_RADIUS
 }
 
 #[cfg(test)]
@@ -3138,9 +3280,9 @@ fn dps_trend_points(points: &[[f64; 2]]) -> Vec<[f64; 2]> {
     points
         .iter()
         .map(|point| {
-            // A quicker attack keeps real increases responsive; the slower
-            // release turns isolated one-second hits into a readable trend
-            // instead of a near-vertical spike followed by a flat baseline.
+            // Restore the original asymmetric smoothing: attacks remain
+            // responsive while releases decay slowly enough to show the
+            // sustained combat shape instead of every zero-to-hit transition.
             let alpha = if point[1] >= trend { 0.28 } else { 0.12 };
             trend += (point[1] - trend) * alpha;
             if trend < 0.05 {
@@ -3149,6 +3291,13 @@ fn dps_trend_points(points: &[[f64; 2]]) -> Vec<[f64; 2]> {
             [point[0], trend]
         })
         .collect()
+}
+
+fn chart_peak(points: &[[f64; 2]]) -> Option<[f64; 2]> {
+    points
+        .iter()
+        .copied()
+        .reduce(|peak, point| if point[1] > peak[1] { point } else { peak })
 }
 
 fn downsample_dps_trend(points: &[[f64; 2]], max_points: usize) -> Vec<[f64; 2]> {
@@ -5176,17 +5325,43 @@ mod tests {
     }
 
     #[test]
-    fn dps_trend_turns_a_single_hit_into_a_rising_and_falling_line() {
+    fn dps_chart_keeps_a_single_second_peak_exact() {
         let raw = (0..30)
             .map(|second| [second as f64, if second == 5 { 200.0 } else { 0.0 }])
+            .collect::<Vec<_>>();
+        let reduced = downsample_dps_trend(&raw, 600);
+
+        assert_eq!(reduced, raw);
+        assert_eq!(
+            reduced.iter().map(|point| point[1]).fold(0.0, f64::max),
+            200.0
+        );
+    }
+
+    #[test]
+    fn dps_trend_uses_the_original_slow_release_smoothing() {
+        let raw = (0..30)
+            .map(|second| [second as f64, if second == 5 { 900.0 } else { 0.0 }])
             .collect::<Vec<_>>();
         let trend = dps_trend_points(&raw);
 
         assert_eq!(trend[4][1], 0.0);
-        assert!(trend[5][1] > 0.0 && trend[5][1] < 200.0);
+        assert!((trend[5][1] - 252.0).abs() < 1e-9);
         assert!(trend[6][1] < trend[5][1] && trend[6][1] > 0.0);
         assert!(trend[12][1] < trend[6][1]);
-        assert!(trend.iter().all(|point| point[1] >= 0.0));
+    }
+
+    #[test]
+    fn chart_peak_keeps_the_first_exact_maximum() {
+        let points = [[0.0, 10.0], [1.0, 1_111.0], [2.0, 1_111.0]];
+        assert_eq!(chart_peak(&points), Some([1.0, 1_111.0]));
+    }
+
+    #[test]
+    fn chart_peak_has_a_twelve_point_hover_target() {
+        let peak = egui::pos2(100.0, 100.0);
+        assert!(chart_peak_is_hovered(egui::pos2(112.0, 100.0), peak));
+        assert!(!chart_peak_is_hovered(egui::pos2(112.1, 100.0), peak));
     }
 
     #[test]
@@ -5289,6 +5464,10 @@ mod tests {
         assert_eq!(chart_point_at_x(&points, 5.0), Some([5.0, 150.0]));
         assert_eq!(chart_point_at_x(&points, 15.0), Some([15.0, 160.0]));
         assert_eq!(chart_point_at_x(&points, 21.0), None);
+        assert_eq!(chart_nearest_point_at_x(&points, -0.4), Some([0.0, 100.0]));
+        assert_eq!(chart_nearest_point_at_x(&points, 4.0), Some([0.0, 100.0]));
+        assert_eq!(chart_nearest_point_at_x(&points, 6.0), Some([10.0, 200.0]));
+        assert_eq!(chart_nearest_point_at_x(&points, 20.6), None);
     }
 
     #[test]
@@ -5380,8 +5559,7 @@ mod tests {
     #[test]
     fn one_dps_point_survives_chart_processing_without_a_step_estimate() {
         let raw = [[12.0, 180.0]];
-        let trend = dps_trend_points(&raw);
-        let reduced = downsample_dps_trend(&trend, 600);
+        let reduced = downsample_dps_trend(&raw, 600);
         let smooth = smooth_chart_points(&reduced, 4);
 
         assert_eq!(smooth.len(), 1);
@@ -5390,10 +5568,14 @@ mod tests {
     }
 
     #[test]
-    fn chart_downsampling_preserves_time_order_and_full_visit_range() {
+    fn chart_trend_downsampling_preserves_time_order_and_range() {
         let points = (0..1_000)
             .map(|second| {
-                let dps = 50.0 + (second as f64 / 25.0).sin() * 20.0;
+                let dps = if second == 537 {
+                    1_234.0
+                } else {
+                    50.0 + (second as f64 / 25.0).sin() * 20.0
+                };
                 [second as f64, dps]
             })
             .collect::<Vec<_>>();

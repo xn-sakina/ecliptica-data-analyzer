@@ -27,9 +27,9 @@ use egui_plot::{Bar, BarChart, HLine, Line, MarkerShape, Plot, PlotPoints, Point
 use egui_shadcn::{
     Alert, AlertDialog, AlertDialogResult, AlertVariant, Badge, BadgeVariant,
     Button as ShadcnButton, ButtonVariant, ComponentSize, Dialog, Empty, Flex, Input, Item,
-    ItemVariant, Label as ShadcnLabel, LucideIcon, NumberInput, PropertyRow,
-    ScrollArea as ShadcnScrollArea, SelectValue, ShadcnThemeExt, Slider as ShadcnSlider, Switch,
-    Textarea, ToastState, ToastVariant, ToggleGroup, ToggleVariant, Typography, TypographyVariant,
+    ItemVariant, LucideIcon, NumberInput, PropertyRow, ScrollArea as ShadcnScrollArea, SelectValue,
+    ShadcnThemeExt, Slider as ShadcnSlider, Switch, Textarea, ToastState, ToastVariant,
+    ToggleGroup, ToggleVariant, Typography, TypographyVariant,
 };
 use parking_lot::Mutex;
 use single_instance::SingleInstance;
@@ -67,11 +67,13 @@ const DPS_CHART_AUTO_FIT_INTERVAL: Duration = Duration::from_secs(5);
 const DPS_CHART_RECENT_WINDOW_SECONDS: f64 = 5.0 * 60.0;
 const DPS_CHART_MAX_TREND_POINTS: usize = 600;
 const DPS_CHART_PEAK_HIT_RADIUS: f32 = 12.0;
+const DPS_CHART_X_AXIS_TITLE_GAP: f32 = 4.0;
 const DPS_CHART_X_MARGIN_FRACTION: f64 = 0.025;
 const DPS_CHART_Y_MARGIN_FRACTION: f64 = 0.10;
 const DPS_CHART_MIN_Y_SPAN: f64 = 10.0;
 const TEMPLATE_PRESET_TAB_ROW_HEIGHT: f32 = 28.0;
 const TEMPLATE_PRESET_TAB_LABEL_MAX_CHARS: usize = 13;
+const ALERT_SOUND_LABEL_WIDTH: f32 = 200.0;
 const HEART_RATE_GUIDE_URL: &str =
     "https://github.com/xn-sakina/ecliptica-data-analyzer/blob/main/resources/heart-rate/README.md";
 const SETTINGS_TEXT: egui::Color32 = egui::Color32::from_rgb(246, 243, 255);
@@ -1023,7 +1025,6 @@ impl AnalyzerApp {
             (ctx.input(|input| input.screen_rect().height()) - 170.0).clamp(500.0, 640.0);
         Dialog::new()
             .title(text::TEMPLATE_SYNTAX_HELP.get(language))
-            .description(text::TEMPLATE_SYNTAX_HELP_DESCRIPTION.get(language))
             .close_label(text::CLOSE_DIALOG.get(language))
             .width(680.0)
             .show(ctx, &mut self.template_help_open, |ui| {
@@ -1033,7 +1034,6 @@ impl AnalyzerApp {
         let save_error_detail = self.save_error_detail.clone().unwrap_or_default();
         Dialog::new()
             .title(text::SAVE_FAILED.get(language))
-            .description(text::SAVE_ERROR_DESCRIPTION.get(language))
             .close_label(text::CLOSE_DIALOG.get(language))
             .width(720.0)
             .show(ctx, &mut self.save_error_detail_open, |ui| {
@@ -1085,9 +1085,6 @@ impl AnalyzerApp {
             ui.vertical(|ui| {
                 Typography::h3(text::OVERVIEW.get(language))
                     .color(SETTINGS_HEADING)
-                    .show(ui);
-                Typography::muted(text::OVERVIEW_SUBTITLE.get(language))
-                    .color(SETTINGS_TEXT_MUTED)
                     .show(ui);
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -1175,7 +1172,7 @@ impl AnalyzerApp {
         section_card_with_status(
             ui,
             text::SESSION_DPS_CHART.get(language),
-            text::SESSION_DPS_CHART_DESCRIPTION.get(language),
+            None,
             chart_round_context
                 .as_ref()
                 .map(|(_, title)| title.as_str()),
@@ -1185,69 +1182,59 @@ impl AnalyzerApp {
         );
         ui.add_space(14.0);
         if let Some(report) = &snapshot.round_report {
-            section_card(
-                ui,
-                text::PREVIOUS_ROUND_REPORT.get(language),
-                text::PREVIOUS_ROUND_REPORT_DESCRIPTION.get(language),
-                |ui| {
-                    let stats = [
-                        ReportStatItem {
-                            label: text::DURATION.get(language),
-                            value: report.duration_text(),
-                            color: SETTINGS_INFO,
+            section_card(ui, text::PREVIOUS_ROUND_REPORT.get(language), None, |ui| {
+                let stats = [
+                    ReportStatItem {
+                        label: text::DURATION.get(language),
+                        value: report.duration_text(),
+                        color: SETTINGS_INFO,
+                    },
+                    ReportStatItem {
+                        label: text::TOTAL_DAMAGE.get(language),
+                        value: report.total_damage.to_string(),
+                        color: SETTINGS_SUCCESS,
+                    },
+                    ReportStatItem {
+                        label: text::EFFECTIVE_DPS.get(language),
+                        value: report.effective_dps_text(),
+                        color: SETTINGS_SUCCESS,
+                    },
+                    ReportStatItem {
+                        label: text::BURST_10S.get(language),
+                        value: report.burst_10s_dps_text(),
+                        color: SETTINGS_WARNING,
+                    },
+                    ReportStatItem {
+                        label: text::EFFECTIVE_DPS_GROWTH.get(language),
+                        value: if report.has_dps_growth_rate {
+                            format!("{}%", report.dps_growth_rate_text())
+                        } else {
+                            "-".to_owned()
                         },
-                        ReportStatItem {
-                            label: text::TOTAL_DAMAGE.get(language),
-                            value: report.total_damage.to_string(),
-                            color: SETTINGS_SUCCESS,
+                        color: if report.dps_growth_rate >= 0.0 {
+                            SETTINGS_SUCCESS
+                        } else {
+                            SETTINGS_DANGER
                         },
-                        ReportStatItem {
-                            label: text::EFFECTIVE_DPS.get(language),
-                            value: report.effective_dps_text(),
-                            color: SETTINGS_SUCCESS,
-                        },
-                        ReportStatItem {
-                            label: text::BURST_10S.get(language),
-                            value: report.burst_10s_dps_text(),
-                            color: SETTINGS_WARNING,
-                        },
-                        ReportStatItem {
-                            label: text::EFFECTIVE_DPS_GROWTH.get(language),
-                            value: if report.has_dps_growth_rate {
-                                format!("{}%", report.dps_growth_rate_text())
-                            } else {
-                                "-".to_owned()
-                            },
-                            color: if report.dps_growth_rate >= 0.0 {
-                                SETTINGS_SUCCESS
-                            } else {
-                                SETTINGS_DANGER
-                            },
-                        },
-                        ReportStatItem {
-                            label: text::DAMAGE_TAKEN.get(language),
-                            value: report.damage_taken.to_string(),
-                            color: SETTINGS_DANGER,
-                        },
-                        ReportStatItem {
-                            label: text::LONGEST_STANDSTILL.get(language),
-                            value: localized_standstill(report, language),
-                            color: SETTINGS_WARNING,
-                        },
-                    ];
-                    report_stat_group(ui, &stats, 4);
-                },
-            );
+                    },
+                    ReportStatItem {
+                        label: text::DAMAGE_TAKEN.get(language),
+                        value: report.damage_taken.to_string(),
+                        color: SETTINGS_DANGER,
+                    },
+                    ReportStatItem {
+                        label: text::LONGEST_STANDSTILL.get(language),
+                        value: localized_standstill(report, language),
+                        color: SETTINGS_WARNING,
+                    },
+                ];
+                report_stat_group(ui, &stats, 4);
+            });
             ui.add_space(14.0);
         }
-        section_card(
-            ui,
-            text::GAME_LOG.get(language),
-            text::GAME_LOG_DESCRIPTION.get(language),
-            |ui| {
-                log_source_row(ui, snapshot.source.as_deref(), &self.runtime, language);
-            },
-        );
+        section_card(ui, text::GAME_LOG.get(language), None, |ui| {
+            log_source_row(ui, snapshot.source.as_deref(), &self.runtime, language);
+        });
     }
 
     fn open_away_dialog(&mut self) {
@@ -1312,7 +1299,6 @@ impl AnalyzerApp {
 
         Dialog::new()
             .title(text::AWAY_MODE.get(language))
-            .description(text::AWAY_MODE_DESCRIPTION.get(language))
             .close_label(text::CLOSE_DIALOG.get(language))
             .width(620.0)
             .close_on_backdrop(false)
@@ -1602,9 +1588,6 @@ impl AnalyzerApp {
                 Typography::h3(text::OSC_MESSAGES.get(language))
                     .color(SETTINGS_HEADING)
                     .show(ui);
-                Typography::muted(text::OSC_MESSAGES_SUBTITLE.get(language))
-                    .color(SETTINGS_TEXT_MUTED)
-                    .show(ui);
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ShadcnButton::new(text::OPEN_AWAY_MODE.get(language))
@@ -1621,7 +1604,7 @@ impl AnalyzerApp {
         section_card(
             ui,
             text::SEND_SETTINGS.get(self.draft.language),
-            text::SEND_SETTINGS_DESCRIPTION.get(self.draft.language),
+            Some(text::SEND_SETTINGS_DESCRIPTION.get(self.draft.language)),
             |ui| {
                 Switch::new(&mut self.draft.osc_enabled)
                     .label(text::ENABLE_OSC.get(self.draft.language))
@@ -1655,7 +1638,7 @@ impl AnalyzerApp {
         section_card(
             ui,
             text::NORMAL_MESSAGE_TEMPLATE.get(language),
-            text::NORMAL_MESSAGE_TEMPLATE_DESCRIPTION.get(language),
+            None,
             |ui| {
                 PropertyRow::new(text::TEMPLATE_PRESET.get(language))
                     .label_width(84.0)
@@ -1748,161 +1731,150 @@ impl AnalyzerApp {
             },
         );
         ui.add_space(14.0);
-        section_card(
-            ui,
-            text::ROUND_REPORT_TEMPLATE.get(language),
-            text::ROUND_REPORT_TEMPLATE_DESCRIPTION.get(language),
-            |ui| {
-                PropertyRow::new(text::REPORT_PRESET.get(language))
-                    .label_width(84.0)
-                    .show(ui, |ui| {
-                        let mut selected = self.draft.active_round_report_template_preset;
-                        let reset_clicked = preset_controls_row(ui, |ui| {
-                            ToggleGroup::new(preset_tab_labels(
-                                &self.draft.round_report_template_preset_names,
-                                language,
-                            ))
-                            .variant(ToggleVariant::Outline)
-                            .size(ComponentSize::Xs)
-                            .strong_labels(false)
-                            .applied_index(applied_report_preset)
-                            .draft_changed(report_draft_changed)
-                            .show(ui, &mut selected);
-                            ui.add_space(6.0);
-                            ShadcnButton::new(text::RESET_SELECTED_PRESET.get(language))
-                                .icon(LucideIcon::RotateCcw)
-                                .variant(ButtonVariant::Ghost)
-                                .size(ComponentSize::Xs)
-                                .height(TEMPLATE_PRESET_TAB_ROW_HEIGHT)
-                                .show(ui)
-                                .on_hover_text(text::RESET_REPORT_PRESET_HINT.get(language))
-                                .clicked()
-                        })
-                        .inner;
-                        if reset_clicked {
-                            self.template_preset_reset_confirm =
-                                Some(TemplatePresetResetKind::Report);
-                        }
-                        if selected != self.draft.active_round_report_template_preset {
-                            self.draft.select_round_report_template_preset(selected);
-                            let name = preset_display_name(
-                                &self.draft.round_report_template_preset_names[selected],
-                                selected,
-                                language,
-                            );
-                            self.save_result = Some((
-                                format_pattern(text::PRESET_SWITCHED, language, &[("name", name)]),
-                                true,
-                            ));
-                        }
-                    });
-                PropertyRow::new(text::PRESET_NAME.get(language))
-                    .label_width(84.0)
-                    .show(ui, |ui| {
-                        let active = self.draft.active_round_report_template_preset;
-                        let name = &mut self.draft.round_report_template_preset_names[active];
-                        let response = Input::new(name)
-                            .placeholder(format_pattern(
-                                text::PRESET_FALLBACK,
-                                language,
-                                &[("index", (active + 1).to_string())],
-                            ))
-                            .desired_width(260.0)
-                            .show(ui)
-                            .on_hover_text(format_pattern(
-                                text::PRESET_NAME_HINT,
-                                language,
-                                &[("max", config::TEMPLATE_PRESET_NAME_MAX_CHARS.to_string())],
-                            ));
-                        if response.lost_focus() {
-                            *name = name.trim().to_owned();
-                        }
-                    });
-                ui.add_space(10.0);
-                let width = ui.available_width();
-                Textarea::new(&mut self.draft.round_report_template)
-                    .id_salt("osc-round-report-template")
-                    .desired_width(width)
-                    .min_height(118.0)
-                    .auto_resize()
-                    .max_height(360.0)
-                    .monospace()
-                    .show(ui);
-                ui.add_space(12.0);
-                Typography::muted(text::REPORT_VARIABLES_HINT.get(language)).show(ui);
-                template_help_button(ui, &mut self.template_help_open, language);
-                ui.add_space(10.0);
-                let clipboard = &mut self.clipboard;
-                let toast_state = &mut self.toast_state;
-                report_variable_help(
-                    ui,
-                    clipboard,
-                    toast_state,
-                    language,
-                    snapshot.has_heart_rate,
-                );
-            },
-        );
-        ui.add_space(14.0);
-        section_card(
-            ui,
-            text::LIVE_PREVIEW.get(language),
-            text::LIVE_PREVIEW_DESCRIPTION.get(language),
-            |ui| {
-                PropertyRow::new(text::SIMULATED_STATE.get(language))
-                    .label_width(84.0)
-                    .show(ui, |ui| {
-                        let mut selected = match self.template_preview_state {
-                            TemplatePreviewState::Normal => 0,
-                            TemplatePreviewState::RoundReport => 1,
-                        };
-                        ToggleGroup::new(vec![
-                            text::PREVIEW_NORMAL.get(language).to_owned(),
-                            text::PREVIEW_ROUND_REPORT.get(language).to_owned(),
-                        ])
+        section_card(ui, text::ROUND_REPORT_TEMPLATE.get(language), None, |ui| {
+            PropertyRow::new(text::REPORT_PRESET.get(language))
+                .label_width(84.0)
+                .show(ui, |ui| {
+                    let mut selected = self.draft.active_round_report_template_preset;
+                    let reset_clicked = preset_controls_row(ui, |ui| {
+                        ToggleGroup::new(preset_tab_labels(
+                            &self.draft.round_report_template_preset_names,
+                            language,
+                        ))
                         .variant(ToggleVariant::Outline)
                         .size(ComponentSize::Xs)
-                        .selection_markers(false)
+                        .strong_labels(false)
+                        .applied_index(applied_report_preset)
+                        .draft_changed(report_draft_changed)
                         .show(ui, &mut selected);
-                        self.template_preview_state = match selected {
-                            1 => TemplatePreviewState::RoundReport,
-                            _ => TemplatePreviewState::Normal,
-                        };
-                    });
-                ui.add_space(12.0);
-                let preview_snapshot =
-                    preview_snapshot_for_state(snapshot, self.template_preview_state);
-                match ecliptica_data_analyzer::osc::render_configured_message(
-                    &self.draft,
-                    &preview_snapshot,
-                ) {
-                    Ok(preview) => {
-                        preview_panel(ui, |ui| {
-                            if preview.trim().is_empty() {
-                                Typography::new(text::EMPTY_MESSAGE.get(language))
-                                    .italics()
-                                    .show(ui);
-                            } else {
-                                preview_text(ui, &preview);
-                            }
-                        });
+                        ui.add_space(6.0);
+                        ShadcnButton::new(text::RESET_SELECTED_PRESET.get(language))
+                            .icon(LucideIcon::RotateCcw)
+                            .variant(ButtonVariant::Ghost)
+                            .size(ComponentSize::Xs)
+                            .height(TEMPLATE_PRESET_TAB_ROW_HEIGHT)
+                            .show(ui)
+                            .on_hover_text(text::RESET_REPORT_PRESET_HINT.get(language))
+                            .clicked()
+                    })
+                    .inner;
+                    if reset_clicked {
+                        self.template_preset_reset_confirm = Some(TemplatePresetResetKind::Report);
                     }
-                    Err(error) => {
-                        Alert::new()
-                            .variant(AlertVariant::Destructive)
-                            .full_width()
-                            .show(ui, |ui| {
-                                Typography::new(format!(
-                                    "{}: {error}",
-                                    text::TEMPLATE_ERROR.get(language)
-                                ))
-                                .color(egui::Color32::from_rgb(255, 132, 146))
+                    if selected != self.draft.active_round_report_template_preset {
+                        self.draft.select_round_report_template_preset(selected);
+                        let name = preset_display_name(
+                            &self.draft.round_report_template_preset_names[selected],
+                            selected,
+                            language,
+                        );
+                        self.save_result = Some((
+                            format_pattern(text::PRESET_SWITCHED, language, &[("name", name)]),
+                            true,
+                        ));
+                    }
+                });
+            PropertyRow::new(text::PRESET_NAME.get(language))
+                .label_width(84.0)
+                .show(ui, |ui| {
+                    let active = self.draft.active_round_report_template_preset;
+                    let name = &mut self.draft.round_report_template_preset_names[active];
+                    let response = Input::new(name)
+                        .placeholder(format_pattern(
+                            text::PRESET_FALLBACK,
+                            language,
+                            &[("index", (active + 1).to_string())],
+                        ))
+                        .desired_width(260.0)
+                        .show(ui)
+                        .on_hover_text(format_pattern(
+                            text::PRESET_NAME_HINT,
+                            language,
+                            &[("max", config::TEMPLATE_PRESET_NAME_MAX_CHARS.to_string())],
+                        ));
+                    if response.lost_focus() {
+                        *name = name.trim().to_owned();
+                    }
+                });
+            ui.add_space(10.0);
+            let width = ui.available_width();
+            Textarea::new(&mut self.draft.round_report_template)
+                .id_salt("osc-round-report-template")
+                .desired_width(width)
+                .min_height(118.0)
+                .auto_resize()
+                .max_height(360.0)
+                .monospace()
+                .show(ui);
+            ui.add_space(12.0);
+            Typography::muted(text::REPORT_VARIABLES_HINT.get(language)).show(ui);
+            template_help_button(ui, &mut self.template_help_open, language);
+            ui.add_space(10.0);
+            let clipboard = &mut self.clipboard;
+            let toast_state = &mut self.toast_state;
+            report_variable_help(
+                ui,
+                clipboard,
+                toast_state,
+                language,
+                snapshot.has_heart_rate,
+            );
+        });
+        ui.add_space(14.0);
+        section_card(ui, text::LIVE_PREVIEW.get(language), None, |ui| {
+            PropertyRow::new(text::SIMULATED_STATE.get(language))
+                .label_width(84.0)
+                .show(ui, |ui| {
+                    let mut selected = match self.template_preview_state {
+                        TemplatePreviewState::Normal => 0,
+                        TemplatePreviewState::RoundReport => 1,
+                    };
+                    ToggleGroup::new(vec![
+                        text::PREVIEW_NORMAL.get(language).to_owned(),
+                        text::PREVIEW_ROUND_REPORT.get(language).to_owned(),
+                    ])
+                    .variant(ToggleVariant::Outline)
+                    .size(ComponentSize::Xs)
+                    .selection_markers(false)
+                    .show(ui, &mut selected);
+                    self.template_preview_state = match selected {
+                        1 => TemplatePreviewState::RoundReport,
+                        _ => TemplatePreviewState::Normal,
+                    };
+                });
+            ui.add_space(12.0);
+            let preview_snapshot =
+                preview_snapshot_for_state(snapshot, self.template_preview_state);
+            match ecliptica_data_analyzer::osc::render_configured_message(
+                &self.draft,
+                &preview_snapshot,
+            ) {
+                Ok(preview) => {
+                    preview_panel(ui, |ui| {
+                        if preview.trim().is_empty() {
+                            Typography::new(text::EMPTY_MESSAGE.get(language))
+                                .italics()
                                 .show(ui);
-                            });
-                    }
+                        } else {
+                            preview_text(ui, &preview);
+                        }
+                    });
                 }
-            },
-        );
+                Err(error) => {
+                    Alert::new()
+                        .variant(AlertVariant::Destructive)
+                        .full_width()
+                        .show(ui, |ui| {
+                            Typography::new(format!(
+                                "{}: {error}",
+                                text::TEMPLATE_ERROR.get(language)
+                            ))
+                            .color(egui::Color32::from_rgb(255, 132, 146))
+                            .show(ui);
+                        });
+                }
+            }
+        });
         ui.add_space(14.0);
         heart_rate_auxiliary_panel(
             ui,
@@ -1915,28 +1887,16 @@ impl AnalyzerApp {
     }
 
     fn player_page(&mut self, ui: &mut egui::Ui) {
-        page_heading(
-            ui,
-            text::PLAYER_ALERTS.get(self.draft.language),
-            text::PLAYER_ALERTS_SUBTITLE.get(self.draft.language),
-        );
+        page_heading(ui, text::PLAYER_ALERTS.get(self.draft.language));
         section_card(
             ui,
             text::PLAYER_IDENTITY.get(self.draft.language),
-            text::PLAYER_IDENTITY_DESCRIPTION.get(self.draft.language),
+            Some(text::PLAYER_IDENTITY_DESCRIPTION.get(self.draft.language)),
             |ui| {
-                ShadcnLabel::new(text::VRCHAT_DISPLAY_NAME.get(self.draft.language))
-                    .muted()
-                    .show(ui);
                 let width = ui.available_width();
                 Input::new(&mut self.draft.display_name)
                     .placeholder(text::DISPLAY_NAME_PLACEHOLDER.get(self.draft.language))
                     .desired_width(width)
-                    .show(ui);
-                ui.add_space(6.0);
-                Typography::new(text::DISPLAY_NAME_NORMALIZATION.get(self.draft.language))
-                    .color(SETTINGS_TEXT_SECONDARY)
-                    .wrap()
                     .show(ui);
             },
         );
@@ -1944,7 +1904,7 @@ impl AnalyzerApp {
         section_card(
             ui,
             text::ALERT_SOUNDS.get(self.draft.language),
-            text::ALERT_SOUNDS_DESCRIPTION.get(self.draft.language),
+            None,
             |ui| {
                 PropertyRow::new(text::VOLUME.get(self.draft.language)).show(ui, |ui| {
                     Flex::row().align_center().gap(10.0).show(ui, |flex| {
@@ -1963,160 +1923,159 @@ impl AnalyzerApp {
                     });
                 });
                 ui.add_space(8.0);
-                PropertyRow::new(text::LOCK_SOUND.get(self.draft.language)).show(ui, |ui| {
-                    let options = AlertSoundStyle::ALL
-                        .map(|style| AlertSoundStyleChoice(style, self.draft.language));
-                    let mut selected =
-                        AlertSoundStyleChoice(self.draft.locked_sound_style, self.draft.language);
-                    Flex::row().align_center().gap(8.0).wrap().show(ui, |flex| {
-                        flex.ui(|ui| {
-                            let response = SelectValue::new(&mut selected, &options)
-                                .width(150.0)
-                                .show(ui);
-                            if response.changed() || selected.0 != self.draft.locked_sound_style {
-                                self.draft.locked_sound_style = selected.0;
-                            }
-                        });
-                        flex.ui(|ui| {
-                            if ShadcnButton::new(text::PREVIEW_SOUND.get(self.draft.language))
-                                .icon(LucideIcon::Volume2)
-                                .variant(ButtonVariant::Outline)
-                                .show(ui)
-                                .clicked()
-                            {
-                                let _ = self.runtime.sounds.try_send(SoundCommand::PreviewLocked(
-                                    self.draft.alert_volume,
-                                    self.draft.locked_sound_style,
-                                ));
-                            }
-                        });
-                    });
-                });
-                PropertyRow::new(text::RELEASE_SOUND.get(self.draft.language)).show(ui, |ui| {
-                    let options = AlertSoundStyle::ALL
-                        .map(|style| AlertSoundStyleChoice(style, self.draft.language));
-                    let mut selected =
-                        AlertSoundStyleChoice(self.draft.unlocked_sound_style, self.draft.language);
-                    Flex::row().align_center().gap(8.0).wrap().show(ui, |flex| {
-                        flex.ui(|ui| {
-                            let response = SelectValue::new(&mut selected, &options)
-                                .width(150.0)
-                                .show(ui);
-                            if response.changed() || selected.0 != self.draft.unlocked_sound_style {
-                                self.draft.unlocked_sound_style = selected.0;
-                            }
-                        });
-                        flex.ui(|ui| {
-                            if ShadcnButton::new(text::PREVIEW_SOUND.get(self.draft.language))
-                                .icon(LucideIcon::VolumeX)
-                                .variant(ButtonVariant::Outline)
-                                .show(ui)
-                                .clicked()
-                            {
-                                let _ =
-                                    self.runtime.sounds.try_send(SoundCommand::PreviewUnlocked(
-                                        self.draft.alert_volume,
-                                        self.draft.unlocked_sound_style,
-                                    ));
-                            }
+                PropertyRow::new(text::LOCK_SOUND.get(self.draft.language))
+                    .label_width(ALERT_SOUND_LABEL_WIDTH)
+                    .show(ui, |ui| {
+                        let options = AlertSoundStyle::ALL
+                            .map(|style| AlertSoundStyleChoice(style, self.draft.language));
+                        let mut selected = AlertSoundStyleChoice(
+                            self.draft.locked_sound_style,
+                            self.draft.language,
+                        );
+                        Flex::row().align_center().gap(8.0).wrap().show(ui, |flex| {
+                            flex.ui(|ui| {
+                                let response = SelectValue::new(&mut selected, &options)
+                                    .width(150.0)
+                                    .show(ui);
+                                if response.changed() || selected.0 != self.draft.locked_sound_style
+                                {
+                                    self.draft.locked_sound_style = selected.0;
+                                }
+                            });
+                            flex.ui(|ui| {
+                                if ShadcnButton::new(text::PREVIEW_SOUND.get(self.draft.language))
+                                    .icon(LucideIcon::Volume2)
+                                    .variant(ButtonVariant::Outline)
+                                    .show(ui)
+                                    .clicked()
+                                {
+                                    let _ =
+                                        self.runtime.sounds.try_send(SoundCommand::PreviewLocked(
+                                            self.draft.alert_volume,
+                                            self.draft.locked_sound_style,
+                                        ));
+                                }
+                            });
                         });
                     });
-                });
+                PropertyRow::new(text::RELEASE_SOUND.get(self.draft.language))
+                    .label_width(ALERT_SOUND_LABEL_WIDTH)
+                    .show(ui, |ui| {
+                        let options = AlertSoundStyle::ALL
+                            .map(|style| AlertSoundStyleChoice(style, self.draft.language));
+                        let mut selected = AlertSoundStyleChoice(
+                            self.draft.unlocked_sound_style,
+                            self.draft.language,
+                        );
+                        Flex::row().align_center().gap(8.0).wrap().show(ui, |flex| {
+                            flex.ui(|ui| {
+                                let response = SelectValue::new(&mut selected, &options)
+                                    .width(150.0)
+                                    .show(ui);
+                                if response.changed()
+                                    || selected.0 != self.draft.unlocked_sound_style
+                                {
+                                    self.draft.unlocked_sound_style = selected.0;
+                                }
+                            });
+                            flex.ui(|ui| {
+                                if ShadcnButton::new(text::PREVIEW_SOUND.get(self.draft.language))
+                                    .icon(LucideIcon::VolumeX)
+                                    .variant(ButtonVariant::Outline)
+                                    .show(ui)
+                                    .clicked()
+                                {
+                                    let _ = self.runtime.sounds.try_send(
+                                        SoundCommand::PreviewUnlocked(
+                                            self.draft.alert_volume,
+                                            self.draft.unlocked_sound_style,
+                                        ),
+                                    );
+                                }
+                            });
+                        });
+                    });
             },
         );
     }
 
     fn overlay_page(&mut self, ui: &mut egui::Ui) {
         let language = self.draft.language;
-        page_heading(
-            ui,
-            text::OVERLAY.get(language),
-            text::OVERLAY_SUBTITLE.get(language),
-        );
-        section_card(
-            ui,
-            text::WINDOW_BEHAVIOR.get(language),
-            text::WINDOW_BEHAVIOR_DESCRIPTION.get(language),
-            |ui| {
-                let mut draggable = self.draft.overlay_draggable();
-                let response = Switch::new(&mut draggable)
-                    .label(text::DRAGGABLE.get(language))
+        page_heading(ui, text::OVERLAY.get(language));
+        section_card(ui, text::WINDOW_BEHAVIOR.get(language), None, |ui| {
+            let mut draggable = self.draft.overlay_draggable();
+            let response = Switch::new(&mut draggable)
+                .label(text::DRAGGABLE.get(language))
+                .show(ui);
+            if response.changed() {
+                self.draft.set_overlay_draggable(draggable);
+                self.runtime
+                    .shared
+                    .config
+                    .write()
+                    .value
+                    .set_overlay_draggable(draggable);
+                let overlay_id = egui::ViewportId::from_hash_of(OVERLAY_ID);
+                ui.ctx().send_viewport_cmd_to(
+                    overlay_id,
+                    egui::ViewportCommand::MousePassthrough(!draggable),
+                );
+                if draggable {
+                    // StartDrag is ignored by egui-winit while a viewport is
+                    // unfocused. Focus once when drag mode is enabled so the
+                    // first press anywhere on the Overlay can move the window.
+                    ui.ctx()
+                        .send_viewport_cmd_to(overlay_id, egui::ViewportCommand::Focus);
+                }
+            }
+            if draggable {
+                ui.add_space(6.0);
+                Typography::new(text::DRAG_OVERLAY_HINT.get(language))
+                    .color(SETTINGS_INFO)
+                    .show(ui);
+            }
+            ui.add_space(12.0);
+            let options = OVERLAY_SCALE_OPTIONS.map(OverlayScaleChoice);
+            let mut selected = OverlayScaleChoice(self.draft.overlay_scale);
+            PropertyRow::new(text::OVERLAY_SIZE.get(language)).show(ui, |ui| {
+                let response = SelectValue::new(&mut selected, &options)
+                    .width(150.0)
+                    .show(ui);
+                if response.changed() || selected.0 != self.draft.overlay_scale {
+                    self.draft.overlay_scale = selected.0;
+                    self.runtime.shared.config.write().value.overlay_scale = selected.0;
+                }
+            });
+        });
+        ui.add_space(14.0);
+        section_card(ui, text::SCREEN_POSITION.get(language), None, |ui| {
+            PropertyRow::new(text::HORIZONTAL_POSITION.get(language)).show(ui, |ui| {
+                let response = NumberInput::f32(&mut self.draft.overlay_x)
+                    .speed(1.0)
+                    .range(0.0..=10000.0)
+                    .decimals(0)
+                    .suffix(text::PIXELS_SUFFIX.get(language))
+                    .width(150.0)
                     .show(ui);
                 if response.changed() {
-                    self.draft.set_overlay_draggable(draggable);
-                    self.runtime
-                        .shared
-                        .config
-                        .write()
-                        .value
-                        .set_overlay_draggable(draggable);
-                    let overlay_id = egui::ViewportId::from_hash_of(OVERLAY_ID);
-                    ui.ctx().send_viewport_cmd_to(
-                        overlay_id,
-                        egui::ViewportCommand::MousePassthrough(!draggable),
-                    );
-                    if draggable {
-                        // StartDrag is ignored by egui-winit while a viewport is
-                        // unfocused. Focus once when drag mode is enabled so the
-                        // first press anywhere on the Overlay can move the window.
-                        ui.ctx()
-                            .send_viewport_cmd_to(overlay_id, egui::ViewportCommand::Focus);
-                    }
+                    let mut live = self.runtime.shared.config.write();
+                    live.value.overlay_x = self.draft.overlay_x;
                 }
-                if draggable {
-                    ui.add_space(6.0);
-                    Typography::new(text::DRAG_OVERLAY_HINT.get(language))
-                        .color(SETTINGS_INFO)
-                        .show(ui);
+            });
+            PropertyRow::new(text::VERTICAL_POSITION.get(language)).show(ui, |ui| {
+                let response = NumberInput::f32(&mut self.draft.overlay_y)
+                    .speed(1.0)
+                    .range(0.0..=10000.0)
+                    .decimals(0)
+                    .suffix(text::PIXELS_SUFFIX.get(language))
+                    .width(150.0)
+                    .show(ui);
+                if response.changed() {
+                    let mut live = self.runtime.shared.config.write();
+                    live.value.overlay_y = self.draft.overlay_y;
                 }
-                ui.add_space(12.0);
-                let options = OVERLAY_SCALE_OPTIONS.map(OverlayScaleChoice);
-                let mut selected = OverlayScaleChoice(self.draft.overlay_scale);
-                PropertyRow::new(text::OVERLAY_SIZE.get(language)).show(ui, |ui| {
-                    let response = SelectValue::new(&mut selected, &options)
-                        .width(150.0)
-                        .show(ui);
-                    if response.changed() || selected.0 != self.draft.overlay_scale {
-                        self.draft.overlay_scale = selected.0;
-                        self.runtime.shared.config.write().value.overlay_scale = selected.0;
-                    }
-                });
-            },
-        );
-        ui.add_space(14.0);
-        section_card(
-            ui,
-            text::SCREEN_POSITION.get(language),
-            text::SCREEN_POSITION_DESCRIPTION.get(language),
-            |ui| {
-                PropertyRow::new(text::HORIZONTAL_POSITION.get(language)).show(ui, |ui| {
-                    let response = NumberInput::f32(&mut self.draft.overlay_x)
-                        .speed(1.0)
-                        .range(0.0..=10000.0)
-                        .decimals(0)
-                        .suffix(text::PIXELS_SUFFIX.get(language))
-                        .width(150.0)
-                        .show(ui);
-                    if response.changed() {
-                        let mut live = self.runtime.shared.config.write();
-                        live.value.overlay_x = self.draft.overlay_x;
-                    }
-                });
-                PropertyRow::new(text::VERTICAL_POSITION.get(language)).show(ui, |ui| {
-                    let response = NumberInput::f32(&mut self.draft.overlay_y)
-                        .speed(1.0)
-                        .range(0.0..=10000.0)
-                        .decimals(0)
-                        .suffix(text::PIXELS_SUFFIX.get(language))
-                        .width(150.0)
-                        .show(ui);
-                    if response.changed() {
-                        let mut live = self.runtime.shared.config.write();
-                        live.value.overlay_y = self.draft.overlay_y;
-                    }
-                });
-            },
-        );
+            });
+        });
     }
 
     fn logs_page(&mut self, ui: &mut egui::Ui) {
@@ -2125,9 +2084,6 @@ impl AnalyzerApp {
             ui.vertical(|ui| {
                 Typography::h3(text::SYSTEM_LOGS.get(language))
                     .color(SETTINGS_HEADING)
-                    .show(ui);
-                Typography::muted(text::SYSTEM_LOGS_SUBTITLE.get(language))
-                    .color(SETTINGS_TEXT_MUTED)
                     .show(ui);
             });
             if !self.developer_mode {
@@ -2147,25 +2103,16 @@ impl AnalyzerApp {
             });
         });
         ui.add_space(20.0);
-        section_card(
-            ui,
-            text::EVENT_STREAM.get(language),
-            &format_pattern(
-                text::MAX_LOG_ROWS,
-                language,
-                &[("max", MAX_LOG_ROWS.to_string())],
-            ),
-            |ui| {
-                for row in &self.logs {
-                    log_line(ui, row, language);
-                }
-                if self.logs.is_empty() {
-                    Empty::show(ui, |ui| {
-                        Typography::muted(text::NO_SYSTEM_EVENTS.get(language)).show(ui);
-                    });
-                }
-            },
-        );
+        section_card(ui, text::EVENT_STREAM.get(language), None, |ui| {
+            for row in &self.logs {
+                log_line(ui, row, language);
+            }
+            if self.logs.is_empty() {
+                Empty::show(ui, |ui| {
+                    Typography::muted(text::NO_SYSTEM_EVENTS.get(language)).show(ui);
+                });
+            }
+        });
     }
 
     fn overlay_ui(&self, ctx: &egui::Context, snapshot: &GameSnapshot) {
@@ -2178,7 +2125,7 @@ impl AnalyzerApp {
             overlay_height(snapshot.round_report.is_some(), has_alert) * overlay_scale;
         let overlay_width = OVERLAY_WIDTH * overlay_scale;
         let builder = egui::ViewportBuilder::default()
-            .with_title(format!("Ecliptica Overlay v{APP_VERSION}"))
+            .with_title(overlay_window_title(language))
             .with_inner_size([overlay_width, overlay_height])
             .with_min_inner_size([overlay_width, overlay_height])
             .with_max_inner_size([overlay_width, overlay_height])
@@ -2561,7 +2508,7 @@ impl eframe::App for AnalyzerApp {
         self.settings_ui(ctx, &snapshot);
         self.overlay_ui(ctx, &snapshot);
         #[cfg(target_os = "windows")]
-        ensure_windows_overlay_layering();
+        ensure_windows_overlay_layering(self.draft.language);
         ctx.request_repaint_after(Duration::from_millis(100));
     }
 
@@ -2578,7 +2525,7 @@ impl eframe::App for AnalyzerApp {
 }
 
 #[cfg(target_os = "windows")]
-fn ensure_windows_overlay_layering() {
+fn ensure_windows_overlay_layering(language: Language) {
     use windows_sys::Win32::{
         Foundation::COLORREF,
         UI::WindowsAndMessaging::{
@@ -2587,7 +2534,7 @@ fn ensure_windows_overlay_layering() {
         },
     };
 
-    let title: Vec<u16> = format!("Ecliptica Overlay v{APP_VERSION}")
+    let title: Vec<u16> = overlay_window_title(language)
         .encode_utf16()
         .chain(Some(0))
         .collect();
@@ -2622,6 +2569,13 @@ fn ensure_windows_overlay_layering() {
             SetLayeredWindowAttributes(window, 0, 230, expected_flags);
         }
     }
+}
+
+fn overlay_window_title(language: Language) -> String {
+    format!(
+        "{} v{APP_VERSION}",
+        text::OVERLAY_WINDOW_TITLE.get(language)
+    )
 }
 
 fn settings_page_title(page: SettingsPage, language: Language) -> &'static str {
@@ -2685,9 +2639,6 @@ fn dps_history_chart(
                 .strong()
                 .color(SETTINGS_HEADING)
                 .show(ui);
-            Typography::muted(text::CHART_ZERO_DESCRIPTION.get(language))
-                .wrap()
-                .show(ui);
         });
         return;
     }
@@ -2697,9 +2648,6 @@ fn dps_history_chart(
             Typography::new(text::CHART_WAITING_ROUND.get(language))
                 .strong()
                 .color(SETTINGS_HEADING)
-                .show(ui);
-            Typography::muted(text::CHART_WAITING_ROUND_DESCRIPTION.get(language))
-                .wrap()
                 .show(ui);
         });
         return;
@@ -2821,7 +2769,6 @@ fn dps_history_chart(
                     .allow_scroll(false)
                     .allow_boxed_zoom(false)
                     .set_margin_fraction(egui::vec2(0.035, 0.0))
-                    .x_axis_label(text::SESSION_TIME.get(language))
                     .y_axis_label("DPS")
                     .x_axis_formatter(move |mark, range| {
                         format_chart_x_tick_localized(
@@ -2996,6 +2943,12 @@ fn dps_history_chart(
                 if !next_auto_fit.is_zero() {
                     ui.ctx().request_repaint_after(next_auto_fit);
                 }
+                ui.add_space(DPS_CHART_X_AXIS_TITLE_GAP);
+                ui.horizontal_centered(|ui| {
+                    Typography::new(text::SESSION_TIME.get(language))
+                        .color(SETTINGS_CHART_AXIS)
+                        .show(ui);
+                });
             });
         });
 }
@@ -3784,10 +3737,7 @@ fn heart_rate_auxiliary_panel(
     egui_shadcn::Card::new().show(ui, |ui| {
         ui.set_min_width((width - 34.0).max(120.0));
         heart_rate_title_row(ui, language);
-        Typography::muted(text::HEART_RATE_AUXILIARY_DESCRIPTION.get(language))
-            .color(SETTINGS_TEXT_MUTED)
-            .show(ui);
-        ui.add_space(14.0);
+        ui.add_space(10.0);
         Switch::new(enabled)
             .label(text::ENABLE_HEART_RATE.get(language))
             .show(ui)
@@ -3846,7 +3796,6 @@ fn template_help_button(ui: &mut egui::Ui, template_help_open: &mut bool, langua
             .variant(ButtonVariant::Outline)
             .size(ComponentSize::Xs)
             .show(ui)
-            .on_hover_text(text::TEMPLATE_SYNTAX_HELP_DESCRIPTION.get(language))
             .clicked()
         {
             *template_help_open = true;
@@ -3892,72 +3841,17 @@ fn template_syntax_help(ui: &mut egui::Ui, language: Language, height: f32) {
         .fill_available(true)
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            Typography::new(text::HELP_MOST_USED.get(language))
-                .strong()
-                .color(SETTINGS_HEADING)
-                .show(ui);
-            Typography::muted(text::HELP_MOST_USED_DESCRIPTION.get(language))
-                .wrap()
-                .show(ui);
-            for example in ecliptica_data_analyzer::i18n::BASIC_SYNTAX_HELP {
-                syntax_example(
-                    ui,
-                    example.title.get(language),
-                    example.description.get(language),
-                    example.code.get(language),
-                );
+            for example in ecliptica_data_analyzer::i18n::TEMPLATE_SYNTAX_EXAMPLES {
+                syntax_example(ui, example.title.get(language), example.code.get(language));
             }
-
-            ui.add_space(18.0);
-            Typography::new(text::HELP_MORE_SYNTAX.get(language))
-                .strong()
-                .color(SETTINGS_HEADING)
-                .show(ui);
-            Typography::muted(text::HELP_MORE_SYNTAX_DESCRIPTION.get(language))
-                .wrap()
-                .show(ui);
-            for example in ecliptica_data_analyzer::i18n::ADVANCED_SYNTAX_HELP {
-                syntax_example(
-                    ui,
-                    example.title.get(language),
-                    example.description.get(language),
-                    example.code.get(language),
-                );
-            }
-
-            ui.add_space(18.0);
-            Typography::new(text::HELP_UNUSED_SYNTAX.get(language))
-                .strong()
-                .color(SETTINGS_HEADING)
-                .show(ui);
-            Typography::small(text::HELP_UNUSED_SYNTAX_DESCRIPTION.get(language))
-                .color(SETTINGS_TEXT_SECONDARY)
-                .wrap()
-                .show(ui);
-
-            ui.add_space(18.0);
-            Typography::new(text::HELP_FAQ.get(language))
-                .strong()
-                .color(SETTINGS_HEADING)
-                .show(ui);
-            for tip in ecliptica_data_analyzer::i18n::TEMPLATE_HELP_TIPS {
-                help_tip(ui, tip.question.get(language), tip.answer.get(language));
-            }
-            ui.add_space(8.0);
-            Typography::small(text::HELP_CLOSE.get(language))
-                .color(SETTINGS_TEXT_MUTED)
-                .show(ui);
         });
 }
-fn syntax_example(ui: &mut egui::Ui, title: &str, description: &str, code: &str) {
-    ui.add_space(14.0);
+
+fn syntax_example(ui: &mut egui::Ui, title: &str, code: &str) {
+    ui.add_space(10.0);
     Typography::new(title)
         .strong()
         .color(SETTINGS_TEXT)
-        .show(ui);
-    Typography::small(description)
-        .color(SETTINGS_TEXT_SECONDARY)
-        .wrap()
         .show(ui);
     ui.add_space(5.0);
     preview_panel(ui, |ui| {
@@ -3969,18 +3863,6 @@ fn syntax_example(ui: &mut egui::Ui, title: &str, description: &str, code: &str)
             .wrap()
             .show(ui);
     });
-}
-
-fn help_tip(ui: &mut egui::Ui, question: &str, answer: &str) {
-    ui.add_space(8.0);
-    Typography::small(question)
-        .strong()
-        .color(SETTINGS_TEXT)
-        .show(ui);
-    Typography::small(answer)
-        .color(SETTINGS_TEXT_SECONDARY)
-        .wrap()
-        .show(ui);
 }
 
 fn preview_text(ui: &mut egui::Ui, preview: &str) {
@@ -4012,27 +3894,24 @@ fn preview_panel(ui: &mut egui::Ui, content: impl FnOnce(&mut egui::Ui)) -> egui
         .response
 }
 
-fn page_heading(ui: &mut egui::Ui, title: &str, subtitle: &str) {
+fn page_heading(ui: &mut egui::Ui, title: &str) {
     Typography::h3(title).color(SETTINGS_HEADING).show(ui);
-    Typography::muted(subtitle)
-        .color(SETTINGS_TEXT_MUTED)
-        .show(ui);
     ui.add_space(20.0);
 }
 
 fn section_card(
     ui: &mut egui::Ui,
     title: &str,
-    subtitle: &str,
+    description: Option<&str>,
     content: impl FnOnce(&mut egui::Ui),
 ) {
-    section_card_with_status(ui, title, subtitle, None, content);
+    section_card_with_status(ui, title, description, None, content);
 }
 
 fn section_card_with_status(
     ui: &mut egui::Ui,
     title: &str,
-    subtitle: &str,
+    description: Option<&str>,
     status: Option<&str>,
     content: impl FnOnce(&mut egui::Ui),
 ) {
@@ -4055,10 +3934,14 @@ fn section_card_with_status(
                 }
             },
         );
-        Typography::muted(subtitle)
-            .color(SETTINGS_TEXT_MUTED)
-            .show(ui);
-        ui.add_space(14.0);
+        if let Some(description) = description {
+            Typography::muted(description)
+                .color(SETTINGS_TEXT_MUTED)
+                .show(ui);
+            ui.add_space(14.0);
+        } else {
+            ui.add_space(10.0);
+        }
         content(ui);
     });
 }
@@ -5310,15 +5193,45 @@ mod tests {
     }
 
     #[test]
+    fn boss_alert_sound_controls_share_one_starting_column() {
+        egui::__run_test_ui(|ui| {
+            ui.set_width(460.0);
+            let mut lock_control_left = 0.0;
+            let mut release_control_left = 0.0;
+
+            PropertyRow::new(text::LOCK_SOUND.get(Language::Chinese))
+                .label_width(ALERT_SOUND_LABEL_WIDTH)
+                .show(ui, |ui| lock_control_left = ui.cursor().left());
+            PropertyRow::new(text::RELEASE_SOUND.get(Language::Chinese))
+                .label_width(ALERT_SOUND_LABEL_WIDTH)
+                .show(ui, |ui| release_control_left = ui.cursor().left());
+
+            assert!((lock_control_left - release_control_left).abs() <= 0.5);
+        });
+    }
+
+    #[test]
     fn sidebar_notice_height_follows_its_content() {
         egui::__run_test_ui(|ui| {
             ui.set_width(186.0);
             let one_line = sidebar_notice_height(ui, "设置已保存", 186.0);
-            let two_lines = sidebar_notice_height(ui, "设置已保存；OSC 将在下一发送周期应用", 40.0);
+            let two_lines = sidebar_notice_height(ui, "设置已保存，OSC 会自动更新", 40.0);
 
             assert!(one_line > 0.0);
             assert!(two_lines > one_line);
         });
+    }
+
+    #[test]
+    fn floating_window_title_uses_the_selected_language() {
+        assert_eq!(
+            overlay_window_title(Language::Chinese),
+            format!("Ecliptica 悬浮窗 v{APP_VERSION}")
+        );
+        assert_eq!(
+            overlay_window_title(Language::English),
+            format!("Ecliptica Floating Window v{APP_VERSION}")
+        );
     }
 
     #[test]
@@ -5359,13 +5272,13 @@ mod tests {
 
         assert_eq!(
             dps_chart_round_context(&snapshot, Language::Chinese),
-            Some((4, "当前预估第 9 回合".to_owned()))
+            Some((4, "预计当前为第 9 回合".to_owned()))
         );
 
         snapshot.phase = RoundPhase::Lobby;
         assert_eq!(
             dps_chart_round_context(&snapshot, Language::Chinese),
-            Some((4, "刚结束的预估第 9 回合".to_owned()))
+            Some((4, "预计第 9 回合刚结束".to_owned()))
         );
     }
 
@@ -5374,14 +5287,14 @@ mod tests {
         egui::__run_test_ui(|ui| {
             ui.set_width(640.0);
             let before_plain = ui.cursor().top();
-            section_card_with_status(ui, "DPS chart", "Description", None, |_| {});
+            section_card_with_status(ui, "DPS chart", Some("Description"), None, |_| {});
             let plain_height = ui.cursor().top() - before_plain;
 
             let before_status = ui.cursor().top();
             section_card_with_status(
                 ui,
                 "DPS chart",
-                "Description",
+                Some("Description"),
                 Some("Completed round"),
                 |_| {},
             );
@@ -5536,9 +5449,9 @@ mod tests {
                 step: 8,
             },
         ];
-        assert_eq!(format_chart_x_tick(0.0, &range, &markers), "0秒 · 7轮");
+        assert_eq!(format_chart_x_tick(0.0, &range, &markers), "0秒 · 7 回合");
         assert_eq!(format_chart_x_tick(300.0, &range, &markers), "");
-        assert_eq!(format_chart_x_tick(60.0, &range, &markers), "1分 · 8轮");
+        assert_eq!(format_chart_x_tick(60.0, &range, &markers), "1分 · 8 回合");
         assert_eq!(format_chart_x_tick(30.0, &range, &[]), "30秒");
     }
 
@@ -5552,7 +5465,7 @@ mod tests {
 
         assert_eq!(
             format_chart_x_tick_localized(3_000.0, &range, &markers, Language::Chinese, 600.0,),
-            "50分 · 123轮"
+            "50分 · 123 回合"
         );
         assert_eq!(
             format_chart_x_tick_localized(3_800.0, &range, &markers, Language::Chinese, 600.0,),

@@ -17,6 +17,8 @@ use crate::APP_ID;
 use crate::i18n::Language;
 
 pub const CONFIG_VERSION: u32 = 24;
+pub const CONFIG_EXPORT_FORMAT: &str = "ecliptica-config-export";
+pub const CONFIG_EXPORT_FORMAT_VERSION: u32 = 1;
 pub const MESSAGE_TEMPLATE_PRESET_COUNT: usize = 3;
 pub const ROUND_REPORT_TEMPLATE_PRESET_COUNT: usize = 3;
 pub const TEMPLATE_PRESET_NAME_MAX_CHARS: usize = 24;
@@ -125,6 +127,126 @@ pub struct AppConfig {
     pub away_custom_message: String,
     pub stale_after_seconds: u64,
     pub log_path_override: Option<PathBuf>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConfigExportDocument {
+    format: String,
+    format_version: u32,
+    config_version: u32,
+    settings: ExportedSettings,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LegacyConfigExportDocument {
+    format: String,
+    format_version: u32,
+    app_version: String,
+    config_version: u32,
+    config: AppConfig,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExportedSettings {
+    language: Language,
+    send_interval: SendInterval,
+    message_template_presets: [String; MESSAGE_TEMPLATE_PRESET_COUNT],
+    message_template_preset_names: [String; MESSAGE_TEMPLATE_PRESET_COUNT],
+    active_message_template_preset: usize,
+    round_report_template_presets: [String; ROUND_REPORT_TEMPLATE_PRESET_COUNT],
+    round_report_template_preset_names: [String; ROUND_REPORT_TEMPLATE_PRESET_COUNT],
+    active_round_report_template_preset: usize,
+    display_name: String,
+    alert_volume: f32,
+    locked_sound_style: AlertSoundStyle,
+    unlocked_sound_style: AlertSoundStyle,
+    overlay_x: f32,
+    overlay_y: f32,
+    overlay_scale: f32,
+    overlay_draggable: bool,
+    osc_enabled: bool,
+    heart_rate_enabled: bool,
+    osc_address: String,
+    away_custom_message: String,
+}
+
+impl ExportedSettings {
+    fn from_config(config: &AppConfig) -> Self {
+        Self {
+            language: config.language,
+            send_interval: config.send_interval,
+            message_template_presets: config.message_template_presets.clone(),
+            message_template_preset_names: config.message_template_preset_names.clone(),
+            active_message_template_preset: config.active_message_template_preset,
+            round_report_template_presets: config.round_report_template_presets.clone(),
+            round_report_template_preset_names: config.round_report_template_preset_names.clone(),
+            active_round_report_template_preset: config.active_round_report_template_preset,
+            display_name: config.display_name.clone(),
+            alert_volume: config.alert_volume,
+            locked_sound_style: config.locked_sound_style,
+            unlocked_sound_style: config.unlocked_sound_style,
+            overlay_x: config.overlay_x,
+            overlay_y: config.overlay_y,
+            overlay_scale: config.overlay_scale,
+            overlay_draggable: config.overlay_draggable(),
+            osc_enabled: config.osc_enabled,
+            heart_rate_enabled: config.heart_rate_enabled,
+            osc_address: config.osc_address.clone(),
+            away_custom_message: config.away_custom_message.clone(),
+        }
+    }
+
+    fn into_config(self, version: u32) -> AppConfig {
+        let message_template = self
+            .message_template_presets
+            .get(self.active_message_template_preset)
+            .cloned()
+            .unwrap_or_default();
+        let round_report_template = self
+            .round_report_template_presets
+            .get(self.active_round_report_template_preset)
+            .cloned()
+            .unwrap_or_default();
+        let mut config = AppConfig {
+            version,
+            language: self.language,
+            send_interval: self.send_interval,
+            message_template,
+            message_template_presets: self.message_template_presets,
+            message_template_preset_names: self.message_template_preset_names,
+            active_message_template_preset: self.active_message_template_preset,
+            round_report_template,
+            round_report_template_presets: self.round_report_template_presets,
+            round_report_template_preset_names: self.round_report_template_preset_names,
+            active_round_report_template_preset: self.active_round_report_template_preset,
+            display_name: self.display_name,
+            alert_volume: self.alert_volume,
+            locked_sound_style: self.locked_sound_style,
+            unlocked_sound_style: self.unlocked_sound_style,
+            overlay_x: self.overlay_x,
+            overlay_y: self.overlay_y,
+            overlay_scale: self.overlay_scale,
+            overlay_locked: true,
+            overlay_mouse_passthrough: true,
+            osc_enabled: self.osc_enabled,
+            heart_rate_enabled: self.heart_rate_enabled,
+            osc_address: self.osc_address,
+            away_custom_message: self.away_custom_message,
+            stale_after_seconds: 10,
+            log_path_override: None,
+        };
+        config.set_overlay_draggable(self.overlay_draggable);
+        config
+    }
+}
+
+#[derive(Debug)]
+pub struct ImportedConfig {
+    pub config: AppConfig,
+    pub source_version: u32,
 }
 
 impl Default for AppConfig {
@@ -408,6 +530,11 @@ impl AppConfig {
     }
 
     pub fn migrated(mut self) -> Self {
+        // Never reinterpret a future schema as an old one. Callers still
+        // validate the returned value and will report the unsupported version.
+        if self.version > CONFIG_VERSION {
+            return self;
+        }
         if self.version < 6 {
             if self.message_template == VERSION_5_DEFAULT_TEMPLATE {
                 self.message_template = DEFAULT_TEMPLATE.to_owned();
@@ -1028,15 +1155,8 @@ pub fn load_or_recover() -> Result<(AppConfig, Option<String>)> {
                 &[("path", path.display().to_string())],
             )
         })
-        .and_then(|bytes| {
-            serde_json::from_slice::<AppConfig>(&bytes)
-                .context(crate::i18n::text::CONFIG_JSON_CORRUPT.get(language))
-        })
-        .map(AppConfig::migrated)
-        .and_then(|config| {
-            config.validate()?;
-            Ok(config)
-        }) {
+        .and_then(|bytes| parse_raw_config(&bytes, language))
+    {
         Ok(config) => Ok((config, None)),
         Err(error) => {
             let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
@@ -1061,6 +1181,199 @@ pub fn load_or_recover() -> Result<(AppConfig, Option<String>)> {
             ))
         }
     }
+}
+
+pub fn export_to_path(config: &AppConfig, path: &Path) -> Result<()> {
+    let mut config = config.clone();
+    config.version = CONFIG_VERSION;
+    config.sync_active_message_template_preset();
+    config.sync_active_round_report_template_preset();
+    config.validate()?;
+    let language = config.language;
+
+    let document = ConfigExportDocument {
+        format: CONFIG_EXPORT_FORMAT.to_owned(),
+        format_version: CONFIG_EXPORT_FORMAT_VERSION,
+        config_version: CONFIG_VERSION,
+        settings: ExportedSettings::from_config(&config),
+    };
+    write_json_atomic(path, &document, language)
+}
+
+pub fn import_from_path(path: &Path, language: Language) -> Result<ImportedConfig> {
+    let bytes = fs::read(path).with_context(|| {
+        crate::i18n::format_pattern(
+            crate::i18n::text::CONFIG_READ_FAILED,
+            language,
+            &[("path", path.display().to_string())],
+        )
+    })?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes)
+        .context(crate::i18n::text::CONFIG_JSON_CORRUPT.get(language))?;
+
+    if value.get("format").is_some() {
+        parse_export_document(value, language)
+    } else {
+        let (config, source_version) = parse_config_value(value, language)?;
+        Ok(ImportedConfig {
+            config,
+            source_version,
+        })
+    }
+}
+
+fn parse_raw_config(bytes: &[u8], language: Language) -> Result<AppConfig> {
+    let value: serde_json::Value = serde_json::from_slice(bytes)
+        .context(crate::i18n::text::CONFIG_JSON_CORRUPT.get(language))?;
+    parse_config_value(value, language).map(|(config, _)| config)
+}
+
+fn parse_export_document(value: serde_json::Value, language: Language) -> Result<ImportedConfig> {
+    let object = value
+        .as_object()
+        .context(crate::i18n::text::CONFIG_IMPORT_FORMAT_INVALID.get(language))?;
+    if object.get("format").and_then(serde_json::Value::as_str) != Some(CONFIG_EXPORT_FORMAT) {
+        bail!(
+            "{}",
+            crate::i18n::text::CONFIG_IMPORT_FORMAT_INVALID.get(language)
+        );
+    }
+    let format_version = required_u32(object.get("format_version"), language)?;
+    if format_version > CONFIG_EXPORT_FORMAT_VERSION {
+        bail!(
+            "{}",
+            crate::i18n::format_pattern(
+                crate::i18n::text::CONFIG_EXPORT_FORMAT_UNSUPPORTED,
+                language,
+                &[
+                    ("version", format_version.to_string()),
+                    ("supported", CONFIG_EXPORT_FORMAT_VERSION.to_string()),
+                ],
+            )
+        );
+    }
+    if format_version != CONFIG_EXPORT_FORMAT_VERSION {
+        bail!(
+            "{}",
+            crate::i18n::text::CONFIG_IMPORT_FORMAT_INVALID.get(language)
+        );
+    }
+
+    let metadata_version = required_u32(object.get("config_version"), language)?;
+    reject_future_config(metadata_version, language)?;
+    let (config, source_version) = if object.contains_key("settings") {
+        let document: ConfigExportDocument = serde_json::from_value(value)
+            .context(crate::i18n::text::CONFIG_JSON_CORRUPT.get(language))?;
+        finish_imported_config(
+            document.settings.into_config(document.config_version),
+            language,
+        )?
+    } else if object.contains_key("config") {
+        // Keep files produced by the first development version importable.
+        let document: LegacyConfigExportDocument = serde_json::from_value(value)
+            .context(crate::i18n::text::CONFIG_JSON_CORRUPT.get(language))?;
+        if document.config.version != document.config_version {
+            bail!(
+                "{}",
+                crate::i18n::text::CONFIG_EXPORT_VERSION_MISMATCH.get(language)
+            );
+        }
+        finish_imported_config(document.config, language)?
+    } else {
+        bail!(
+            "{}",
+            crate::i18n::text::CONFIG_IMPORT_FORMAT_INVALID.get(language)
+        );
+    };
+    Ok(ImportedConfig {
+        config,
+        source_version,
+    })
+}
+
+fn parse_config_value(value: serde_json::Value, language: Language) -> Result<(AppConfig, u32)> {
+    let object = value
+        .as_object()
+        .context(crate::i18n::text::CONFIG_IMPORT_FORMAT_INVALID.get(language))?;
+    // These fields have existed since the first supported config schema. They
+    // prevent `{}` or unrelated JSON from silently becoming default settings
+    // through AppConfig's serde defaults.
+    if !object.contains_key("version")
+        || !object.contains_key("message_template")
+        || !object.contains_key("osc_address")
+    {
+        bail!(
+            "{}",
+            crate::i18n::text::CONFIG_IMPORT_FORMAT_INVALID.get(language)
+        );
+    }
+    let source_version = required_u32(object.get("version"), language)?;
+    reject_future_config(source_version, language)?;
+    let config: AppConfig = serde_json::from_value(value)
+        .context(crate::i18n::text::CONFIG_JSON_CORRUPT.get(language))?;
+    finish_imported_config(config, language)
+}
+
+fn finish_imported_config(config: AppConfig, language: Language) -> Result<(AppConfig, u32)> {
+    let source_version = config.version;
+    reject_future_config(source_version, language)?;
+    let config = if source_version < CONFIG_VERSION {
+        config.migrated()
+    } else {
+        config
+    };
+    config.validate()?;
+    Ok((config, source_version))
+}
+
+fn required_u32(value: Option<&serde_json::Value>, language: Language) -> Result<u32> {
+    value
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|value| u32::try_from(value).ok())
+        .context(crate::i18n::text::CONFIG_IMPORT_FORMAT_INVALID.get(language))
+}
+
+fn reject_future_config(version: u32, language: Language) -> Result<()> {
+    if version > CONFIG_VERSION {
+        bail!(
+            "{}",
+            crate::i18n::format_pattern(
+                crate::i18n::text::CONFIG_VERSION_UNSUPPORTED,
+                language,
+                &[
+                    ("version", version.to_string()),
+                    ("supported", CONFIG_VERSION.to_string()),
+                ],
+            )
+        );
+    }
+    Ok(())
+}
+
+fn write_json_atomic(path: &Path, value: &impl Serialize, language: Language) -> Result<()> {
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let mut temp = NamedTempFile::new_in(parent)
+        .context(crate::i18n::text::CONFIG_TEMP_CREATE_FAILED.get(language))?;
+    serde_json::to_writer_pretty(&mut temp, value)
+        .context(crate::i18n::text::CONFIG_SERIALIZE_FAILED.get(language))?;
+    temp.write_all(b"\n")?;
+    temp.as_file()
+        .sync_all()
+        .context(crate::i18n::text::CONFIG_TEMP_SYNC_FAILED.get(language))?;
+    temp.persist(path)
+        .map_err(|error| error.error)
+        .with_context(|| {
+            crate::i18n::format_pattern(
+                crate::i18n::text::CONFIG_REPLACE_FAILED,
+                language,
+                &[("path", path.display().to_string())],
+            )
+        })?;
+    sync_parent(parent)?;
+    Ok(())
 }
 
 pub fn save_atomic(config: &AppConfig) -> Result<()> {
@@ -1104,6 +1417,101 @@ fn sync_parent(_dir: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::i18n::text;
+
+    #[test]
+    fn config_export_round_trip_preserves_settings() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("export.json");
+        let mut config = AppConfig::defaults_for_language(Language::English);
+        config.display_name = "Exported Player".to_owned();
+        config.message_template = "DPS {{latest_dps}}".to_owned();
+        config.sync_active_message_template_preset();
+
+        export_to_path(&config, &path).unwrap();
+        let exported: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let settings = exported.get("settings").unwrap();
+        assert!(exported.get("app_version").is_none());
+        assert!(exported.get("config").is_none());
+        assert!(settings.get("version").is_none());
+        assert!(settings.get("message_template").is_none());
+        assert!(settings.get("round_report_template").is_none());
+        assert!(settings.get("overlay_locked").is_none());
+        assert!(settings.get("overlay_mouse_passthrough").is_none());
+        assert!(settings.get("stale_after_seconds").is_none());
+        assert!(settings.get("log_path_override").is_none());
+
+        let imported = import_from_path(&path, Language::English).unwrap();
+
+        assert_eq!(imported.source_version, CONFIG_VERSION);
+        assert_eq!(imported.config, config);
+    }
+
+    #[test]
+    fn import_rejects_unrelated_json_instead_of_using_defaults() {
+        let error = parse_config_value(serde_json::json!({}), Language::English).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains(text::CONFIG_IMPORT_FORMAT_INVALID.english)
+        );
+    }
+
+    #[test]
+    fn import_rejects_future_config_before_migration_changes_its_version() {
+        let mut value = serde_json::to_value(AppConfig::default()).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .insert("version".to_owned(), serde_json::json!(CONFIG_VERSION + 1));
+
+        let error = parse_config_value(value, Language::English).unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains(&(CONFIG_VERSION + 1).to_string()));
+        assert!(message.contains(&CONFIG_VERSION.to_string()));
+    }
+
+    #[test]
+    fn import_rejects_export_metadata_that_disagrees_with_payload() {
+        let value = serde_json::json!({
+            "format": CONFIG_EXPORT_FORMAT,
+            "format_version": CONFIG_EXPORT_FORMAT_VERSION,
+            "app_version": env!("CARGO_PKG_VERSION"),
+            "config_version": CONFIG_VERSION - 1,
+            "config": AppConfig::default(),
+        });
+
+        let error = parse_export_document(value, Language::English).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            text::CONFIG_EXPORT_VERSION_MISMATCH.english
+        );
+    }
+
+    #[test]
+    fn import_rejects_unknown_or_invalid_modified_settings() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("modified.json");
+        export_to_path(&AppConfig::default(), &path).unwrap();
+
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        value["settings"]
+            .as_object_mut()
+            .unwrap()
+            .insert("unexpected".to_owned(), serde_json::json!(true));
+        std::fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+        assert!(import_from_path(&path, Language::English).is_err());
+
+        value["settings"]
+            .as_object_mut()
+            .unwrap()
+            .remove("unexpected");
+        value["settings"]["alert_volume"] = serde_json::json!(2.0);
+        std::fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+        assert!(import_from_path(&path, Language::English).is_err());
+    }
 
     #[test]
     fn one_point_five_second_send_interval_is_exact_and_persistent() {

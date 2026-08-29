@@ -106,6 +106,31 @@ pub mod text {
         "Ecliptica 悬浮窗"
     );
     pair!(SYSTEM_LOGS, "System Logs", "系统日志");
+    pair!(CONFIG_EXPORT, "Config Export", "配置导出");
+    pair!(IMPORT_CONFIG, "Import config", "导入配置");
+    pair!(EXPORT_CONFIG, "Export config", "导出配置");
+    pair!(CONFIG_FILE_FILTER, "Ecliptica config", "Ecliptica 配置");
+    pair!(IMPORT_CONFIG_DIALOG, "Import config", "导入配置");
+    pair!(EXPORT_CONFIG_DIALOG, "Export config", "导出配置");
+    pair!(
+        CONFIG_IMPORTED,
+        "Config imported; save to apply",
+        "配置已导入，保存后应用"
+    );
+    pair!(CONFIG_EXPORTED, "Config exported", "配置已导出");
+    pair!(CONFIG_IMPORT_FAILED, "Config import failed", "配置导入失败");
+    pair!(CONFIG_EXPORT_FAILED, "Config export failed", "配置导出失败");
+    pair!(CLOSE, "Close", "关闭");
+    pair!(
+        CONFIG_IMPORT_REPLACE_TITLE,
+        "Discard unsaved changes?",
+        "放弃未保存的修改？"
+    );
+    pair!(
+        CONFIG_IMPORT_REPLACE_DESCRIPTION,
+        "Importing will replace them.",
+        "导入配置将覆盖这些修改。"
+    );
     pair!(WORKSPACE, "WORKSPACE", "工作区");
     pair!(
         SAVE_SUCCESS,
@@ -795,6 +820,21 @@ pub mod text {
         CONFIG_JSON_CORRUPT,
         "The settings file is corrupted",
         "设置文件已损坏"
+    );
+    pair!(
+        CONFIG_IMPORT_FORMAT_INVALID,
+        "Not a valid Ecliptica config file",
+        "不是有效的 Ecliptica 配置文件"
+    );
+    pair!(
+        CONFIG_EXPORT_FORMAT_UNSUPPORTED,
+        "Export format {version} is too new (supported: {supported})",
+        "导出格式 {version} 过新（最高支持 {supported}）"
+    );
+    pair!(
+        CONFIG_EXPORT_VERSION_MISMATCH,
+        "Config versions do not match",
+        "配置版本不一致"
     );
     pair!(
         CONFIG_BACKUP_FAILED,

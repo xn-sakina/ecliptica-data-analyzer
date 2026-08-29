@@ -241,6 +241,7 @@ enum SettingsPage {
     Player,
     Overlay,
     Logs,
+    ConfigExport,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -349,6 +350,13 @@ struct AwayDialogState {
     custom_message: String,
 }
 
+#[derive(Clone)]
+struct ConfigTransferResult {
+    dialog_title: String,
+    title: String,
+    variant: AlertVariant,
+}
+
 struct AnalyzerApp {
     runtime: Runtime,
     persisted: AppConfig,
@@ -374,6 +382,9 @@ struct AnalyzerApp {
     developer_mode: bool,
     developer_logs_open: bool,
     away_dialog: AwayDialogState,
+    pending_config_import: Option<AppConfig>,
+    config_import_confirm_open: bool,
+    config_transfer_result: Option<ConfigTransferResult>,
     developer_logo_clicks: u8,
     last_developer_logo_click: Option<Instant>,
     overlay_position: Arc<Mutex<OverlayPositionState>>,
@@ -492,6 +503,9 @@ impl AnalyzerApp {
                 duration: AwayDuration::Three,
                 custom_message: away_custom_message,
             },
+            pending_config_import: None,
+            config_import_confirm_open: false,
+            config_transfer_result: None,
             developer_logo_clicks: 0,
             last_developer_logo_click: None,
             overlay_position: Arc::new(Mutex::new(OverlayPositionState::default())),
@@ -532,6 +546,26 @@ impl AnalyzerApp {
         {
             self.alert = None;
         }
+    }
+
+    fn show_config_transfer_result(
+        &mut self,
+        ctx: &egui::Context,
+        dialog_title: impl Into<String>,
+        title: impl Into<String>,
+        variant: AlertVariant,
+    ) {
+        self.config_transfer_result = Some(ConfigTransferResult {
+            dialog_title: dialog_title.into(),
+            title: title.into(),
+            variant,
+        });
+        ctx.request_repaint();
+    }
+
+    fn apply_imported_config(&mut self, config: AppConfig) {
+        self.draft = config;
+        self.away_dialog.custom_message = self.draft.away_custom_message.clone();
     }
 
     fn push_log(&mut self, event: SystemEvent) {
@@ -912,6 +946,13 @@ impl AnalyzerApp {
                     text::SYSTEM_LOGS.get(language),
                     LucideIcon::ScrollText,
                 );
+                nav_button(
+                    &mut body_ui,
+                    &mut self.page,
+                    SettingsPage::ConfigExport,
+                    text::CONFIG_EXPORT.get(language),
+                    LucideIcon::DatabaseBackup,
+                );
             });
 
         egui::TopBottomPanel::top("app-header")
@@ -981,6 +1022,7 @@ impl AnalyzerApp {
                                 SettingsPage::Player => self.player_page(ui),
                                 SettingsPage::Overlay => self.overlay_page(ui),
                                 SettingsPage::Logs => self.logs_page(ui),
+                                SettingsPage::ConfigExport => self.config_export_page(ui),
                             });
                     });
             });
@@ -1104,6 +1146,33 @@ impl AnalyzerApp {
                 );
             });
         self.show_away_dialog(ctx);
+        match AlertDialog::new(
+            text::CONFIG_IMPORT_REPLACE_TITLE.get(language),
+            text::CONFIG_IMPORT_REPLACE_DESCRIPTION.get(language),
+        )
+        .close_label(text::CLOSE_DIALOG.get(language))
+        .cancel_text(text::CANCEL.get(language))
+        .action_text(text::IMPORT_CONFIG.get(language))
+        .destructive()
+        .show(ctx, &mut self.config_import_confirm_open)
+        {
+            AlertDialogResult::Confirmed => {
+                if let Some(config) = self.pending_config_import.take() {
+                    self.apply_imported_config(config);
+                    self.show_config_transfer_result(
+                        ctx,
+                        text::IMPORT_CONFIG_DIALOG.get(language),
+                        text::CONFIG_IMPORTED.get(language),
+                        AlertVariant::Success,
+                    );
+                }
+            }
+            AlertDialogResult::Cancelled => {
+                self.pending_config_import = None;
+            }
+            AlertDialogResult::Open => {}
+        }
+        self.show_config_transfer_result_dialog(ctx);
         self.toast_state.show(ctx);
     }
 
@@ -2141,6 +2210,144 @@ impl AnalyzerApp {
             terminal_height,
             text::NO_SYSTEM_EVENTS.get(language),
         );
+    }
+
+    fn config_export_page(&mut self, ui: &mut egui::Ui) {
+        let language = self.draft.language;
+        page_heading(ui, text::CONFIG_EXPORT.get(language));
+
+        let mut import_clicked = false;
+        let mut export_clicked = false;
+        let width = ui.available_width();
+        egui_shadcn::Card::new().show(ui, |ui| {
+            ui.set_min_width((width - 34.0).max(120.0));
+            Flex::row().gap(UI_SPACE_2).wrap().show(ui, |flex| {
+                flex.ui(|ui| {
+                    import_clicked = ShadcnButton::new(text::IMPORT_CONFIG.get(language))
+                        .icon(LucideIcon::FileUp)
+                        .variant(ButtonVariant::Outline)
+                        .show(ui)
+                        .clicked();
+                });
+                flex.ui(|ui| {
+                    export_clicked = ShadcnButton::new(text::EXPORT_CONFIG.get(language))
+                        .icon(LucideIcon::FileDown)
+                        .variant(ButtonVariant::Outline)
+                        .show(ui)
+                        .clicked();
+                });
+            });
+        });
+
+        if import_clicked {
+            self.open_config_import_dialog(ui.ctx());
+        }
+        if export_clicked {
+            self.open_config_export_dialog(ui.ctx());
+        }
+    }
+
+    fn open_config_import_dialog(&mut self, ctx: &egui::Context) {
+        let language = self.draft.language;
+        let Some(path) = rfd::FileDialog::new()
+            .set_title(text::IMPORT_CONFIG_DIALOG.get(language))
+            .add_filter(text::CONFIG_FILE_FILTER.get(language), &["json"])
+            .pick_file()
+        else {
+            return;
+        };
+
+        match config::import_from_path(&path, language) {
+            Ok(imported) => {
+                if self.has_unsaved_changes() && imported.config != self.draft {
+                    self.pending_config_import = Some(imported.config);
+                    self.config_import_confirm_open = true;
+                    ctx.request_repaint();
+                } else {
+                    self.apply_imported_config(imported.config);
+                    self.show_config_transfer_result(
+                        ctx,
+                        text::IMPORT_CONFIG_DIALOG.get(language),
+                        text::CONFIG_IMPORTED.get(language),
+                        AlertVariant::Success,
+                    );
+                }
+            }
+            Err(error) => self.show_config_transfer_result(
+                ctx,
+                text::IMPORT_CONFIG_DIALOG.get(language),
+                format!("{}: {}", text::CONFIG_IMPORT_FAILED.get(language), error),
+                AlertVariant::Destructive,
+            ),
+        }
+    }
+
+    fn open_config_export_dialog(&mut self, ctx: &egui::Context) {
+        let language = self.draft.language;
+        let file_name = format!("ecliptica-config-v{}.json", config::CONFIG_VERSION);
+        let Some(path) = rfd::FileDialog::new()
+            .set_title(text::EXPORT_CONFIG_DIALOG.get(language))
+            .add_filter(text::CONFIG_FILE_FILTER.get(language), &["json"])
+            .set_file_name(file_name)
+            .save_file()
+        else {
+            return;
+        };
+
+        match config::export_to_path(&self.draft, &path) {
+            Ok(()) => self.show_config_transfer_result(
+                ctx,
+                text::EXPORT_CONFIG_DIALOG.get(language),
+                text::CONFIG_EXPORTED.get(language),
+                AlertVariant::Success,
+            ),
+            Err(error) => self.show_config_transfer_result(
+                ctx,
+                text::EXPORT_CONFIG_DIALOG.get(language),
+                format!("{}: {}", text::CONFIG_EXPORT_FAILED.get(language), error),
+                AlertVariant::Destructive,
+            ),
+        }
+    }
+
+    fn show_config_transfer_result_dialog(&mut self, ctx: &egui::Context) {
+        let Some(result) = self.config_transfer_result.clone() else {
+            return;
+        };
+        let language = self.draft.language;
+        let mut open = true;
+        let mut close_clicked = false;
+        Dialog::new()
+            .title(result.dialog_title)
+            .close_label(text::CLOSE_DIALOG.get(language))
+            .close_on_backdrop(false)
+            .width(440.0)
+            .show(ctx, &mut open, |ui| {
+                let is_error = result.variant == AlertVariant::Destructive;
+                let (icon, color) = if is_error {
+                    (LucideIcon::CircleX, SETTINGS_DANGER)
+                } else {
+                    (LucideIcon::CircleCheck, SETTINGS_SUCCESS)
+                };
+                ui.horizontal(|ui| {
+                    let (icon_rect, _) =
+                        ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
+                    egui_shadcn::paint_icon(ui.painter(), icon_rect, &icon, color);
+                    Typography::new(result.title)
+                        .color(if is_error { color } else { SETTINGS_HEADING })
+                        .wrap()
+                        .show(ui);
+                });
+                ui.add_space(UI_SPACE_3);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    close_clicked = ShadcnButton::new(text::CLOSE.get(language))
+                        .show(ui)
+                        .clicked();
+                });
+            });
+        if !open || close_clicked {
+            self.config_transfer_result = None;
+        }
     }
 
     fn overlay_ui(&self, ctx: &egui::Context, snapshot: &GameSnapshot) {

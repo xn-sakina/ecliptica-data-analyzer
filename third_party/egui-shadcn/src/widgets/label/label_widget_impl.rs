@@ -18,9 +18,20 @@ impl egui::Widget for super::label::Label {
         };
 
         let label_text = self.text.clone();
-        let galley =
+        let font_id = egui::FontId::proportional(font_size);
+        let full_galley =
             ui.painter()
-                .layout_no_wrap(self.text, egui::FontId::proportional(font_size), color);
+                .layout_no_wrap(self.text, font_id.clone(), color);
+        let max_width = ui.available_width().max(1.0);
+        let truncated = self.truncate && full_galley.size().x > max_width;
+        let galley = if truncated {
+            let mut job =
+                egui::text::LayoutJob::simple_singleline(label_text.clone(), font_id, color);
+            job.wrap = egui::text::TextWrapping::truncate_at_width(max_width);
+            ui.painter().layout_job(job)
+        } else {
+            full_galley
+        };
 
         let desired = match fixed_height {
             Some(h) => egui::vec2(galley.size().x, h),
@@ -34,9 +45,15 @@ impl egui::Widget for super::label::Label {
         if ui.is_rect_visible(rect) {
             // Center text vertically within the allocated rect (matches button centering)
             let text_pos = egui::pos2(rect.min.x, rect.center().y - galley.size().y / 2.0);
-            ui.painter().galley(text_pos, galley, color);
+            ui.painter()
+                .with_clip_rect(rect)
+                .galley(text_pos, galley, color);
         }
 
-        response
+        if truncated {
+            response.on_hover_text(label_text)
+        } else {
+            response
+        }
     }
 }

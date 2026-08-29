@@ -30,10 +30,11 @@ impl super::property_row::PropertyRow {
                     egui::vec2(label_width, min_height),
                     egui::Layout::left_to_right(egui::Align::Center),
                     |label_ui| {
-                        label_ui.set_min_width(label_width);
+                        label_ui.set_width(label_width);
                         label_ui.set_min_height(min_height);
                         crate::widgets::label::label::Label::new(self.label)
                             .muted()
+                            .truncate()
                             .show(label_ui);
                     },
                 );

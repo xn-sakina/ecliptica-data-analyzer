@@ -89,6 +89,7 @@ const DPS_CHART_CLOUD_BUCKET_SECONDS: f64 = 10.0;
 const DPS_CHART_CURVE_SUBDIVISIONS: usize = 12;
 const TEMPLATE_PRESET_TAB_ROW_HEIGHT: f32 = 28.0;
 const TEMPLATE_PRESET_TAB_LABEL_MAX_CHARS: usize = 13;
+const TEMPLATE_PROPERTY_LABEL_WIDTH: f32 = 112.0;
 const ALERT_SOUND_LABEL_WIDTH_ENGLISH: f32 = 200.0;
 const ALERT_SOUND_LABEL_WIDTH_CHINESE: f32 = 124.0;
 const HEART_RATE_GUIDE_URL: &str =
@@ -1668,7 +1669,7 @@ impl AnalyzerApp {
             None,
             |ui| {
                 PropertyRow::new(text::TEMPLATE_PRESET.get(language))
-                    .label_width(84.0)
+                    .label_width(TEMPLATE_PROPERTY_LABEL_WIDTH)
                     .show(ui, |ui| {
                         let mut selected = self.draft.active_message_template_preset;
                         let reset_clicked = preset_controls_row(ui, |ui| {
@@ -1711,7 +1712,7 @@ impl AnalyzerApp {
                         }
                     });
                 PropertyRow::new(text::PRESET_NAME.get(language))
-                    .label_width(84.0)
+                    .label_width(TEMPLATE_PROPERTY_LABEL_WIDTH)
                     .show(ui, |ui| {
                         let active = self.draft.active_message_template_preset;
                         let name = &mut self.draft.message_template_preset_names[active];
@@ -1760,7 +1761,7 @@ impl AnalyzerApp {
         ui.add_space(UI_SPACE_3);
         section_card(ui, text::ROUND_REPORT_TEMPLATE.get(language), None, |ui| {
             PropertyRow::new(text::REPORT_PRESET.get(language))
-                .label_width(84.0)
+                .label_width(TEMPLATE_PROPERTY_LABEL_WIDTH)
                 .show(ui, |ui| {
                     let mut selected = self.draft.active_round_report_template_preset;
                     let reset_clicked = preset_controls_row(ui, |ui| {
@@ -1802,7 +1803,7 @@ impl AnalyzerApp {
                     }
                 });
             PropertyRow::new(text::PRESET_NAME.get(language))
-                .label_width(84.0)
+                .label_width(TEMPLATE_PROPERTY_LABEL_WIDTH)
                 .show(ui, |ui| {
                     let active = self.draft.active_round_report_template_preset;
                     let name = &mut self.draft.round_report_template_preset_names[active];
@@ -1850,7 +1851,7 @@ impl AnalyzerApp {
         ui.add_space(UI_SPACE_3);
         section_card(ui, text::LIVE_PREVIEW.get(language), None, |ui| {
             PropertyRow::new(text::SIMULATED_STATE.get(language))
-                .label_width(84.0)
+                .label_width(TEMPLATE_PROPERTY_LABEL_WIDTH)
                 .show(ui, |ui| {
                     let mut selected = match self.template_preview_state {
                         TemplatePreviewState::Normal => 0,
@@ -6524,6 +6525,122 @@ mod tests {
             wrapped_lines >= 2,
             "test data must exercise wrapping: {:?}",
             first.button_rects
+        );
+    }
+
+    #[test]
+    fn english_combat_message_card_stays_inside_the_default_window() {
+        let context = egui::Context::default();
+        install_theme(&context);
+        let mut card_rect = egui::Rect::NOTHING;
+        let mut page_right = 0.0;
+        let mut selected = 0;
+        let mut template = AppConfig::defaults_for_language(Language::English).message_template;
+        let mut preset_name = "DPS".to_owned();
+        let mut template_help_open = false;
+        let mut checkpoints = Vec::new();
+
+        let _ = context.run(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(940.0, 692.0),
+                )),
+                ..Default::default()
+            },
+            |context| {
+                egui::SidePanel::left("combat-card-test-sidebar")
+                    .exact_width(214.0)
+                    .show(context, |_| {});
+                egui::CentralPanel::default().show(context, |ui| {
+                    egui::ScrollArea::vertical()
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            egui::Frame::NONE
+                                .inner_margin(egui::Margin::same(UI_SPACE_5 as i8))
+                                .show(ui, |ui| {
+                                    page_right = ui.max_rect().right();
+                                    let width = ui.available_width();
+                                    card_rect = egui_shadcn::Card::new()
+                                        .show(ui, |ui| {
+                                            ui.set_min_width((width - 34.0).max(120.0));
+                                            Typography::new("Combat message")
+                                                .font_size(16.0)
+                                                .strong()
+                                                .show(ui);
+                                            checkpoints.push(("title", ui.min_rect().right()));
+                                            PropertyRow::new("Choose template")
+                                                .label_width(TEMPLATE_PROPERTY_LABEL_WIDTH)
+                                                .show(ui, |ui| {
+                                                    preset_controls_row(ui, |ui| {
+                                                        ToggleGroup::new(vec![
+                                                            "DPS".to_owned(),
+                                                            "Tank".to_owned(),
+                                                            "Backup".to_owned(),
+                                                        ])
+                                                        .variant(ToggleVariant::Outline)
+                                                        .size(ComponentSize::Xs)
+                                                        .strong_labels(false)
+                                                        .show(ui, &mut selected);
+                                                        ui.add_space(UI_SPACE_2);
+                                                        ShadcnButton::new(
+                                                            "Restore default content",
+                                                        )
+                                                        .icon(LucideIcon::RotateCcw)
+                                                        .variant(ButtonVariant::Ghost)
+                                                        .size(ComponentSize::Xs)
+                                                        .height(TEMPLATE_PRESET_TAB_ROW_HEIGHT)
+                                                        .show(ui);
+                                                    });
+                                                });
+                                            checkpoints.push(("preset row", ui.min_rect().right()));
+                                            PropertyRow::new("Template name")
+                                                .label_width(TEMPLATE_PROPERTY_LABEL_WIDTH)
+                                                .show(ui, |ui| {
+                                                    Input::new(&mut preset_name)
+                                                        .desired_width(260.0)
+                                                        .show(ui);
+                                                });
+                                            checkpoints.push(("name row", ui.min_rect().right()));
+                                            let textarea_width = ui.available_width();
+                                            Textarea::new(&mut template)
+                                                .desired_width(textarea_width)
+                                                .min_height(178.0)
+                                                .monospace()
+                                                .show(ui);
+                                            checkpoints.push(("textarea", ui.min_rect().right()));
+                                            Typography::muted(
+                                                "Click a variable to copy it. “Show when” controls when text appears.",
+                                            )
+                                            .show(ui);
+                                            checkpoints.push(("hint", ui.min_rect().right()));
+                                            template_help_button(
+                                                ui,
+                                                &mut template_help_open,
+                                                Language::English,
+                                            );
+                                            checkpoints.push(("help", ui.min_rect().right()));
+                                            let mut clipboard = None;
+                                            let mut toast_state = ToastState::new();
+                                            live_variable_help(
+                                                ui,
+                                                &mut clipboard,
+                                                &mut toast_state,
+                                                Language::English,
+                                                false,
+                                            );
+                                            checkpoints.push(("variables", ui.min_rect().right()));
+                                        })
+                                        .rect;
+                                });
+                        });
+                });
+            },
+        );
+
+        assert!(
+            card_rect.right() <= page_right + 0.5,
+            "combat card {card_rect:?} overflowed page right edge {page_right}; checkpoints: {checkpoints:?}"
         );
     }
 

@@ -6,6 +6,7 @@ pub struct Label {
     pub(crate) text: String,
     pub(crate) muted: bool,
     pub(crate) size: Option<crate::tokens::component_size::ComponentSize>,
+    pub(crate) truncate: bool,
 }
 
 impl Label {
@@ -14,6 +15,7 @@ impl Label {
             text: text.into(),
             muted: false,
             size: None,
+            truncate: false,
         }
     }
 
@@ -27,6 +29,12 @@ impl Label {
     /// Sets both the font size and allocated height to match the given size.
     pub fn size(mut self, size: crate::tokens::component_size::ComponentSize) -> Self {
         self.size = Some(size);
+        self
+    }
+
+    /// Keep the label inside the UI's available width and elide overflowing text.
+    pub fn truncate(mut self) -> Self {
+        self.truncate = true;
         self
     }
 

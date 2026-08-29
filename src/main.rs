@@ -29,10 +29,10 @@ use egui_plot::{
 };
 use egui_shadcn::{
     Alert, AlertDialog, AlertDialogResult, AlertVariant, Badge, BadgeVariant,
-    Button as ShadcnButton, ButtonVariant, ComponentSize, Dialog, Empty, Flex, Input, Item,
-    LucideIcon, NumberInput, PropertyRow, ScrollArea as ShadcnScrollArea, SelectValue,
-    ShadcnThemeExt, Slider as ShadcnSlider, Switch, Textarea, ToastState, ToastVariant,
-    ToggleGroup, ToggleVariant, Typography, TypographyVariant,
+    Button as ShadcnButton, ButtonVariant, ComponentSize, Dialog, Empty, Flex, Input, LucideIcon,
+    NumberInput, PropertyRow, ScrollArea as ShadcnScrollArea, SelectValue, ShadcnThemeExt,
+    Slider as ShadcnSlider, Switch, Textarea, ToastState, ToastVariant, ToggleGroup, ToggleVariant,
+    Typography, TypographyVariant,
 };
 use parking_lot::Mutex;
 use single_instance::SingleInstance;
@@ -57,6 +57,8 @@ const CJK_FONT_FAMILY: &str = "system-cjk";
 const EXTENDED_TEXT_FONT_FAMILY: &str = "system-extended-text";
 const SYMBOL_FONT_FAMILY: &str = "system-symbols";
 const MAX_LOG_ROWS: usize = 200;
+const LOG_TERMINAL_MIN_HEIGHT: f32 = 360.0;
+const LOG_TERMINAL_MAX_HEIGHT: f32 = 520.0;
 const DEVELOPER_MODE_CLICK_COUNT: u8 = 5;
 const DEVELOPER_MODE_CLICK_TIMEOUT: Duration = Duration::from_secs(4);
 const SETTINGS_BG: egui::Color32 = egui::Color32::from_rgb(15, 13, 20);
@@ -99,6 +101,9 @@ const SETTINGS_SUCCESS: egui::Color32 = egui::Color32::from_rgb(105, 221, 153);
 const SETTINGS_INFO: egui::Color32 = egui::Color32::from_rgb(119, 181, 255);
 const SETTINGS_WARNING: egui::Color32 = egui::Color32::from_rgb(255, 204, 102);
 const SETTINGS_DANGER: egui::Color32 = egui::Color32::from_rgb(255, 132, 146);
+// A restrained inset of the page background: dark enough to group the stream,
+// but close enough to the purple surface palette to avoid a detached black panel.
+const LOG_SURFACE_BG: egui::Color32 = egui::Color32::from_rgb(13, 11, 18);
 // Shared metric colors keep the dashboard, Overlay, and reports consistent.
 // The chart and template-variable categories intentionally have their own
 // palettes because they need different kinds of visual separation.
@@ -1088,30 +1093,13 @@ impl AnalyzerApp {
             .close_label(text::CLOSE_DIALOG.get(language))
             .width(720.0)
             .show(ctx, &mut self.developer_logs_open, |ui| {
-                ui.allocate_ui_with_layout(
-                    egui::vec2(ui.available_width(), developer_log_height),
-                    egui::Layout::top_down(egui::Align::LEFT),
-                    |ui| {
-                        ShadcnScrollArea::new(developer_log_height)
-                            .id_salt("developer-log-dialog")
-                            .framed(false)
-                            .stick_to_bottom(true)
-                            .auto_shrink([false, false])
-                            .fill_available(true)
-                            .show(ui, |ui| {
-                                for row in developer_logs {
-                                    log_line(ui, row, language);
-                                }
-                                if developer_logs.is_empty() {
-                                    Empty::show(ui, |ui| {
-                                        Typography::muted(
-                                            text::NO_DEVELOPER_DIAGNOSTICS.get(language),
-                                        )
-                                        .show(ui);
-                                    });
-                                }
-                            });
-                    },
+                log_terminal(
+                    ui,
+                    developer_logs,
+                    language,
+                    "developer-log-dialog",
+                    developer_log_height,
+                    text::NO_DEVELOPER_DIAGNOSTICS.get(language),
                 );
             });
         self.show_away_dialog(ctx);
@@ -2141,18 +2129,17 @@ impl AnalyzerApp {
             });
         });
         ui.add_space(UI_SPACE_4);
-        section_card(ui, text::EVENT_STREAM.get(language), None, |ui| {
-            inset_surface(ui, SETTINGS_PREVIEW_BG, |ui| {
-                for row in &self.logs {
-                    log_line(ui, row, language);
-                }
-                if self.logs.is_empty() {
-                    Empty::show(ui, |ui| {
-                        Typography::muted(text::NO_SYSTEM_EVENTS.get(language)).show(ui);
-                    });
-                }
-            });
-        });
+        #[allow(deprecated)]
+        let terminal_height = (ui.ctx().screen_rect().height() - 190.0)
+            .clamp(LOG_TERMINAL_MIN_HEIGHT, LOG_TERMINAL_MAX_HEIGHT);
+        log_terminal(
+            ui,
+            &self.logs,
+            language,
+            "system-log-terminal",
+            terminal_height,
+            text::NO_SYSTEM_EVENTS.get(language),
+        );
     }
 
     fn overlay_ui(&self, ctx: &egui::Context, snapshot: &GameSnapshot) {
@@ -4356,24 +4343,6 @@ fn preview_panel(ui: &mut egui::Ui, content: impl FnOnce(&mut egui::Ui)) -> egui
         .response
 }
 
-fn inset_surface(
-    ui: &mut egui::Ui,
-    fill: egui::Color32,
-    content: impl FnOnce(&mut egui::Ui),
-) -> egui::Response {
-    let available_width = ui.available_width();
-    egui::Frame::NONE
-        .fill(fill)
-        .inner_margin(egui::Margin::same(UI_SPACE_1 as i8))
-        .corner_radius(8.0)
-        .stroke(egui::Stroke::new(1.0, SETTINGS_INSET_BORDER))
-        .show(ui, |ui| {
-            ui.set_min_width((available_width - UI_SPACE_2 - 2.0).max(1.0));
-            content(ui);
-        })
-        .response
-}
-
 fn page_heading(ui: &mut egui::Ui, title: &str) {
     Typography::h3(title).color(SETTINGS_HEADING).show(ui);
     ui.add_space(UI_SPACE_4);
@@ -4942,49 +4911,90 @@ fn overlay_lock_label_font(language: Language, scale: f32) -> Option<egui::FontI
         .then(|| egui::FontId::new(10.0 * scale, egui::FontFamily::Name(CJK_FONT_FAMILY.into())))
 }
 
+fn log_terminal(
+    ui: &mut egui::Ui,
+    logs: &VecDeque<LogRow>,
+    language: Language,
+    id_salt: impl std::hash::Hash,
+    height: f32,
+    empty_message: &str,
+) -> egui::Response {
+    let width = ui.available_width();
+    egui::Frame::NONE
+        .fill(LOG_SURFACE_BG)
+        .corner_radius(8.0)
+        .show(ui, |ui| {
+            ui.set_min_width((width - 2.0).max(120.0));
+            ui.set_min_height((height - 2.0).max(120.0));
+            let body_height = (height - 2.0).max(80.0);
+            egui::ScrollArea::vertical()
+                .id_salt(id_salt)
+                .max_height(body_height)
+                .min_scrolled_height(body_height)
+                .auto_shrink([false, false])
+                .stick_to_bottom(true)
+                .show(ui, |ui| {
+                    ui.set_min_width(ui.available_width());
+                    if logs.is_empty() {
+                        ui.allocate_ui_with_layout(
+                            egui::vec2(ui.available_width(), body_height),
+                            egui::Layout::centered_and_justified(egui::Direction::TopDown),
+                            |ui| {
+                                Typography::muted(empty_message)
+                                    .monospace()
+                                    .color(SETTINGS_TEXT_MUTED)
+                                    .show(ui);
+                            },
+                        );
+                    } else {
+                        for row in logs {
+                            log_line(ui, row, language);
+                        }
+                    }
+                });
+        })
+        .response
+}
+
 fn log_line(ui: &mut egui::Ui, row: &LogRow, language: Language) -> egui::Response {
-    let (level, variant) = match row.level {
-        EventLevel::Info => (text::INFO.get(language), BadgeVariant::Info),
-        EventLevel::Warning => (text::WARNING.get(language), BadgeVariant::Warning),
-        EventLevel::Error => (text::ERROR.get(language), BadgeVariant::Destructive),
+    let row_width = ui.available_width();
+    egui::Frame::NONE
+        .inner_margin(egui::Margin::symmetric(UI_SPACE_3 as i8, 10))
+        .show(ui, |ui| {
+            ui.set_width((row_width - UI_SPACE_5 - UI_SPACE_1).max(80.0));
+            ui.add(egui::Label::new(log_line_layout_job(row, language)).wrap());
+        })
+        .response
+}
+
+fn log_line_layout_job(row: &LogRow, language: Language) -> egui::text::LayoutJob {
+    let (level, level_color) = match row.level {
+        EventLevel::Info => (text::INFO.get(language), SETTINGS_INFO),
+        EventLevel::Warning => (text::WARNING.get(language), SETTINGS_WARNING),
+        EventLevel::Error => (text::ERROR.get(language), SETTINGS_DANGER),
     };
-    let item_width = ui.available_width();
-    let response = Item::new().show(ui, |ui| {
-        // Keep log rows flat inside the surrounding section card. Item still
-        // provides row padding, but its default border is transparent.
-        ui.set_width((item_width - 26.0).max(120.0));
-        Flex::row()
-            .align_center()
-            .gap(8.0)
-            .w_full()
-            .show(ui, |flex| {
-                flex.ui(|ui| {
-                    Typography::small(&row.time)
-                        .monospace()
-                        .color(SETTINGS_TEXT_SECONDARY)
-                        .show(ui);
-                });
-                flex.ui(|ui| {
-                    Badge::new(level).variant(variant).show(ui);
-                });
-                if row.repeats > 1 {
-                    flex.spacer();
-                    flex.ui(|ui| {
-                        Badge::new(format!("×{}", row.repeats))
-                            .variant(BadgeVariant::Secondary)
-                            .show(ui);
-                    });
-                }
-            });
-        ui.add_space(UI_SPACE_1);
-        Typography::new(&row.message)
-            .color(SETTINGS_TEXT)
-            .line_height(20.0)
-            .wrap()
-            .show(ui);
-    });
-    ui.add_space(8.0);
-    response
+    let font = egui::FontId::monospace(13.0);
+    let mut job = egui::text::LayoutJob::default();
+    job.wrap.break_anywhere = true;
+    let format = |color| egui::TextFormat {
+        font_id: font.clone(),
+        color,
+        line_height: Some(21.0),
+        ..Default::default()
+    };
+    job.append(&row.time, 0.0, format(SETTINGS_TEXT_MUTED));
+    job.append("  ", 0.0, format(SETTINGS_TEXT_MUTED));
+    job.append(level, 0.0, format(level_color));
+    job.append("  ", 0.0, format(SETTINGS_TEXT_MUTED));
+    job.append(&row.message, 0.0, format(SETTINGS_TEXT));
+    if row.repeats > 1 {
+        job.append(
+            &format!("  ×{}", row.repeats),
+            0.0,
+            format(SETTINGS_TEXT_SECONDARY),
+        );
+    }
+    job
 }
 
 fn is_protocol_diagnostic(message: &str) -> bool {
@@ -6308,6 +6318,17 @@ mod tests {
                         log_item.rect
                     );
                     assert!(log_item.rect.height() >= 70.0);
+
+                    let unbroken_log = LogRow {
+                        time: "12:35:01".to_owned(),
+                        level: EventLevel::Error,
+                        message: "x".repeat(500),
+                        repeats: 1,
+                    };
+                    let unbroken_layout =
+                        log_line_layout_job(&unbroken_log, Language::English);
+                    assert!(unbroken_layout.wrap.break_anywhere);
+                    assert_eq!(unbroken_layout.wrap.max_rows, usize::MAX);
                 },
             );
         });

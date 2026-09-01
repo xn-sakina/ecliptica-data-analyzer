@@ -299,6 +299,7 @@ pub mod text {
     );
     pair!(KEEP_AWAY_MODE, "Stay", "继续外出");
     pair!(CONFIRM_EXIT_AWAY_MODE, "End and close", "结束外出");
+    pair!(AWAY_RETURNED_MESSAGE, "Back in the game", "已回到游戏");
     pair!(
         AWAY_TAKEOUT_MESSAGE,
         "Sorry, picking up a delivery\nBack in: {{time}}",

@@ -41,7 +41,7 @@ fn run(shared: SharedState) {
     let mut rate_limiter = ChatboxRateLimiter::default();
     let mut published = PublishedChatboxState::default();
     let mut last_error = String::new();
-    let mut observed_away_session = None;
+    let mut away_lifecycle = AwayLifecycle::default();
     let mut away_transition_pending = false;
     let mut next_away_send = Instant::now();
 
@@ -54,11 +54,12 @@ fn run(shared: SharedState) {
         let interval = config.send_interval.duration();
         let now = Instant::now();
         let away_session = shared.away_session();
+        let away_lifecycle_transition =
+            away_lifecycle.observe(away_session.as_ref().map(|session| session.id));
 
         if let Some(away_session) = away_session {
             queue.clear();
-            if observed_away_session != Some(away_session.id) {
-                observed_away_session = Some(away_session.id);
+            if away_lifecycle_transition == AwayLifecycleTransition::Started {
                 away_transition_pending = true;
                 next_away_send = now;
             }
@@ -116,10 +117,85 @@ fn run(shared: SharedState) {
             continue;
         }
 
-        if observed_away_session.take().is_some() {
+        if away_lifecycle_transition == AwayLifecycleTransition::Ended {
             away_transition_pending = false;
             queue.clear();
-            schedule.next_send = now;
+        }
+
+        if away_lifecycle.returned_message_pending() {
+            queue.clear();
+            if !config.osc_enabled {
+                // Do not retain a stale one-shot announcement if OSC was
+                // explicitly disabled while away mode was ending.
+                away_lifecycle.complete_returned_message();
+                thread::sleep(Duration::from_millis(50));
+                continue;
+            }
+            if !rate_limiter.can_send(SendPriority::StateChange, now) {
+                thread::sleep(Duration::from_millis(50));
+                continue;
+            }
+
+            let (latest_config, latest_revision) = {
+                let live = shared.config.read();
+                (live.value.clone(), live.revision)
+            };
+            if shared.away_session().is_some() {
+                // The next loop observes the new session and cancels this
+                // obsolete return packet before sending its away message.
+                continue;
+            }
+            if !latest_config.osc_enabled {
+                away_lifecycle.complete_returned_message();
+                continue;
+            }
+
+            let update = ChatboxUpdate::Message(
+                crate::i18n::text::AWAY_RETURNED_MESSAGE
+                    .get(latest_config.language)
+                    .to_owned(),
+            );
+            match send_chatbox_update(&socket, &latest_config.osc_address, &update) {
+                Ok(outcome) => {
+                    published.complete(&update);
+                    if outcome.sent_packet() {
+                        rate_limiter.record_send(Instant::now());
+                    }
+                    // Clear only after successful submission, making this a
+                    // one-shot packet while still allowing transient failures
+                    // to retry.
+                    away_lifecycle.complete_returned_message();
+
+                    // Resume ordinary OSC from a full interval after the
+                    // return announcement. Observe the current baselines first
+                    // so a context change that happened while away cannot
+                    // immediately overwrite it on the next loop.
+                    let resumed_at = Instant::now();
+                    let latest_snapshot = shared.snapshot.read().clone();
+                    schedule.observe_config(
+                        latest_revision,
+                        latest_config.send_interval.duration(),
+                        resumed_at,
+                    );
+                    schedule
+                        .observe_broadcast_context(broadcast_context(&latest_snapshot), resumed_at);
+                    schedule.observe_no_wasd_condition(latest_snapshot.no_wasd_for_10s, resumed_at);
+                    schedule.complete_cycle(latest_config.send_interval.duration(), resumed_at);
+                    last_error.clear();
+                }
+                Err(error) => {
+                    let message = format!(
+                        "{}: {error:#}",
+                        shared.text(crate::i18n::text::OSC_SEND_FAILED)
+                    );
+                    if message != last_error {
+                        shared.event(EventLevel::Error, message.clone());
+                        last_error = message;
+                    }
+                }
+            }
+            thread::sleep(Duration::from_millis(50));
+            continue;
         }
         let context = broadcast_context(&snapshot);
         let config_changed = schedule.observe_config(revision, interval, now);
@@ -213,6 +289,48 @@ fn run(shared: SharedState) {
             }
         }
         thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AwayLifecycleTransition {
+    Started,
+    Ended,
+    Unchanged,
+}
+
+#[derive(Debug, Default)]
+struct AwayLifecycle {
+    observed_session: Option<u64>,
+    returned_message_pending: bool,
+}
+
+impl AwayLifecycle {
+    fn observe(&mut self, session: Option<u64>) -> AwayLifecycleTransition {
+        match session {
+            Some(id) if self.observed_session != Some(id) => {
+                self.observed_session = Some(id);
+                // If another away session starts before the return packet can
+                // be submitted, the user is away again and that old packet is
+                // no longer truthful.
+                self.returned_message_pending = false;
+                AwayLifecycleTransition::Started
+            }
+            Some(_) => AwayLifecycleTransition::Unchanged,
+            None if self.observed_session.take().is_some() => {
+                self.returned_message_pending = true;
+                AwayLifecycleTransition::Ended
+            }
+            None => AwayLifecycleTransition::Unchanged,
+        }
+    }
+
+    fn returned_message_pending(&self) -> bool {
+        self.returned_message_pending
+    }
+
+    fn complete_returned_message(&mut self) {
+        self.returned_message_pending = false;
     }
 }
 
@@ -692,6 +810,43 @@ mod tests {
             render_away_message(&session, crate::i18n::Language::English, started_at),
             "Sorry, something came up. I'll be back soon\nBack in: 01:00"
         );
+    }
+
+    #[test]
+    fn ending_away_mode_queues_exactly_one_localized_return_message() {
+        let mut lifecycle = AwayLifecycle::default();
+
+        assert_eq!(lifecycle.observe(Some(7)), AwayLifecycleTransition::Started);
+        assert!(!lifecycle.returned_message_pending());
+        assert_eq!(lifecycle.observe(None), AwayLifecycleTransition::Ended);
+        assert!(lifecycle.returned_message_pending());
+
+        // Repeated sender-loop observations do not enqueue another one-shot.
+        assert_eq!(lifecycle.observe(None), AwayLifecycleTransition::Unchanged);
+        lifecycle.complete_returned_message();
+        assert!(!lifecycle.returned_message_pending());
+        assert_eq!(lifecycle.observe(None), AwayLifecycleTransition::Unchanged);
+        assert!(!lifecycle.returned_message_pending());
+
+        assert_eq!(
+            crate::i18n::text::AWAY_RETURNED_MESSAGE.get(crate::i18n::Language::Chinese),
+            "已回到游戏"
+        );
+        assert_eq!(
+            crate::i18n::text::AWAY_RETURNED_MESSAGE.get(crate::i18n::Language::English),
+            "Back in the game"
+        );
+    }
+
+    #[test]
+    fn starting_another_away_session_cancels_a_pending_return_message() {
+        let mut lifecycle = AwayLifecycle::default();
+        lifecycle.observe(Some(1));
+        lifecycle.observe(None);
+        assert!(lifecycle.returned_message_pending());
+
+        assert_eq!(lifecycle.observe(Some(2)), AwayLifecycleTransition::Started);
+        assert!(!lifecycle.returned_message_pending());
     }
 
     #[test]

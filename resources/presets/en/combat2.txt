@@ -4,6 +4,9 @@
 {{#if no_dps_for_10s}}
 【On my union-mandated DPS break】
 {{/if}}
+{{#if (or (eq boss "JimBringer") (eq boss "JimBringerPhase3"))}}
+Watch the line cleave
+{{/if}}
 {{#if has_round_damage_taken}}
 Damage taken: {{round_damage_taken}}
 {{/if}}

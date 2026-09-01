@@ -7,6 +7,9 @@
 {{#if no_dps_for_10s}}
 【摸鱼中】
 {{/if}}
+{{#if (or (eq boss "JimBringer") (eq boss "JimBringerPhase3"))}}
+小心手刀！
+{{/if}}
 {{#if has_latest_dps}}
 DPS: {{latest_dps}}
 {{/if}}

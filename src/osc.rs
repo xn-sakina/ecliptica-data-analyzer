@@ -6,7 +6,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use handlebars::Handlebars;
 use rosc::{OscMessage, OscPacket, OscType, encoder};
 
 use crate::{
@@ -542,6 +541,18 @@ pub fn render_configured_message(
     )
 }
 
+pub fn render_configured_message_preview(
+    config: &AppConfig,
+    snapshot: &GameSnapshot,
+) -> anyhow::Result<String> {
+    render_message_with_display_name_and_random_mode(
+        selected_template(config, snapshot),
+        snapshot,
+        &config.display_name,
+        crate::template::RandomMode::First,
+    )
+}
+
 struct SendSchedule {
     observed_revision: u64,
     next_send: Instant,
@@ -616,8 +627,21 @@ fn render_message_with_display_name(
     snapshot: &GameSnapshot,
     display_name: &str,
 ) -> anyhow::Result<String> {
-    let mut handlebars = Handlebars::new();
-    handlebars.set_strict_mode(true);
+    render_message_with_display_name_and_random_mode(
+        template,
+        snapshot,
+        display_name,
+        crate::template::RandomMode::Secure,
+    )
+}
+
+fn render_message_with_display_name_and_random_mode(
+    template: &str,
+    snapshot: &GameSnapshot,
+    display_name: &str,
+    random_mode: crate::template::RandomMode,
+) -> anyhow::Result<String> {
+    let mut handlebars = crate::template::engine(random_mode);
     handlebars.register_template_string("message", template)?;
     let report = snapshot.round_report.as_ref();
     let report_has_output = report.is_some_and(|value| value.has_output_data);
@@ -633,6 +657,9 @@ fn render_message_with_display_name(
         "boss": snapshot.boss.as_deref().unwrap_or(""),
         "heart_rate": if snapshot.has_heart_rate { snapshot.heart_rate.to_string() } else { "-".to_owned() },
         "has_heart_rate": snapshot.has_heart_rate,
+        "music_title": snapshot.music_title.as_str(),
+        "music_artist": snapshot.music_artist.as_str(),
+        "has_music": snapshot.has_music,
         "has_latest_dps": snapshot.has_damage_data,
         "has_avg_dps": snapshot.has_damage_data,
         "has_round_avg_dps": snapshot.has_damage_data,
@@ -927,6 +954,38 @@ mod tests {
     }
 
     #[test]
+    fn music_is_available_to_live_and_report_templates() {
+        let template = "{{#if has_music}}{{music_title}} - {{music_artist}}{{/if}}";
+        assert_eq!(
+            render_message(template, &GameSnapshot::default()).unwrap(),
+            ""
+        );
+        let playing = GameSnapshot {
+            music_title: "Song".to_owned(),
+            music_artist: "Artist".to_owned(),
+            has_music: true,
+            round_report: Some(crate::analysis::RoundReport {
+                has_duration_data: false,
+                has_output_data: false,
+                duration_seconds: 0,
+                total_damage: 0,
+                average_dps: 0.0,
+                max_dps: 0,
+                effective_dps: 0.0,
+                burst_10s_dps: None,
+                dps_growth_rate: 0.0,
+                has_dps_growth_rate: false,
+                damage_taken: 0,
+                has_longest_standstill_data: false,
+                longest_standstill_seconds: 0,
+            }),
+            ..GameSnapshot::default()
+        };
+        assert_eq!(render_message(template, &playing).unwrap(), "Song - Artist");
+        assert!(crate::config::validate_template(template, crate::i18n::Language::English).is_ok());
+    }
+
+    #[test]
     fn truncates_at_unicode_char_and_line_limits() {
         assert_eq!(limit_chatbox(&"伤".repeat(200)).chars().count(), 144);
         assert_eq!(
@@ -965,13 +1024,28 @@ mod tests {
             ..GameSnapshot::default()
         };
 
-        let template = "{{#unless boss_lock}}NO LOCK{{/unless}}|{{#if (gt round_damage_taken 50)}}HURT{{/if}}|{{#if (and has_latest_dps (or rapid_damage_danger no_dps_for_10s))}}ALERT{{/if}}|{{! hidden comment }}DPS: {{latest_dps}}";
+        let template = "{{#unless boss_lock}}NO LOCK{{/unless}}|{{#if (gt round_damage_taken 50)}}HURT{{/if}}|{{#if (and has_latest_dps (or rapid_damage_danger no_dps_for_10s))}}ALERT{{/if}}|{{! hidden comment }}DPS: {{latest_dps}}|{{random \"READY\"}}";
 
         assert_eq!(
             render_message(template, &snapshot).unwrap(),
-            "NO LOCK|HURT|ALERT|DPS: 42"
+            "NO LOCK|HURT|ALERT|DPS: 42|READY"
         );
         assert!(crate::config::validate_template(template, crate::i18n::Language::English).is_ok());
+    }
+
+    #[test]
+    fn random_preview_is_stable_and_uses_the_first_choice() {
+        let config = AppConfig {
+            message_template: "{{random \"first\" \"second\"}}".to_owned(),
+            ..AppConfig::default()
+        };
+
+        for _ in 0..16 {
+            assert_eq!(
+                render_configured_message_preview(&config, &GameSnapshot::default()).unwrap(),
+                "first"
+            );
+        }
     }
 
     #[test]

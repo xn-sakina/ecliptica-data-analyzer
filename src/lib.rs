@@ -8,8 +8,10 @@ pub mod i18n;
 pub mod keyboard;
 pub mod log_protocol;
 pub mod log_reader;
+pub mod music;
 pub mod osc;
 pub mod runtime;
+mod template;
 
 pub const APP_NAME: &str = "Ecliptica Data Analyzer";
 pub const APP_ID: &str = "ecliptica-data-analyzer";

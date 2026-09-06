@@ -238,6 +238,7 @@ fn publish(shared: &SharedState, analyzer: &mut Analyzer, status: DataStatus, pa
     shared.apply_wasd_metric(&mut snapshot);
     let heart_rate_enabled = shared.config.read().value.heart_rate_enabled;
     shared.apply_heart_rate(&mut snapshot, heart_rate_enabled);
+    shared.apply_music(&mut snapshot);
     *shared.snapshot.write() = snapshot;
 }
 

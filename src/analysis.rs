@@ -270,6 +270,15 @@ pub struct GameSnapshot {
     /// True only while a valid sender request was received recently.
     #[serde(default)]
     pub has_heart_rate: bool,
+    /// Title reported by the operating system's current media session.
+    #[serde(default)]
+    pub music_title: String,
+    /// Artist reported by the operating system's current media session.
+    #[serde(default)]
+    pub music_artist: String,
+    /// Whether the current system media session is actively playing.
+    #[serde(default)]
+    pub has_music: bool,
     /// Internal identity used to reset round-scoped live metrics even when a
     /// lobby and the next stage are consumed in the same log-reader batch.
     #[doc(hidden)]
@@ -325,6 +334,9 @@ impl Default for GameSnapshot {
             no_wasd_for_10s: false,
             heart_rate: 0,
             has_heart_rate: false,
+            music_title: String::new(),
+            music_artist: String::new(),
+            has_music: false,
             combat_round_epoch: 0,
             boss_lock: None,
             boss: None,

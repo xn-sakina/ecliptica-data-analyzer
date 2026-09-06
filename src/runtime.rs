@@ -16,7 +16,7 @@ use crate::{
     config::AppConfig,
     heart_rate,
     i18n::TextPair,
-    log_reader, osc,
+    log_reader, music, osc,
 };
 
 pub struct LiveConfig {
@@ -122,6 +122,7 @@ pub struct SharedState {
     away_mode: Arc<RwLock<AwayModeState>>,
     wasd_metric: Arc<RwLock<WasdMetricState>>,
     pub(crate) heart_rate: heart_rate::SharedHeartRate,
+    pub(crate) music: music::SharedMusic,
 }
 
 impl SharedState {
@@ -183,6 +184,14 @@ impl SharedState {
             .apply_to(&mut self.snapshot.write(), enabled);
     }
 
+    pub fn apply_music(&self, snapshot: &mut GameSnapshot) {
+        self.music.apply_to(snapshot);
+    }
+
+    pub fn refresh_music(&self) {
+        self.music.apply_to(&mut self.snapshot.write());
+    }
+
     pub fn start_away_mode(&self, reason: AwayReason, custom_message: String, duration: Duration) {
         let mut away = self.away_mode.write();
         away.next_id = away.next_id.wrapping_add(1);
@@ -235,6 +244,7 @@ impl Runtime {
             away_mode: Arc::new(RwLock::new(AwayModeState::default())),
             wasd_metric: Arc::new(RwLock::new(WasdMetricState::default())),
             heart_rate: heart_rate::SharedHeartRate::default(),
+            music: music::SharedMusic::default(),
         };
         let handles = vec![
             log_reader::spawn(shared.clone()),
@@ -242,6 +252,7 @@ impl Runtime {
             audio::spawn(shared.clone(), sound_rx),
             crate::keyboard::spawn(shared.clone()),
             heart_rate::spawn(shared.clone()),
+            music::spawn(shared.clone()),
         ];
         Self {
             shared,

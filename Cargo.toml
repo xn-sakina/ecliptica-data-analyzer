@@ -15,6 +15,7 @@ ctrlc = "3.4"
 directories = "6.0"
 file-id = "0.2"
 handlebars = "6.3"
+getrandom = "0.4"
 parking_lot = "0.12"
 portpicker = "0.1"
 regex = "1.11"
@@ -40,6 +41,8 @@ egui-shadcn = { path = "third_party/egui-shadcn" }
 embed-resource = "3.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.61", features = ["Foundation", "Media_Control", "Win32_System_WinRT"] }
+windows-future = "0.2"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_LibraryLoader", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 [target.'cfg(not(target_os = "windows"))'.dependencies]

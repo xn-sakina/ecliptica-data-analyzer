@@ -79,6 +79,8 @@ VRChat OSC must be enabled in the Action Menu. The default destination is `127.0
 Message templates use Handlebars. Optional sections can use an availability flag, for example
 `{{#if has_latest_dps}}DPS: {{latest_dps}}{{/if}}`. Supported flags include
 `has_latest_dps`, `has_avg_dps`, `has_round_avg_dps`, and `has_max_dps`.
+`{{random "Text A" "Text B" "Text C"}}` selects one supplied string using the
+operating system's cryptographically secure random source each time an OSC message is rendered.
 String values such as `boss_lock` and `boss` are empty when unavailable, so they
 can be used directly in conditions. `is_self_boss_locked`
 is true only while the configured player is the active Boss lock target; without a
@@ -96,6 +98,10 @@ observe-only and never reserves, injects, or suppresses keys. If the listener is
 unavailable, the condition remains false. The same listener records the longest
 continuous no-WASD interval in each live round as the shield-oriented standstill
 metric; historical rounds scanned during startup cannot reconstruct this input data.
+`music_title` and `music_artist` come from the current Windows system media
+session and are empty when the player does not publish the corresponding field.
+`has_music` is true only while that session reports the Playing state. These
+three values are shared by the combat-message and completed-round templates.
 Rendered messages are trimmed before the Chatbox limit is applied, so hidden leading
 or trailing conditional blocks do not leave blank boundary lines. Variable chips in
 the settings window copy their displayed `{{variable}}` token to the OS clipboard.

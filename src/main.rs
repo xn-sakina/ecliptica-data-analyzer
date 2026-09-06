@@ -129,6 +129,7 @@ const VARIABLE_DPS_GROWTH: egui::Color32 = egui::Color32::from_rgb(141, 221, 248
 const VARIABLE_STANDSTILL: egui::Color32 = METRIC_STANDSTILL;
 const VARIABLE_ROUND_DAMAGE: egui::Color32 = egui::Color32::from_rgb(232, 133, 202);
 const VARIABLE_HEART_RATE: egui::Color32 = METRIC_HEART_RATE;
+const VARIABLE_MUSIC: egui::Color32 = egui::Color32::from_rgb(106, 205, 137);
 
 fn alert_sound_label_width(language: Language) -> f32 {
     match language {
@@ -1942,7 +1943,7 @@ impl AnalyzerApp {
             ui.add_space(UI_SPACE_2);
             let preview_snapshot =
                 preview_snapshot_for_state(snapshot, self.template_preview_state);
-            match ecliptica_data_analyzer::osc::render_configured_message(
+            match ecliptica_data_analyzer::osc::render_configured_message_preview(
                 &self.draft,
                 &preview_snapshot,
             ) {
@@ -1981,6 +1982,8 @@ impl AnalyzerApp {
             language,
             snapshot.has_heart_rate,
         );
+        ui.add_space(UI_SPACE_3);
+        music_auxiliary_panel(ui, &mut self.clipboard, &mut self.toast_state, language);
     }
 
     fn player_page(&mut self, ui: &mut egui::Ui) {
@@ -4077,6 +4080,7 @@ fn variable_group_color(group: &ecliptica_data_analyzer::i18n::VariableCopyGroup
         Some("round_longest_standstill") => VARIABLE_STANDSTILL,
         Some("round_total_damage") => VARIABLE_ROUND_DAMAGE,
         Some("heart_rate") => VARIABLE_HEART_RATE,
+        Some("music_title") => VARIABLE_MUSIC,
         _ => SETTINGS_TEXT_SECONDARY,
     }
 }
@@ -4418,6 +4422,38 @@ fn heart_rate_title_row(ui: &mut egui::Ui, language: Language) -> (egui::Respons
         },
     )
     .inner
+}
+
+fn music_auxiliary_panel(
+    ui: &mut egui::Ui,
+    clipboard: &mut Option<Clipboard>,
+    toast_state: &mut ToastState,
+    language: Language,
+) {
+    let width = ui.available_width();
+    egui_shadcn::Card::new().show(ui, |ui| {
+        ui.set_min_width((width - 34.0).max(120.0));
+        let groups = localized_variable_groups(
+            ecliptica_data_analyzer::i18n::MUSIC_VARIABLE_GROUPS,
+            language,
+            false,
+        );
+        let Some(group) = groups.first() else {
+            return;
+        };
+        Typography::new(group.title)
+            .font_size(16.0)
+            .strong()
+            .color(SETTINGS_HEADING)
+            .show(ui);
+        ui.add_space(UI_SPACE_2);
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(UI_SPACE_2, UI_SPACE_2);
+            for variable in &group.variables {
+                variable_chip(ui, variable, group.color, clipboard, toast_state, language);
+            }
+        });
+    });
 }
 
 fn open_heart_rate_guide(context: &egui::Context) {

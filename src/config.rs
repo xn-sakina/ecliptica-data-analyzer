@@ -1073,8 +1073,7 @@ fn upgrade_version_15_round_report_presets(
 }
 
 pub fn validate_template(source: &str, language: Language) -> Result<()> {
-    let mut handlebars = handlebars::Handlebars::new();
-    handlebars.set_strict_mode(true);
+    let mut handlebars = crate::template::engine(crate::template::RandomMode::First);
     handlebars
         .register_template_string("message", source)
         .context(crate::i18n::text::TEMPLATE_SYNTAX_ERROR.get(language))?;
@@ -1090,6 +1089,9 @@ pub fn validate_template(source: &str, language: Language) -> Result<()> {
         "boss": "",
         "heart_rate": "-",
         "has_heart_rate": false,
+        "music_title": "",
+        "music_artist": "",
+        "has_music": false,
         "has_latest_dps": false,
         "has_avg_dps": false,
         "has_round_avg_dps": false,

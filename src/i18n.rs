@@ -1034,6 +1034,33 @@ pub const HEART_RATE_VARIABLE_GROUPS: &[VariableCopyGroup] = &[VariableCopyGroup
     ],
 }];
 
+pub const MUSIC_VARIABLE_GROUPS: &[VariableCopyGroup] = &[VariableCopyGroup {
+    title: p("Music", "音乐"),
+    variables: &[
+        variable!(
+            "Text",
+            "文本",
+            "music_title",
+            "Title from the current system media session; empty when unavailable.",
+            "系统当前媒体会话中的歌曲名；无法获取时为空。"
+        ),
+        variable!(
+            "Text",
+            "文本",
+            "music_artist",
+            "Artist from the current system media session; empty when unavailable.",
+            "系统当前媒体会话中的歌手名；无法获取时为空。"
+        ),
+        variable!(
+            "Show when",
+            "显示条件",
+            "has_music",
+            "Show this content while the current system media session is playing.",
+            "系统当前媒体会话正在播放时显示这段内容。"
+        ),
+    ],
+}];
+
 pub const LIVE_VARIABLE_GROUPS: &[VariableCopyGroup] = &[
     VariableCopyGroup {
         title: p("Live DPS", "实时 DPS"),
@@ -1403,6 +1430,13 @@ pub const TEMPLATE_SYNTAX_EXAMPLES: &[SyntaxCopy] = &[
         code: p(
             "and a b  both are true\nor a b   either is true\nnot a    reverse the result",
             "and a b  两个都满足\nor a b   满足任意一个\nnot a    结果取反",
+        ),
+    },
+    SyntaxCopy {
+        title: p("Randomly choose one text", "随机选择一段文本"),
+        code: p(
+            "{{random \"Text A\" \"Text B\" \"Text C\"}}",
+            "{{random \"文本 A\" \"文本 B\" \"文本 C\"}}",
         ),
     },
 ];

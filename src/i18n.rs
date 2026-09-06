@@ -1433,7 +1433,7 @@ pub const TEMPLATE_SYNTAX_EXAMPLES: &[SyntaxCopy] = &[
         ),
     },
     SyntaxCopy {
-        title: p("Randomly choose one text", "随机选择一段文本"),
+        title: p("Random text · Fixed per stage", "随机文本 · 阶段内固定"),
         code: p(
             "{{random \"Text A\" \"Text B\" \"Text C\"}}",
             "{{random \"文本 A\" \"文本 B\" \"文本 C\"}}",

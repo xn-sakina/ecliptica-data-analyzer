@@ -39,6 +39,7 @@ fn run(shared: SharedState) {
     let mut queue = SendQueue::default();
     let mut rate_limiter = ChatboxRateLimiter::default();
     let mut published = PublishedChatboxState::default();
+    let mut broadcast_random = BroadcastRandomState::default();
     let mut last_error = String::new();
     let mut away_lifecycle = AwayLifecycle::default();
     let mut away_transition_pending = false;
@@ -50,6 +51,8 @@ fn run(shared: SharedState) {
             (live.value.clone(), live.revision)
         };
         let snapshot = shared.snapshot.read().clone();
+        let context = broadcast_context(&snapshot);
+        broadcast_random.observe_context(context);
         let interval = config.send_interval.duration();
         let now = Instant::now();
         let away_session = shared.away_session();
@@ -196,7 +199,6 @@ fn run(shared: SharedState) {
             thread::sleep(Duration::from_millis(50));
             continue;
         }
-        let context = broadcast_context(&snapshot);
         let config_changed = schedule.observe_config(revision, interval, now);
         let context_changed = schedule.observe_broadcast_context(context, now);
         let wasd_changed = schedule.observe_no_wasd_condition(snapshot.no_wasd_for_10s, now);
@@ -250,10 +252,12 @@ fn run(shared: SharedState) {
                 continue;
             }
 
-            let update =
-                render_configured_message(&latest_config, &latest_snapshot).map(|message| {
-                    published.next_update(message, pending.context, latest_config.language)
-                });
+            let update = render_configured_message_with_random_mode(
+                &latest_config,
+                &latest_snapshot,
+                broadcast_random.random_mode(),
+            )
+            .map(|message| published.next_update(message, pending.context, latest_config.language));
             let result = update.and_then(|update| {
                 send_chatbox_update(&socket, &latest_config.osc_address, &update)
                     .map(|outcome| (update, outcome))
@@ -369,6 +373,25 @@ fn broadcast_context_ready(snapshot: &GameSnapshot) -> bool {
 enum BroadcastContext {
     Combat(u64),
     RoundReport(u64),
+}
+
+#[derive(Debug, Default)]
+struct BroadcastRandomState {
+    context: Option<BroadcastContext>,
+    random: crate::template::StageRandomState,
+}
+
+impl BroadcastRandomState {
+    fn observe_context(&mut self, context: Option<BroadcastContext>) {
+        if self.context != context {
+            self.context = context;
+            self.random = crate::template::StageRandomState::default();
+        }
+    }
+
+    fn random_mode(&self) -> crate::template::RandomMode {
+        crate::template::RandomMode::Stage(self.random.clone())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -538,6 +561,19 @@ pub fn render_configured_message(
         selected_template(config, snapshot),
         snapshot,
         &config.display_name,
+    )
+}
+
+fn render_configured_message_with_random_mode(
+    config: &AppConfig,
+    snapshot: &GameSnapshot,
+    random_mode: crate::template::RandomMode,
+) -> anyhow::Result<String> {
+    render_message_with_display_name_and_random_mode(
+        selected_template(config, snapshot),
+        snapshot,
+        &config.display_name,
+        random_mode,
     )
 }
 
@@ -1044,6 +1080,44 @@ mod tests {
                 "first"
             );
         }
+    }
+
+    #[test]
+    fn random_choice_is_stable_within_context_and_cleared_between_stages() {
+        let config = AppConfig {
+            message_template: "{{random \"first\" \"second\" \"third\"}}".to_owned(),
+            ..AppConfig::default()
+        };
+        let snapshot = GameSnapshot {
+            phase: RoundPhase::Combat,
+            combat_round_epoch: 7,
+            ..GameSnapshot::default()
+        };
+        let mut state = BroadcastRandomState::default();
+        state.observe_context(Some(BroadcastContext::Combat(7)));
+        let first =
+            render_configured_message_with_random_mode(&config, &snapshot, state.random_mode())
+                .unwrap();
+
+        for _ in 0..32 {
+            assert_eq!(
+                render_configured_message_with_random_mode(
+                    &config,
+                    &snapshot,
+                    state.random_mode(),
+                )
+                .unwrap(),
+                first
+            );
+        }
+        assert_eq!(state.random.cached_choice_count(), 1);
+
+        state.observe_context(Some(BroadcastContext::Combat(7)));
+        assert_eq!(state.random.cached_choice_count(), 1);
+        state.observe_context(Some(BroadcastContext::RoundReport(7)));
+        assert_eq!(state.random.cached_choice_count(), 0);
+        state.observe_context(Some(BroadcastContext::Combat(8)));
+        assert_eq!(state.random.cached_choice_count(), 0);
     }
 
     #[test]

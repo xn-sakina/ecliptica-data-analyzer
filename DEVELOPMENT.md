@@ -80,7 +80,8 @@ Message templates use Handlebars. Optional sections can use an availability flag
 `{{#if has_latest_dps}}DPS: {{latest_dps}}{{/if}}`. Supported flags include
 `has_latest_dps`, `has_avg_dps`, `has_round_avg_dps`, and `has_max_dps`.
 `{{random "Text A" "Text B" "Text C"}}` selects one supplied string using the
-operating system's cryptographically secure random source each time an OSC message is rendered.
+operating system's cryptographically secure random source. The choice stays fixed for the
+current combat or report stage and is drawn again when the broadcast stage changes.
 String values such as `boss_lock` and `boss` are empty when unavailable, so they
 can be used directly in conditions. `is_self_boss_locked`
 is true only while the configured player is the active Boss lock target; without a

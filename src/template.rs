@@ -1,12 +1,43 @@
+use std::{collections::HashMap, sync::Arc};
+
 use handlebars::{
     Context, Handlebars, Helper, HelperDef, JsonValue, RenderContext, RenderError,
     RenderErrorReason, ScopedJson,
 };
+use parking_lot::Mutex;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) enum RandomMode {
     Secure,
+    Stage(StageRandomState),
     First,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct StageRandomState {
+    choices: Arc<Mutex<HashMap<Vec<String>, usize>>>,
+}
+
+impl StageRandomState {
+    fn choose(&self, choices: &[&str]) -> Result<usize, RenderError> {
+        let key = choices
+            .iter()
+            .map(|choice| (*choice).to_owned())
+            .collect::<Vec<_>>();
+        let mut cached = self.choices.lock();
+        if let Some(index) = cached.get(&key) {
+            return Ok(*index);
+        }
+
+        let index = secure_random_index(choices.len())?;
+        cached.insert(key, index);
+        Ok(index)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn cached_choice_count(&self) -> usize {
+        self.choices.lock().len()
+    }
 }
 
 pub(crate) fn engine(random_mode: RandomMode) -> Handlebars<'static> {
@@ -16,7 +47,7 @@ pub(crate) fn engine(random_mode: RandomMode) -> Handlebars<'static> {
     handlebars
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct RandomHelper {
     random_mode: RandomMode,
 }
@@ -48,8 +79,9 @@ impl HelperDef for RandomHelper {
             .into());
         }
 
-        let index = match self.random_mode {
+        let index = match &self.random_mode {
             RandomMode::Secure => secure_random_index(choices.len())?,
+            RandomMode::Stage(state) => state.choose(&choices)?,
             RandomMode::First => 0,
         };
         Ok(ScopedJson::Derived(JsonValue::String(
@@ -121,5 +153,24 @@ mod tests {
                 .unwrap();
             assert!(["one", "two", "three"].contains(&rendered.as_str()));
         }
+    }
+
+    #[test]
+    fn stage_mode_keeps_each_choice_stable_across_renders() {
+        let state = StageRandomState::default();
+        let template = "{{random \"one\" \"two\"}}|{{random \"red\" \"blue\"}}";
+        let first = engine(RandomMode::Stage(state.clone()))
+            .render_template(template, &json!({}))
+            .unwrap();
+
+        for _ in 0..32 {
+            assert_eq!(
+                engine(RandomMode::Stage(state.clone()))
+                    .render_template(template, &json!({}))
+                    .unwrap(),
+                first
+            );
+        }
+        assert_eq!(state.cached_choice_count(), 2);
     }
 }

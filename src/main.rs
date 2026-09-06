@@ -59,6 +59,7 @@ const SYMBOL_FONT_FAMILY: &str = "system-symbols";
 const MAX_LOG_ROWS: usize = 200;
 const LOG_TERMINAL_MIN_HEIGHT: f32 = 360.0;
 const LOG_TERMINAL_MAX_HEIGHT: f32 = 520.0;
+const GLOBAL_SCROLL_SPEED_MULTIPLIER: f32 = 1.25;
 const DEVELOPER_MODE_CLICK_COUNT: u8 = 5;
 const DEVELOPER_MODE_CLICK_TIMEOUT: Duration = Duration::from_secs(4);
 const SETTINGS_BG: egui::Color32 = egui::Color32::from_rgb(15, 13, 20);
@@ -2739,6 +2740,12 @@ impl eframe::App for AnalyzerApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             return;
         }
+        // Apply this before any nested ScrollArea can consume the wheel input.
+        // Zoom gestures use a separate egui delta and intentionally keep their
+        // existing sensitivity.
+        ctx.input_mut(|input| {
+            input.smooth_scroll_delta *= GLOBAL_SCROLL_SPEED_MULTIPLIER;
+        });
         self.process_events(ctx);
         self.sync_overlay_position();
         let snapshot = self.runtime.shared.snapshot.read().clone();

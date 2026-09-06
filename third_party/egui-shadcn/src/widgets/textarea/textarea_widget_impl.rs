@@ -1,5 +1,20 @@
 //! Widget trait implementation for Textarea.
 
+fn textarea_scroll_source(editor_focused: bool) -> egui::scroll_area::ScrollSource {
+    if editor_focused {
+        egui::scroll_area::ScrollSource::ALL
+    } else {
+        // Match web textarea behavior: hovering an unfocused editor should
+        // leave wheel scrolling to the enclosing page. Keep its scrollbar
+        // draggable so it can still be operated directly.
+        egui::scroll_area::ScrollSource::SCROLL_BAR
+    }
+}
+
+fn textarea_captures_wheel(pointer_over_editor: bool, editor_focused: bool) -> bool {
+    pointer_over_editor && editor_focused
+}
+
 impl egui::Widget for super::textarea::Textarea<'_> {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
         let theme = crate::theme::shadcn_theme_ext::ShadcnThemeExt::shadcn_theme(ui.ctx());
@@ -83,9 +98,12 @@ impl egui::Widget for super::textarea::Textarea<'_> {
         let scroll_id = self
             .id_salt
             .unwrap_or_else(|| outer_response.id.with("textarea-scroll"));
+        let editor_id = scroll_id.with("editor");
+        let editor_focused = ui.memory(|memory| memory.has_focus(editor_id));
         let scroll_resp = egui::ScrollArea::vertical()
             .id_salt(scroll_id)
             .max_height(inner_rect.height())
+            .scroll_source(textarea_scroll_source(editor_focused))
             .show(&mut child_ui, |ui| {
                 let mut layouter = |ui: &egui::Ui, text: &dyn egui::TextBuffer, wrap_width: f32| {
                     let mut job = egui::text::LayoutJob::default();
@@ -103,6 +121,7 @@ impl egui::Widget for super::textarea::Textarea<'_> {
                     ui.fonts(|fonts| fonts.layout_job(job))
                 };
                 let text_edit = egui::TextEdit::multiline(self.text)
+                    .id(editor_id)
                     .frame(false)
                     .hint_text(&self.placeholder)
                     .font(font_id.clone())
@@ -115,17 +134,16 @@ impl egui::Widget for super::textarea::Textarea<'_> {
                 ui.add(text_edit)
             });
 
-        // Keep wheel gestures inside the textarea, including when its scroll
-        // position is already at an edge. egui normally lets an unconsumed
-        // delta fall through to an enclosing ScrollArea, which makes both the
-        // editor and the settings page move during the same gesture.
-        if outer_hovered {
+        let response = scroll_resp.inner;
+
+        // Once focused, keep wheel gestures inside the textarea while the
+        // pointer is over it, including at a scroll edge. Otherwise an
+        // unconsumed delta would also move an enclosing ScrollArea.
+        if textarea_captures_wheel(outer_hovered, response.has_focus()) {
             ui.ctx().input_mut(|input| {
                 input.smooth_scroll_delta = egui::Vec2::ZERO;
             });
         }
-
-        let response = scroll_resp.inner;
 
         // Focus ring
         if response.has_focus() {
@@ -144,5 +162,28 @@ impl egui::Widget for super::textarea::Textarea<'_> {
         }
 
         response
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{textarea_captures_wheel, textarea_scroll_source};
+
+    #[test]
+    fn unfocused_textarea_leaves_mouse_wheel_to_its_parent() {
+        let source = textarea_scroll_source(false);
+
+        assert!(source.scroll_bar);
+        assert!(!source.mouse_wheel);
+        assert!(!textarea_captures_wheel(true, false));
+    }
+
+    #[test]
+    fn focused_textarea_captures_wheel_only_under_the_pointer() {
+        let source = textarea_scroll_source(true);
+
+        assert!(source.mouse_wheel);
+        assert!(textarea_captures_wheel(true, true));
+        assert!(!textarea_captures_wheel(false, true));
     }
 }

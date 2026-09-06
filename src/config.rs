@@ -16,7 +16,7 @@ use tempfile::NamedTempFile;
 use crate::APP_ID;
 use crate::i18n::Language;
 
-pub const CONFIG_VERSION: u32 = 24;
+pub const CONFIG_VERSION: u32 = 25;
 pub const CONFIG_EXPORT_FORMAT: &str = "ecliptica-config-export";
 pub const CONFIG_EXPORT_FORMAT_VERSION: u32 = 1;
 pub const MESSAGE_TEMPLATE_PRESET_COUNT: usize = 3;
@@ -809,6 +809,29 @@ impl AppConfig {
         if self.version < 24 {
             self.away_custom_message = default_away_custom_message(self.language).to_owned();
         }
+        if self.version < 25 {
+            self.message_template = migrate_growth_rate_variable_aliases(&self.message_template);
+            self.round_report_template =
+                migrate_growth_rate_variable_aliases(&self.round_report_template);
+            for template in &mut self.message_template_presets {
+                *template = migrate_growth_rate_variable_aliases(template);
+            }
+            for template in &mut self.round_report_template_presets {
+                *template = migrate_growth_rate_variable_aliases(template);
+            }
+            if let Some(template) = self
+                .message_template_presets
+                .get(self.active_message_template_preset)
+            {
+                self.message_template.clone_from(template);
+            }
+            if let Some(template) = self
+                .round_report_template_presets
+                .get(self.active_round_report_template_preset)
+            {
+                self.round_report_template.clone_from(template);
+            }
+        }
         self.version = CONFIG_VERSION;
         self.alert_volume = self.alert_volume.clamp(0.0, 1.0);
         if !self.overlay_scale.is_finite() {
@@ -983,6 +1006,12 @@ fn migrate_average_variable_names(template: &str) -> String {
     })
 }
 
+fn migrate_growth_rate_variable_aliases(template: &str) -> String {
+    template
+        .replace("has_round_dps_growth_rate", "has_dps_growth_rate")
+        .replace("round_dps_growth_rate", "dps_growth_rate")
+}
+
 fn migrate_redundant_presence_flags(template: &str) -> String {
     [
         ("has_round_report_damage_taken", "has_round_report"),
@@ -1109,7 +1138,6 @@ pub fn validate_template(source: &str, language: Language) -> Result<()> {
         "has_round_report_effective_dps": false,
         "has_round_report_burst_10s": false,
         "has_dps_growth_rate": false,
-        "has_round_dps_growth_rate": false,
         "has_round_longest_standstill": false,
         "has_step_estimate": false,
         "current_step": "-",
@@ -1121,7 +1149,6 @@ pub fn validate_template(source: &str, language: Language) -> Result<()> {
         "round_report_effective_dps": "-",
         "round_report_burst_10s": "-",
         "dps_growth_rate": "0",
-        "round_dps_growth_rate": "0",
         "round_report_damage_taken": "-",
         "round_longest_standstill": "-"
     });
@@ -2430,5 +2457,36 @@ mod tests {
             migrated.round_report_template,
             DEFAULT_ROUND_REPORT_TEMPLATE
         );
+    }
+
+    #[test]
+    fn version_twenty_four_templates_migrate_growth_rate_aliases() {
+        let mut old = AppConfig::default();
+        old.version = 24;
+        old.message_template_presets[0] =
+            "{{#if has_round_dps_growth_rate}}{{round_dps_growth_rate}}{{/if}}".to_owned();
+        old.round_report_template_presets[0] =
+            "{{#if has_round_dps_growth_rate}}{{round_dps_growth_rate}}{{/if}}".to_owned();
+
+        let migrated = old.migrated();
+
+        assert_eq!(migrated.version, CONFIG_VERSION);
+        assert_eq!(
+            migrated.message_template,
+            "{{#if has_dps_growth_rate}}{{dps_growth_rate}}{{/if}}"
+        );
+        assert_eq!(
+            migrated.round_report_template,
+            "{{#if has_dps_growth_rate}}{{dps_growth_rate}}{{/if}}"
+        );
+        migrated.validate().unwrap();
+    }
+
+    #[test]
+    fn removed_growth_rate_aliases_are_not_accepted_by_current_templates() {
+        assert!(validate_template("{{round_dps_growth_rate}}", Language::English).is_err());
+        assert!(validate_template("{{has_round_dps_growth_rate}}", Language::English).is_err());
+        assert!(validate_template("{{dps_growth_rate}}", Language::English).is_ok());
+        assert!(validate_template("{{has_dps_growth_rate}}", Language::English).is_ok());
     }
 }

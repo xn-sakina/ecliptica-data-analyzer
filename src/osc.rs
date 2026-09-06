@@ -677,7 +677,6 @@ fn render_message_with_display_name_and_random_mode(
         "has_round_report_effective_dps": report_has_output,
         "has_round_report_burst_10s": report.and_then(|value| value.burst_10s_dps).is_some(),
         "has_dps_growth_rate": report.is_some_and(|value| value.has_dps_growth_rate),
-        "has_round_dps_growth_rate": report.is_some_and(|value| value.has_dps_growth_rate),
         "has_round_longest_standstill": report.is_some_and(|value| value.has_longest_standstill_data),
         "has_step_estimate": report.is_some() && snapshot.has_step_estimate,
         "current_step": if snapshot.has_step_estimate { snapshot.current_step.to_string() } else { "-".to_owned() },
@@ -689,7 +688,6 @@ fn render_message_with_display_name_and_random_mode(
         "round_report_effective_dps": report.map(|value| value.effective_dps_text()).unwrap_or_else(|| "-".to_owned()),
         "round_report_burst_10s": report.map(|value| value.burst_10s_dps_text()).unwrap_or_else(|| "-".to_owned()),
         "dps_growth_rate": report.map(|value| value.dps_growth_rate_text()).unwrap_or_else(|| "0".to_owned()),
-        "round_dps_growth_rate": report.map(|value| value.dps_growth_rate_text()).unwrap_or_else(|| "0".to_owned()),
         "round_report_damage_taken": report.map(|value| value.damage_taken.to_string()).unwrap_or_else(|| "-".to_owned()),
         "round_longest_standstill": report.map(|value| value.longest_standstill_text()).unwrap_or_else(|| "-".to_owned()),
     });

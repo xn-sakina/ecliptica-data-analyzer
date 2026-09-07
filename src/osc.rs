@@ -1,5 +1,5 @@
 use std::{
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     net::UdpSocket,
     sync::atomic::Ordering,
     thread,
@@ -39,7 +39,7 @@ fn run(shared: SharedState) {
     let mut queue = SendQueue::default();
     let mut rate_limiter = ChatboxRateLimiter::default();
     let mut published = PublishedChatboxState::default();
-    let mut broadcast_random = BroadcastRandomState::default();
+    let mut broadcast_random = BroadcastRandomStates::default();
     let mut last_error = String::new();
     let mut away_lifecycle = AwayLifecycle::default();
     let mut away_transition_pending = false;
@@ -52,7 +52,6 @@ fn run(shared: SharedState) {
         };
         let snapshot = shared.snapshot.read().clone();
         let context = broadcast_context(&snapshot);
-        broadcast_random.observe_context(context);
         let interval = config.send_interval.duration();
         let now = Instant::now();
         let away_session = shared.away_session();
@@ -255,7 +254,7 @@ fn run(shared: SharedState) {
             let update = render_configured_message_with_random_mode(
                 &latest_config,
                 &latest_snapshot,
-                broadcast_random.random_mode(),
+                broadcast_random.random_mode_for(pending.context),
             )
             .map(|message| published.next_update(message, pending.context, latest_config.language));
             let result = update.and_then(|update| {
@@ -369,28 +368,35 @@ fn broadcast_context_ready(snapshot: &GameSnapshot) -> bool {
     broadcast_context(snapshot).is_some()
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum BroadcastContext {
     Combat(u64),
     RoundReport(u64),
 }
 
 #[derive(Debug, Default)]
-struct BroadcastRandomState {
-    context: Option<BroadcastContext>,
-    random: crate::template::StageRandomState,
+struct BroadcastRandomStates {
+    stages: HashMap<BroadcastContext, crate::template::StageRandomState>,
 }
 
-impl BroadcastRandomState {
-    fn observe_context(&mut self, context: Option<BroadcastContext>) {
-        if self.context != context {
-            self.context = context;
-            self.random = crate::template::StageRandomState::default();
-        }
+impl BroadcastRandomStates {
+    fn random_mode_for(&mut self, context: BroadcastContext) -> crate::template::RandomMode {
+        // Bind random choices to the context that is actually being dispatched.
+        // Keeping the two contexts for one round also makes a brief unavailable
+        // snapshot, an away-mode interval, or a stale queued request unable to
+        // wipe choices that still belong to the same combat/report stage.
+        let epoch = context.epoch();
+        self.stages.retain(|existing, _| existing.epoch() == epoch);
+        let state = self.stages.entry(context).or_default().clone();
+        crate::template::RandomMode::Stage(state)
     }
+}
 
-    fn random_mode(&self) -> crate::template::RandomMode {
-        crate::template::RandomMode::Stage(self.random.clone())
+impl BroadcastContext {
+    fn epoch(self) -> u64 {
+        match self {
+            Self::Combat(epoch) | Self::RoundReport(epoch) => epoch,
+        }
     }
 }
 
@@ -1104,41 +1110,93 @@ mod tests {
     }
 
     #[test]
-    fn random_choice_is_stable_within_context_and_cleared_between_stages() {
-        let config = AppConfig {
+    fn random_choices_are_stable_and_isolated_by_dispatched_stage() {
+        let combat_config = AppConfig {
             message_template: "{{random \"first\" \"second\" \"third\"}}".to_owned(),
+            round_report_template: "report={{random \"red\" \"green\" \"blue\"}}".to_owned(),
             ..AppConfig::default()
         };
-        let snapshot = GameSnapshot {
+        let combat_snapshot = GameSnapshot {
             phase: RoundPhase::Combat,
             combat_round_epoch: 7,
             ..GameSnapshot::default()
         };
-        let mut state = BroadcastRandomState::default();
-        state.observe_context(Some(BroadcastContext::Combat(7)));
-        let first =
-            render_configured_message_with_random_mode(&config, &snapshot, state.random_mode())
-                .unwrap();
+        let report_snapshot = GameSnapshot {
+            phase: RoundPhase::Lobby,
+            combat_round_epoch: 7,
+            round_report: Some(crate::analysis::RoundReport {
+                has_duration_data: false,
+                has_output_data: false,
+                duration_seconds: 0,
+                total_damage: 0,
+                average_dps: 0.0,
+                max_dps: 0,
+                effective_dps: 0.0,
+                burst_10s_dps: None,
+                dps_growth_rate: 0.0,
+                has_dps_growth_rate: false,
+                damage_taken: 0,
+                has_longest_standstill_data: false,
+                longest_standstill_seconds: 0,
+            }),
+            ..GameSnapshot::default()
+        };
+        let mut states = BroadcastRandomStates::default();
+        let first_combat = render_configured_message_with_random_mode(
+            &combat_config,
+            &combat_snapshot,
+            states.random_mode_for(BroadcastContext::Combat(7)),
+        )
+        .unwrap();
 
         for _ in 0..32 {
             assert_eq!(
                 render_configured_message_with_random_mode(
-                    &config,
-                    &snapshot,
-                    state.random_mode(),
+                    &combat_config,
+                    &combat_snapshot,
+                    states.random_mode_for(BroadcastContext::Combat(7)),
                 )
                 .unwrap(),
-                first
+                first_combat
             );
         }
-        assert_eq!(state.random.cached_choice_count(), 1);
 
-        state.observe_context(Some(BroadcastContext::Combat(7)));
-        assert_eq!(state.random.cached_choice_count(), 1);
-        state.observe_context(Some(BroadcastContext::RoundReport(7)));
-        assert_eq!(state.random.cached_choice_count(), 0);
-        state.observe_context(Some(BroadcastContext::Combat(8)));
-        assert_eq!(state.random.cached_choice_count(), 0);
+        let first_report = render_configured_message_with_random_mode(
+            &combat_config,
+            &report_snapshot,
+            states.random_mode_for(BroadcastContext::RoundReport(7)),
+        )
+        .unwrap();
+        assert_eq!(states.stages.len(), 2);
+
+        // Returning to the same dispatch identity must not reroll either
+        // template. This covers transient context loss and delayed queue work,
+        // which reset the single-state implementation used previously.
+        assert_eq!(
+            render_configured_message_with_random_mode(
+                &combat_config,
+                &combat_snapshot,
+                states.random_mode_for(BroadcastContext::Combat(7)),
+            )
+            .unwrap(),
+            first_combat
+        );
+        assert_eq!(
+            render_configured_message_with_random_mode(
+                &combat_config,
+                &report_snapshot,
+                states.random_mode_for(BroadcastContext::RoundReport(7)),
+            )
+            .unwrap(),
+            first_report
+        );
+
+        let next_stage = states.random_mode_for(BroadcastContext::Combat(8));
+        assert_eq!(states.stages.len(), 1);
+        let crate::template::RandomMode::Stage(next_stage) = next_stage else {
+            unreachable!();
+        };
+        assert_eq!(next_stage.cached_choice_count(), 0);
     }
 
     #[test]

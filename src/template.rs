@@ -43,6 +43,10 @@ impl StageRandomState {
 pub(crate) fn engine(random_mode: RandomMode) -> Handlebars<'static> {
     let mut handlebars = Handlebars::new();
     handlebars.set_strict_mode(true);
+    // Templates are rendered as plain text for VRChat's OSC chatbox, not as
+    // HTML. Preserve characters such as `&`, `<`, quotes, and `=` in dynamic
+    // values instead of emitting HTML entities like `&amp;`.
+    handlebars.register_escape_fn(handlebars::no_escape);
     handlebars.register_helper("random", Box::new(RandomHelper { random_mode }));
     handlebars
 }
@@ -142,6 +146,17 @@ mod tests {
                 .render_template("{{random \"one\" \"two\"}}", &json!({}))
                 .unwrap(),
             "one"
+        );
+    }
+
+    #[test]
+    fn variables_are_rendered_as_plain_text_without_html_escaping() {
+        let value = "A & B <mix> \"live\" 'edit' = `remix`";
+        assert_eq!(
+            engine(RandomMode::First)
+                .render_template("{{value}}", &json!({ "value": value }))
+                .unwrap(),
+            value
         );
     }
 

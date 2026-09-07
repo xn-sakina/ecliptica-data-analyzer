@@ -858,10 +858,11 @@ mod tests {
         );
 
         session.reason = AwayReason::Custom;
-        session.custom_message = "Tea break · {{time}} · {{time}}".to_owned();
+        session.custom_message =
+            "Tea & snacks <soon> · \"back\" = `{{time}}` · {{time}}".to_owned();
         assert_eq!(
             render_away_message(&session, crate::i18n::Language::Chinese, started_at),
-            "Tea break · 01:00 · 01:00"
+            "Tea & snacks <soon> · \"back\" = `01:00` · 01:00"
         );
 
         session.custom_message =
@@ -1017,6 +1018,26 @@ mod tests {
         };
         assert_eq!(render_message(template, &playing).unwrap(), "Song - Artist");
         assert!(crate::config::validate_template(template, crate::i18n::Language::English).is_ok());
+    }
+
+    #[test]
+    fn all_free_text_template_variables_preserve_plain_text_characters() {
+        let snapshot = GameSnapshot {
+            music_title: "A & B".to_owned(),
+            music_artist: "Artist <Live>".to_owned(),
+            boss: Some("Boss \"Prime\"".to_owned()),
+            boss_lock: Some("Player's = `name`".to_owned()),
+            ..GameSnapshot::default()
+        };
+
+        assert_eq!(
+            render_message(
+                "{{music_title}} | {{music_artist}} | {{boss}} | {{boss_lock}}",
+                &snapshot,
+            )
+            .unwrap(),
+            "A & B | Artist <Live> | Boss \"Prime\" | Player's = `name`"
+        );
     }
 
     #[test]
@@ -1604,6 +1625,26 @@ mod tests {
                 OscType::Bool(false),
             ]
         );
+    }
+
+    #[test]
+    fn osc_packet_preserves_plain_text_characters() {
+        let receiver = UdpSocket::bind("127.0.0.1:0").unwrap();
+        receiver
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
+        let sender = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let text = "A & B <mix> \"live\" 'edit' = `remix`";
+
+        send_chatbox_packet(&sender, &receiver.local_addr().unwrap().to_string(), text).unwrap();
+
+        let mut bytes = [0_u8; 256];
+        let (length, _) = receiver.recv_from(&mut bytes).unwrap();
+        let (_, packet) = rosc::decoder::decode_udp(&bytes[..length]).unwrap();
+        let OscPacket::Message(message) = packet else {
+            panic!("expected a Chatbox message");
+        };
+        assert_eq!(message.args[0], OscType::String(text.to_owned()));
     }
 
     #[test]

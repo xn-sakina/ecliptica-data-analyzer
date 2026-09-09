@@ -36,6 +36,12 @@ const MAX_STEP_CYCLE_SECONDS: i64 = 1_800;
 /// the duration prior is treated as incompatible and receives zero weight.
 const STEP_TIME_PRIOR_REJECTION_DELTA: f64 = 0.025;
 const MAX_STEP_TIME_PRIOR_WEIGHT: f64 = 0.2;
+/// Near-final target used only to calibrate the weak full-run duration prior.
+/// It must not be used to decide whether the next stage is Jim.
+const STEP_TIME_PRIOR_TARGET_PHASE: f64 = 0.995;
+/// Jim starts only when the phase modifier reaches the game's exact final
+/// value. A near-final value can still belong to one last ordinary stage.
+const FINAL_PHASE: f64 = 1.0;
 /// A full run is normally a little over two hours.  Reserve twenty minutes
 /// for Jim and use the remaining time only as a weak prior for the number of
 /// pre-Jim stage transitions.  This is never interpreted as time played since
@@ -526,7 +532,7 @@ fn intercept_for_transitions(transitions: u32) -> f64 {
         for _ in 0..transitions {
             phase = next_estimated_phase(phase, middle);
         }
-        if phase >= 0.995 {
+        if phase >= STEP_TIME_PRIOR_TARGET_PHASE {
             high = middle;
         } else {
             low = middle;
@@ -562,7 +568,7 @@ fn nearest_step_for_phase(target: f64, intercept: f64) -> u32 {
 
 fn transitions_until_final(mut phase: f64, intercept: f64) -> u32 {
     let mut transitions = 0;
-    while phase < 0.995 && transitions < 24 {
+    while phase < FINAL_PHASE && transitions < 24 {
         phase = next_estimated_phase(phase, intercept);
         transitions += 1;
     }
@@ -1457,10 +1463,10 @@ mod tests {
 
     #[test]
     fn slow_run_can_add_rounds_without_time_prior_erasing_them() {
-        // A rule-compatible lower-intercept path takes 16 ordinary stages and
-        // reaches the Jim preparation lobby after 150 minutes. The denser
-        // phase trajectory, rather than the nominal 135-minute duration, is
-        // the evidence that the run contains more rounds.
+        // A rule-compatible lower-intercept path still has an ordinary stage
+        // left after 16 observed stages. The denser phase trajectory, rather
+        // than the nominal 135-minute duration, is the evidence that the run
+        // contains more rounds.
         let phases = [
             0.0,
             0.042_058_558,
@@ -1485,24 +1491,24 @@ mod tests {
             full_run.observe_stage(index as i64 * 600, Some(phase));
             if index == 14 {
                 let estimate = full_run.estimate().expect("estimate before Jim");
-                assert_eq!((estimate.current, estimate.until_boss), (15, 1));
+                assert_eq!((estimate.current, estimate.until_boss), (15, 2));
             }
         }
-        let estimate = full_run.estimate().expect("estimate in Jim lobby");
-        assert_eq!((estimate.current, estimate.until_boss), (16, 0));
+        let estimate = full_run.estimate().expect("estimate near the end");
+        assert_eq!((estimate.current, estimate.until_boss), (16, 1));
 
         let mut late_join = StepEstimator::default();
         late_join.observe_stage(0, Some(phases[12]));
         late_join.observe_stage(600, Some(phases[13]));
         late_join.observe_stage(1_200, Some(phases[14]));
         let estimate = late_join.estimate().expect("late join estimate before Jim");
-        assert_eq!((estimate.current, estimate.until_boss), (15, 1));
+        assert_eq!((estimate.current, estimate.until_boss), (15, 2));
 
         late_join.observe_stage(1_800, Some(phases[15]));
         let estimate = late_join
             .estimate()
-            .expect("late join estimate in Jim lobby");
-        assert_eq!((estimate.current, estimate.until_boss), (16, 0));
+            .expect("late join estimate near the end");
+        assert_eq!((estimate.current, estimate.until_boss), (16, 1));
     }
 
     #[test]
@@ -1550,6 +1556,40 @@ mod tests {
         let final_lobby = estimator.estimate().expect("complete path stays converged");
         assert_eq!(final_lobby.current, 12);
         assert_eq!(final_lobby.until_boss, 0);
+    }
+
+    #[test]
+    fn near_final_phase_keeps_the_last_ordinary_round_before_jim() {
+        // Complete Stage sequence from the final run in the 2026-09-10 log.
+        // The game started another ordinary stage at 0.9994387 after the
+        // 0.887341 round, so treating a near-final phase as 1.0 is one round
+        // too early.
+        let observations = [
+            (0, 0.0),
+            (523, 0.057_484_78),
+            (1_242, 0.114_897_2),
+            (1_817, 0.177_491_4),
+            (2_696, 0.236_487_4),
+            (3_439, 0.314_772_5),
+            (3_975, 0.401_948_2),
+            (4_508, 0.493_524_4),
+            (5_005, 0.583_323_2),
+            (5_518, 0.680_175_8),
+            (6_140, 0.777_568_8),
+            (6_720, 0.887_341),
+            (7_225, 0.999_438_7),
+        ];
+        let mut estimator = StepEstimator::default();
+        for (second, phase) in observations {
+            estimator.observe_stage(second, Some(phase));
+            if phase == 0.887_341 {
+                let estimate = estimator.estimate().expect("complete path converges");
+                assert_eq!((estimate.current, estimate.until_boss), (12, 1));
+            }
+        }
+
+        let estimate = estimator.estimate().expect("complete path stays converged");
+        assert_eq!((estimate.current, estimate.until_boss), (13, 0));
     }
 
     fn timestamp(second: u32) -> i64 {

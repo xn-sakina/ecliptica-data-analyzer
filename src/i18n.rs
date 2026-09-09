@@ -107,6 +107,12 @@ pub mod text {
     );
     pair!(SYSTEM_LOGS, "System Logs", "系统日志");
     pair!(CONFIG_EXPORT, "Config Export", "配置导出");
+    pair!(ABOUT, "About", "关于");
+    pair!(
+        LEARNING_RESEARCH_ONLY,
+        "This software is intended solely for learning and research.",
+        "本软件仅用于学习和研究使用。"
+    );
     pair!(IMPORT_CONFIG, "Import config", "导入配置");
     pair!(EXPORT_CONFIG, "Export config", "导出配置");
     pair!(CONFIG_FILE_FILTER, "Ecliptica config", "Ecliptica 配置");

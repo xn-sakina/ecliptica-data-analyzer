@@ -95,6 +95,7 @@ const ALERT_SOUND_LABEL_WIDTH_ENGLISH: f32 = 200.0;
 const ALERT_SOUND_LABEL_WIDTH_CHINESE: f32 = 124.0;
 const HEART_RATE_GUIDE_URL: &str =
     "https://github.com/xn-sakina/ecliptica-data-analyzer/blob/main/resources/heart-rate/README.md";
+const PROJECT_GITHUB_URL: &str = "https://github.com/xn-sakina/ecliptica-data-analyzer";
 const SETTINGS_TEXT: egui::Color32 = egui::Color32::from_rgb(246, 243, 255);
 const SETTINGS_HEADING: egui::Color32 = egui::Color32::from_rgb(225, 218, 255);
 const SETTINGS_TEXT_SECONDARY: egui::Color32 = egui::Color32::from_rgb(190, 183, 204);
@@ -244,6 +245,7 @@ enum SettingsPage {
     Overlay,
     Logs,
     ConfigExport,
+    About,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -955,6 +957,13 @@ impl AnalyzerApp {
                     text::CONFIG_EXPORT.get(language),
                     LucideIcon::DatabaseBackup,
                 );
+                nav_button(
+                    &mut body_ui,
+                    &mut self.page,
+                    SettingsPage::About,
+                    text::ABOUT.get(language),
+                    LucideIcon::Info,
+                );
             });
 
         egui::TopBottomPanel::top("app-header")
@@ -1025,6 +1034,7 @@ impl AnalyzerApp {
                                 SettingsPage::Overlay => self.overlay_page(ui),
                                 SettingsPage::Logs => self.logs_page(ui),
                                 SettingsPage::ConfigExport => self.config_export_page(ui),
+                                SettingsPage::About => self.about_page(ui),
                             });
                     });
             });
@@ -2249,6 +2259,27 @@ impl AnalyzerApp {
         if export_clicked {
             self.open_config_export_dialog(ui.ctx());
         }
+    }
+
+    fn about_page(&mut self, ui: &mut egui::Ui) {
+        let language = self.draft.language;
+        page_heading(ui, text::ABOUT.get(language));
+
+        section_card(ui, APP_NAME, None, |ui| {
+            Typography::new(text::LEARNING_RESEARCH_ONLY.get(language))
+                .color(SETTINGS_TEXT_SECONDARY)
+                .wrap()
+                .show(ui);
+            ui.add_space(UI_SPACE_3);
+            if ShadcnButton::new("GitHub")
+                .icon(LucideIcon::Github)
+                .variant(ButtonVariant::Outline)
+                .show(ui)
+                .clicked()
+            {
+                open_project_repository(ui.ctx());
+            }
+        });
     }
 
     fn open_config_import_dialog(&mut self, ctx: &egui::Context) {
@@ -4464,7 +4495,15 @@ fn music_auxiliary_panel(
 }
 
 fn open_heart_rate_guide(context: &egui::Context) {
-    context.open_url(egui::OpenUrl::new_tab(HEART_RATE_GUIDE_URL));
+    open_url_in_browser(context, HEART_RATE_GUIDE_URL);
+}
+
+fn open_project_repository(context: &egui::Context) {
+    open_url_in_browser(context, PROJECT_GITHUB_URL);
+}
+
+fn open_url_in_browser(context: &egui::Context, url: &str) {
+    context.open_url(egui::OpenUrl::new_tab(url));
 }
 
 fn template_help_button(ui: &mut egui::Ui, template_help_open: &mut bool, language: Language) {
@@ -6655,6 +6694,22 @@ mod tests {
                 command,
                 egui::OutputCommand::OpenUrl(open_url)
                     if open_url.url == HEART_RATE_GUIDE_URL && open_url.new_tab
+            )
+        }));
+    }
+
+    #[test]
+    fn project_repository_opens_in_a_new_browser_tab() {
+        let context = egui::Context::default();
+        let output = context.run(egui::RawInput::default(), |context| {
+            open_project_repository(context);
+        });
+
+        assert!(output.platform_output.commands.iter().any(|command| {
+            matches!(
+                command,
+                egui::OutputCommand::OpenUrl(open_url)
+                    if open_url.url == PROJECT_GITHUB_URL && open_url.new_tab
             )
         }));
     }

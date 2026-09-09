@@ -17,7 +17,7 @@ Download the Windows executable and open it. That is it. There is no installer, 
 
 ## Preview
 
-<img src="assets/readme-preview.png" alt="Ecliptica Data Analyzer dashboard and in game overlay preview" width="90%">
+<img src="assets/readme-preview-v2.png" alt="Ecliptica Data Analyzer dashboard and in-game overlay preview" width="100%">
 
 ## What it shows
 

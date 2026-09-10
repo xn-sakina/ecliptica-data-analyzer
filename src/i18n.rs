@@ -385,10 +385,14 @@ pub mod text {
     pair!(PRESET_FALLBACK, "Preset {index}", "预设 {index}");
     pair!(MESSAGE_PRESET_OUTPUT, "DPS", "输出职");
     pair!(MESSAGE_PRESET_TANK, "Tank", "承伤职");
-    pair!(MESSAGE_PRESET_BACKUP, "Backup", "备用");
+    pair!(MESSAGE_PRESET_BACKUP, "Backup 1", "备用1");
+    pair!(MESSAGE_PRESET_BACKUP_2, "Backup 2", "备用2");
+    pair!(MESSAGE_PRESET_BACKUP_3, "Backup 3", "备用3");
     pair!(REPORT_PRESET_OUTPUT, "DPS Report", "输出战报");
     pair!(REPORT_PRESET_TANK, "Tank Report", "承伤战报");
-    pair!(REPORT_PRESET_BACKUP, "Backup Report", "备用战报");
+    pair!(REPORT_PRESET_BACKUP, "Backup 1", "备用1");
+    pair!(REPORT_PRESET_BACKUP_2, "Backup 2", "备用2");
+    pair!(REPORT_PRESET_BACKUP_3, "Backup 3", "备用3");
     pair!(
         RESET_SELECTED_PRESET,
         "Restore default content",
@@ -1443,6 +1447,13 @@ pub const TEMPLATE_SYNTAX_EXAMPLES: &[SyntaxCopy] = &[
         code: p(
             "{{random \"Text A\" \"Text B\" \"Text C\"}}",
             "{{random \"文本 A\" \"文本 B\" \"文本 C\"}}",
+        ),
+    },
+    SyntaxCopy {
+        title: p("Condition-driven cooldown", "条件触发冷却"),
+        code: p(
+            "{{#if (cooldown_ready \"ability\" 20 (and has_latest_dps (gt latest_dps 100)))}}Ready{{else}}Cooling down{{/if}}",
+            "{{#if (cooldown_ready \"ability\" 20 (and has_latest_dps (gt latest_dps 100)))}}技能可用{{else}}冷却中{{/if}}",
         ),
     },
 ];

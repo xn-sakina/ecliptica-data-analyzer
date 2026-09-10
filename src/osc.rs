@@ -40,6 +40,7 @@ fn run(shared: SharedState) {
     let mut rate_limiter = ChatboxRateLimiter::default();
     let mut published = PublishedChatboxState::default();
     let mut broadcast_random = BroadcastRandomStates::default();
+    let template_runtime = crate::template::TemplateRuntimeState::default();
     let mut last_error = String::new();
     let mut away_lifecycle = AwayLifecycle::default();
     let mut away_transition_pending = false;
@@ -57,6 +58,29 @@ fn run(shared: SharedState) {
         let away_session = shared.away_session();
         let away_lifecycle_transition =
             away_lifecycle.observe(away_session.as_ref().map(|session| session.id));
+        let template_state_changed = if snapshot.in_ecliptica
+            && snapshot.status == DataStatus::Live
+            && context.is_some()
+            && selected_template(&config, &snapshot).contains("cooldown_ready")
+        {
+            let revision = template_runtime.revision();
+            // Observe stateful helpers independently from the Chatbox send
+            // interval so a short trigger cannot be missed and a cooldown
+            // deadline can wake the sender promptly.
+            let _ = render_configured_message_with_runtime(
+                &config,
+                &snapshot,
+                broadcast_random.random_mode_for(context.unwrap()),
+                template_runtime.clone(),
+                now,
+            );
+            template_runtime.revision() != revision
+        } else {
+            if !snapshot.in_ecliptica {
+                template_runtime.clear();
+            }
+            false
+        };
 
         if let Some(away_session) = away_session {
             queue.clear();
@@ -202,7 +226,7 @@ fn run(shared: SharedState) {
         let context_changed = schedule.observe_broadcast_context(context, now);
         let wasd_changed = schedule.observe_no_wasd_condition(snapshot.no_wasd_for_10s, now);
 
-        if config_changed || context_changed || wasd_changed {
+        if config_changed || context_changed || wasd_changed || template_state_changed {
             // Anything already pending was rendered for an older presentation
             // state. A one-slot coalescing queue intentionally discards it.
             queue.clear();
@@ -218,9 +242,12 @@ fn run(shared: SharedState) {
             continue;
         }
 
-        if let Some(priority) =
-            edge_priority(context_changed, wasd_changed, snapshot.no_wasd_for_10s)
-        {
+        if let Some(priority) = edge_priority(
+            context_changed,
+            wasd_changed,
+            snapshot.no_wasd_for_10s,
+            template_state_changed,
+        ) {
             queue.enqueue(context.unwrap(), priority);
         } else if schedule.is_due(now) {
             queue.enqueue(context.unwrap(), SendPriority::Regular);
@@ -251,10 +278,12 @@ fn run(shared: SharedState) {
                 continue;
             }
 
-            let update = render_configured_message_with_random_mode(
+            let update = render_configured_message_with_runtime(
                 &latest_config,
                 &latest_snapshot,
                 broadcast_random.random_mode_for(pending.context),
+                template_runtime.clone(),
+                Instant::now(),
             )
             .map(|message| published.next_update(message, pending.context, latest_config.language));
             let result = update.and_then(|update| {
@@ -410,8 +439,9 @@ fn edge_priority(
     context_changed: bool,
     wasd_changed: bool,
     no_wasd_for_10s: bool,
+    template_state_changed: bool,
 ) -> Option<SendPriority> {
-    if context_changed || (wasd_changed && !no_wasd_for_10s) {
+    if context_changed || template_state_changed || (wasd_changed && !no_wasd_for_10s) {
         Some(SendPriority::StateChange)
     } else if wasd_changed {
         // Becoming idle may wait in the coalescing queue like a regular
@@ -570,6 +600,7 @@ pub fn render_configured_message(
     )
 }
 
+#[cfg(test)]
 fn render_configured_message_with_random_mode(
     config: &AppConfig,
     snapshot: &GameSnapshot,
@@ -580,6 +611,25 @@ fn render_configured_message_with_random_mode(
         snapshot,
         &config.display_name,
         random_mode,
+    )
+}
+
+fn render_configured_message_with_runtime(
+    config: &AppConfig,
+    snapshot: &GameSnapshot,
+    random_mode: crate::template::RandomMode,
+    template_runtime: crate::template::TemplateRuntimeState,
+    now: Instant,
+) -> anyhow::Result<String> {
+    render_message_with_display_name_random_mode_and_cooldowns(
+        selected_template(config, snapshot),
+        snapshot,
+        &config.display_name,
+        random_mode,
+        crate::template::CooldownMode::Live {
+            state: template_runtime,
+            now,
+        },
     )
 }
 
@@ -683,7 +733,23 @@ fn render_message_with_display_name_and_random_mode(
     display_name: &str,
     random_mode: crate::template::RandomMode,
 ) -> anyhow::Result<String> {
-    let mut handlebars = crate::template::engine(random_mode);
+    render_message_with_display_name_random_mode_and_cooldowns(
+        template,
+        snapshot,
+        display_name,
+        random_mode,
+        crate::template::CooldownMode::Stateless,
+    )
+}
+
+fn render_message_with_display_name_random_mode_and_cooldowns(
+    template: &str,
+    snapshot: &GameSnapshot,
+    display_name: &str,
+    random_mode: crate::template::RandomMode,
+    cooldown_mode: crate::template::CooldownMode,
+) -> anyhow::Result<String> {
+    let mut handlebars = crate::template::engine_with_cooldowns(random_mode, cooldown_mode);
     handlebars.register_template_string("message", template)?;
     let report = snapshot.round_report.as_ref();
     let report_has_output = report.is_some_and(|value| value.has_output_data);
@@ -1091,6 +1157,19 @@ mod tests {
             render_message(template, &snapshot).unwrap(),
             "NO LOCK|HURT|ALERT|DPS: 42|READY"
         );
+        assert!(crate::config::validate_template(template, crate::i18n::Language::English).is_ok());
+    }
+
+    #[test]
+    fn cooldown_helper_accepts_a_dps_threshold_condition() {
+        let snapshot = GameSnapshot {
+            latest_dps: 128,
+            has_damage_data: true,
+            ..GameSnapshot::default()
+        };
+        let template = "{{#if (cooldown_ready \"shield_boom\" 20 (and has_latest_dps (gt latest_dps 100)))}}READY{{else}}COOLING{{/if}}";
+
+        assert_eq!(render_message(template, &snapshot).unwrap(), "COOLING");
         assert!(crate::config::validate_template(template, crate::i18n::Language::English).is_ok());
     }
 
@@ -1874,15 +1953,19 @@ mod tests {
     #[test]
     fn wasd_activation_keeps_the_reserved_slot_for_clearing_idle_text() {
         assert_eq!(
-            edge_priority(false, true, true),
+            edge_priority(false, true, true, false),
             Some(SendPriority::Regular)
         );
         assert_eq!(
-            edge_priority(false, true, false),
+            edge_priority(false, true, false, false),
             Some(SendPriority::StateChange)
         );
         assert_eq!(
-            edge_priority(true, false, false),
+            edge_priority(true, false, false, false),
+            Some(SendPriority::StateChange)
+        );
+        assert_eq!(
+            edge_priority(false, false, false, true),
             Some(SendPriority::StateChange)
         );
     }

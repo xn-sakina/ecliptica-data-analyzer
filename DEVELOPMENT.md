@@ -82,6 +82,10 @@ Message templates use Handlebars. Optional sections can use an availability flag
 `{{random "Text A" "Text B" "Text C"}}` selects one supplied string using the
 operating system's cryptographically secure random source. The choice stays fixed for the
 current combat or report stage and is drawn again when the broadcast stage changes.
+`{{cooldown_ready "ability" 20 trigger}}` starts a named 20-second cooldown
+when `trigger` changes from false to true. It stays false during the cooldown and
+becomes true at the deadline. Named cooldowns persist across round transitions and
+reset after leaving Ecliptica; template validation and previews never mutate live state.
 String values such as `boss_lock` and `boss` are empty when unavailable, so they
 can be used directly in conditions. `is_self_boss_locked`
 is true only while the configured player is the active Boss lock target; without a
@@ -110,10 +114,11 @@ Lock uses a short rising two-note cue, while unlock uses a sustained low release
 chord; both now have a stronger base gain across the existing 0–1 volume range.
 
 The normal combat message and completed-round report have independent templates and
-share the same variables and condition syntax. Each template type has three persistent
-preset slots. Switching slots preserves the current edit, and saving keeps all six
-texts plus both selected slots for the next launch. The third Backup message and report
-slots intentionally start with empty content while retaining their localized names.
+share the same variables and condition syntax. Each template type has five persistent
+preset slots. Switching slots preserves the current edit, and saving keeps all ten
+texts plus both selected slots for the next launch. The Backup 1, Backup 2, and Backup 3
+message and report slots intentionally start with empty content while retaining their
+localized names.
 Down-state detection and dedicated
 first-down/second-down messages are intentionally unsupported because Ecliptica logs
 do not expose a reliable event across sessions.

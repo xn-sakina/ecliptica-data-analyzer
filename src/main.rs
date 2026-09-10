@@ -6532,7 +6532,13 @@ mod tests {
                 &config.round_report_template_preset_names,
                 Language::English
             ),
-            ["DPS Report", "Tank Report", "Backup Report"]
+            [
+                "DPS Report",
+                "Tank Report",
+                "Backup 1",
+                "Backup 2",
+                "Backup 3"
+            ]
         );
     }
 

@@ -10,17 +10,17 @@ use std::fs::File;
 
 use anyhow::{Context, Result, bail};
 use directories::ProjectDirs;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use tempfile::NamedTempFile;
 
 use crate::APP_ID;
 use crate::i18n::Language;
 
-pub const CONFIG_VERSION: u32 = 25;
+pub const CONFIG_VERSION: u32 = 27;
 pub const CONFIG_EXPORT_FORMAT: &str = "ecliptica-config-export";
 pub const CONFIG_EXPORT_FORMAT_VERSION: u32 = 1;
-pub const MESSAGE_TEMPLATE_PRESET_COUNT: usize = 3;
-pub const ROUND_REPORT_TEMPLATE_PRESET_COUNT: usize = 3;
+pub const MESSAGE_TEMPLATE_PRESET_COUNT: usize = 5;
+pub const ROUND_REPORT_TEMPLATE_PRESET_COUNT: usize = 5;
 pub const TEMPLATE_PRESET_NAME_MAX_CHARS: usize = 24;
 const VERSION_5_DEFAULT_TEMPLATE: &str = "{{#if has_latest_dps}}\nDPS: {{latest_dps}}\n30S DPS: {{ave_dps}}\nROUND DPS: {{round_ave_dps}}\n{{/if}}\n{{#if has_max_dps}}\nMAX DPS: {{max_dps}}\n{{/if}}\n{{#if has_boss_lock}}\nBOSS LOCK: {{boss_lock}}\n{{/if}}";
 const VERSION_5_DEFAULT_ROUND_REPORT_TEMPLATE: &str = "【回合战报】\n用时 {{round_duration}}｜总输出 {{round_total_damage}}\n峰值 {{round_max_dps}} DPS｜平均 {{round_report_ave_dps}} DPS";
@@ -103,11 +103,15 @@ pub struct AppConfig {
     pub language: Language,
     pub send_interval: SendInterval,
     pub message_template: String,
+    #[serde(deserialize_with = "deserialize_template_presets")]
     pub message_template_presets: [String; MESSAGE_TEMPLATE_PRESET_COUNT],
+    #[serde(deserialize_with = "deserialize_template_presets")]
     pub message_template_preset_names: [String; MESSAGE_TEMPLATE_PRESET_COUNT],
     pub active_message_template_preset: usize,
     pub round_report_template: String,
+    #[serde(deserialize_with = "deserialize_template_presets")]
     pub round_report_template_presets: [String; ROUND_REPORT_TEMPLATE_PRESET_COUNT],
+    #[serde(deserialize_with = "deserialize_template_presets")]
     pub round_report_template_preset_names: [String; ROUND_REPORT_TEMPLATE_PRESET_COUNT],
     pub active_round_report_template_preset: usize,
     pub display_name: String,
@@ -153,10 +157,14 @@ struct LegacyConfigExportDocument {
 struct ExportedSettings {
     language: Language,
     send_interval: SendInterval,
+    #[serde(deserialize_with = "deserialize_template_presets")]
     message_template_presets: [String; MESSAGE_TEMPLATE_PRESET_COUNT],
+    #[serde(deserialize_with = "deserialize_template_presets")]
     message_template_preset_names: [String; MESSAGE_TEMPLATE_PRESET_COUNT],
     active_message_template_preset: usize,
+    #[serde(deserialize_with = "deserialize_template_presets")]
     round_report_template_presets: [String; ROUND_REPORT_TEMPLATE_PRESET_COUNT],
+    #[serde(deserialize_with = "deserialize_template_presets")]
     round_report_template_preset_names: [String; ROUND_REPORT_TEMPLATE_PRESET_COUNT],
     active_round_report_template_preset: usize,
     display_name: String,
@@ -171,6 +179,23 @@ struct ExportedSettings {
     heart_rate_enabled: bool,
     osc_address: String,
     away_custom_message: String,
+}
+
+fn deserialize_template_presets<'de, D>(
+    deserializer: D,
+) -> std::result::Result<[String; MESSAGE_TEMPLATE_PRESET_COUNT], D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let values = Vec::<String>::deserialize(deserializer)?;
+    if values.len() > MESSAGE_TEMPLATE_PRESET_COUNT {
+        return Err(D::Error::custom(format!(
+            "expected at most {MESSAGE_TEMPLATE_PRESET_COUNT} template presets, got {}",
+            values.len()
+        )));
+    }
+    let mut values = values.into_iter();
+    Ok(std::array::from_fn(|_| values.next().unwrap_or_default()))
 }
 
 impl ExportedSettings {
@@ -601,6 +626,8 @@ impl AppConfig {
                     DEFAULT_TEMPLATE,
                     DEFAULT_TEMPLATE_PRESET_2,
                     DEFAULT_TEMPLATE,
+                    "",
+                    "",
                 ],
             );
             upgrade_version_13_builtin_presets(
@@ -610,6 +637,8 @@ impl AppConfig {
                     DEFAULT_ROUND_REPORT_TEMPLATE,
                     DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2,
                     DEFAULT_ROUND_REPORT_TEMPLATE,
+                    "",
+                    "",
                 ],
             );
             if let Some(template) = self
@@ -635,6 +664,8 @@ impl AppConfig {
                     DEFAULT_ROUND_REPORT_TEMPLATE,
                     DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2,
                     DEFAULT_ROUND_REPORT_TEMPLATE,
+                    "",
+                    "",
                 ],
             );
             if let Some(template) = self
@@ -832,6 +863,47 @@ impl AppConfig {
                 self.round_report_template.clone_from(template);
             }
         }
+        if self.version < 26 {
+            let message_names = default_message_template_preset_names(self.language);
+            let report_names = default_round_report_template_preset_names(self.language);
+            for (name, default_name) in self.message_template_preset_names[3..]
+                .iter_mut()
+                .zip(&message_names[3..])
+            {
+                if name.trim().is_empty() {
+                    name.clone_from(default_name);
+                }
+            }
+            for (name, default_name) in self.round_report_template_preset_names[3..]
+                .iter_mut()
+                .zip(&report_names[3..])
+            {
+                if name.trim().is_empty() {
+                    name.clone_from(default_name);
+                }
+            }
+        }
+        if self.version < 27 {
+            let old_chinese_messages = version_26_backup_preset_names(Language::Chinese, false);
+            let old_english_messages = version_26_backup_preset_names(Language::English, false);
+            let old_chinese_reports = version_26_backup_preset_names(Language::Chinese, true);
+            let old_english_reports = version_26_backup_preset_names(Language::English, true);
+            let message_names = default_message_template_preset_names(self.language);
+            let report_names = default_round_report_template_preset_names(self.language);
+            for offset in 0..3 {
+                let index = offset + 2;
+                localize_builtin_value(
+                    &mut self.message_template_preset_names[index],
+                    [&old_chinese_messages[offset], &old_english_messages[offset]],
+                    &message_names[index],
+                );
+                localize_builtin_value(
+                    &mut self.round_report_template_preset_names[index],
+                    [&old_chinese_reports[offset], &old_english_reports[offset]],
+                    &report_names[index],
+                );
+            }
+        }
         self.version = CONFIG_VERSION;
         self.alert_volume = self.alert_volume.clamp(0.0, 1.0);
         if !self.overlay_scale.is_finite() {
@@ -880,7 +952,13 @@ fn default_message_template_presets(language: Language) -> [String; MESSAGE_TEMP
         Language::English => (DEFAULT_TEMPLATE_ENGLISH, DEFAULT_TEMPLATE_PRESET_2_ENGLISH),
         Language::Chinese => (DEFAULT_TEMPLATE, DEFAULT_TEMPLATE_PRESET_2),
     };
-    [first.to_owned(), second.to_owned(), String::new()]
+    [
+        first.to_owned(),
+        second.to_owned(),
+        String::new(),
+        String::new(),
+        String::new(),
+    ]
 }
 
 fn default_round_report_template_presets(
@@ -896,7 +974,13 @@ fn default_round_report_template_presets(
             DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2,
         ),
     };
-    [first.to_owned(), second.to_owned(), String::new()]
+    [
+        first.to_owned(),
+        second.to_owned(),
+        String::new(),
+        String::new(),
+        String::new(),
+    ]
 }
 
 fn upgrade_version_13_builtin_presets<const N: usize>(
@@ -924,6 +1008,12 @@ fn default_message_template_preset_names(
         crate::i18n::text::MESSAGE_PRESET_BACKUP
             .get(language)
             .to_owned(),
+        crate::i18n::text::MESSAGE_PRESET_BACKUP_2
+            .get(language)
+            .to_owned(),
+        crate::i18n::text::MESSAGE_PRESET_BACKUP_3
+            .get(language)
+            .to_owned(),
     ]
 }
 
@@ -940,7 +1030,23 @@ fn default_round_report_template_preset_names(
         crate::i18n::text::REPORT_PRESET_BACKUP
             .get(language)
             .to_owned(),
+        crate::i18n::text::REPORT_PRESET_BACKUP_2
+            .get(language)
+            .to_owned(),
+        crate::i18n::text::REPORT_PRESET_BACKUP_3
+            .get(language)
+            .to_owned(),
     ]
+}
+
+fn version_26_backup_preset_names(language: Language, report: bool) -> [String; 3] {
+    match (language, report) {
+        (Language::Chinese, false) => ["备用", "预设 4", "预设 5"],
+        (Language::English, false) => ["Backup", "Preset 4", "Preset 5"],
+        (Language::Chinese, true) => ["备用战报", "预设 4", "预设 5"],
+        (Language::English, true) => ["Backup Report", "Preset 4", "Preset 5"],
+    }
+    .map(str::to_owned)
 }
 
 fn legacy_template_preset_names(language: Language) -> [String; MESSAGE_TEMPLATE_PRESET_COUNT] {
@@ -1635,6 +1741,8 @@ mod tests {
                 include_str!("../resources/presets/zh/combat1.txt"),
                 include_str!("../resources/presets/zh/combat2.txt"),
                 "",
+                "",
+                "",
             ]
         );
         assert_eq!(
@@ -1643,10 +1751,90 @@ mod tests {
                 include_str!("../resources/presets/zh/report1.txt"),
                 include_str!("../resources/presets/zh/report2.txt"),
                 "",
+                "",
+                "",
             ]
         );
         assert_eq!(config.alert_volume, 1.0);
         config.validate().unwrap();
+    }
+
+    #[test]
+    fn version_twenty_five_three_slot_config_expands_to_five_slots() {
+        let mut value = serde_json::to_value(AppConfig::default()).unwrap();
+        let object = value.as_object_mut().unwrap();
+        object.insert("version".to_owned(), serde_json::json!(25));
+        object.insert(
+            "message_template_presets".to_owned(),
+            serde_json::json!(["ONE", "TWO", "THREE"]),
+        );
+        object.insert(
+            "message_template_preset_names".to_owned(),
+            serde_json::json!(["一", "二", "三"]),
+        );
+        object.insert(
+            "round_report_template_presets".to_owned(),
+            serde_json::json!(["REPORT ONE", "REPORT TWO", "REPORT THREE"]),
+        );
+        object.insert(
+            "round_report_template_preset_names".to_owned(),
+            serde_json::json!(["战报一", "战报二", "战报三"]),
+        );
+
+        let migrated = serde_json::from_value::<AppConfig>(value)
+            .unwrap()
+            .migrated();
+
+        assert_eq!(migrated.version, CONFIG_VERSION);
+        assert_eq!(
+            migrated.message_template_presets,
+            ["ONE", "TWO", "THREE", "", ""]
+        );
+        assert_eq!(
+            migrated.message_template_preset_names,
+            ["一", "二", "三", "备用2", "备用3"]
+        );
+        assert_eq!(
+            migrated.round_report_template_presets,
+            ["REPORT ONE", "REPORT TWO", "REPORT THREE", "", ""]
+        );
+        assert_eq!(
+            migrated.round_report_template_preset_names,
+            ["战报一", "战报二", "战报三", "备用2", "备用3"]
+        );
+    }
+
+    #[test]
+    fn version_twenty_six_default_backup_names_upgrade_without_overwriting_custom_names() {
+        let migrated = AppConfig {
+            version: 26,
+            language: Language::Chinese,
+            message_template_preset_names: [
+                "输出职".to_owned(),
+                "承伤职".to_owned(),
+                "备用".to_owned(),
+                "我的玩法".to_owned(),
+                "预设 5".to_owned(),
+            ],
+            round_report_template_preset_names: [
+                "输出战报".to_owned(),
+                "承伤战报".to_owned(),
+                "备用战报".to_owned(),
+                "预设 4".to_owned(),
+                "自定义战报".to_owned(),
+            ],
+            ..AppConfig::default()
+        }
+        .migrated();
+
+        assert_eq!(
+            migrated.message_template_preset_names,
+            ["输出职", "承伤职", "备用1", "我的玩法", "备用3"]
+        );
+        assert_eq!(
+            migrated.round_report_template_preset_names,
+            ["输出战报", "承伤战报", "备用1", "备用2", "自定义战报"]
+        );
     }
 
     #[test]
@@ -1707,19 +1895,25 @@ mod tests {
 
         assert_eq!(
             chinese.message_template_preset_names,
-            ["输出职", "承伤职", "备用"]
+            ["输出职", "承伤职", "备用1", "备用2", "备用3"]
         );
         assert_eq!(
             chinese.round_report_template_preset_names,
-            ["输出战报", "承伤战报", "备用战报"]
+            ["输出战报", "承伤战报", "备用1", "备用2", "备用3"]
         );
         assert_eq!(
             english.message_template_preset_names,
-            ["DPS", "Tank", "Backup"]
+            ["DPS", "Tank", "Backup 1", "Backup 2", "Backup 3"]
         );
         assert_eq!(
             english.round_report_template_preset_names,
-            ["DPS Report", "Tank Report", "Backup Report"]
+            [
+                "DPS Report",
+                "Tank Report",
+                "Backup 1",
+                "Backup 2",
+                "Backup 3"
+            ]
         );
     }
 
@@ -1745,7 +1939,7 @@ mod tests {
         assert_eq!(localized.message_template_presets[2], " ");
         assert_eq!(
             localized.message_template_preset_names,
-            ["DPS", "我的预设", "Backup"]
+            ["DPS", "我的预设", "Backup 1", "Backup 2", "Backup 3"]
         );
         assert_eq!(localized.round_report_template_presets[1], "CUSTOM REPORT");
     }
@@ -2040,8 +2234,13 @@ mod tests {
     #[test]
     fn selected_preset_and_all_template_texts_survive_serialization() {
         let mut config = AppConfig::default();
-        config.message_template_preset_names =
-            ["日常".to_owned(), "爆发".to_owned(), "辅助".to_owned()];
+        config.message_template_preset_names = [
+            "日常".to_owned(),
+            "爆发".to_owned(),
+            "辅助".to_owned(),
+            "玩法四".to_owned(),
+            "玩法五".to_owned(),
+        ];
         config.message_template = "ONE".to_owned();
         config.select_message_template_preset(1);
         config.message_template = "TWO".to_owned();
@@ -2055,10 +2254,13 @@ mod tests {
 
         assert_eq!(restored.active_message_template_preset, 2);
         assert_eq!(restored.message_template, "THREE");
-        assert_eq!(restored.message_template_presets, ["ONE", "TWO", "THREE"]);
+        assert_eq!(
+            restored.message_template_presets,
+            ["ONE", "TWO", "THREE", "", ""]
+        );
         assert_eq!(
             restored.message_template_preset_names,
-            ["日常", "爆发", "辅助"]
+            ["日常", "爆发", "辅助", "玩法四", "玩法五"]
         );
     }
 
@@ -2117,6 +2319,8 @@ mod tests {
             "简洁战报".to_owned(),
             "详细战报".to_owned(),
             "团队战报".to_owned(),
+            "玩法四".to_owned(),
+            "玩法五".to_owned(),
         ];
         config.round_report_template = "REPORT ONE".to_owned();
         config.select_round_report_template_preset(1);
@@ -2133,11 +2337,11 @@ mod tests {
         assert_eq!(restored.round_report_template, "REPORT THREE");
         assert_eq!(
             restored.round_report_template_presets,
-            ["REPORT ONE", "REPORT TWO", "REPORT THREE"]
+            ["REPORT ONE", "REPORT TWO", "REPORT THREE", "", ""]
         );
         assert_eq!(
             restored.round_report_template_preset_names,
-            ["简洁战报", "详细战报", "团队战报"]
+            ["简洁战报", "详细战报", "团队战报", "玩法四", "玩法五"]
         );
     }
 
@@ -2156,11 +2360,11 @@ mod tests {
         assert_eq!(migrated.version, CONFIG_VERSION);
         assert_eq!(
             migrated.message_template_preset_names,
-            ["输出职", "承伤职", "备用"]
+            ["输出职", "承伤职", "备用1", "备用2", "备用3"]
         );
         assert_eq!(
             migrated.round_report_template_preset_names,
-            ["输出战报", "承伤战报", "备用战报"]
+            ["输出战报", "承伤战报", "备用1", "备用2", "备用3"]
         );
     }
 
@@ -2173,11 +2377,15 @@ mod tests {
                 "预设 1".to_owned(),
                 "我的局内预设".to_owned(),
                 "Preset 3".to_owned(),
+                "预设 4".to_owned(),
+                "Preset 5".to_owned(),
             ],
             round_report_template_preset_names: [
                 "Preset 1".to_owned(),
                 "我的战报预设".to_owned(),
                 "预设 3".to_owned(),
+                "Preset 4".to_owned(),
+                "预设 5".to_owned(),
             ],
             ..AppConfig::default()
         }
@@ -2185,11 +2393,11 @@ mod tests {
 
         assert_eq!(
             migrated.message_template_preset_names,
-            ["输出职", "我的局内预设", "备用"]
+            ["输出职", "我的局内预设", "备用1", "备用2", "备用3"]
         );
         assert_eq!(
             migrated.round_report_template_preset_names,
-            ["输出战报", "我的战报预设", "备用战报"]
+            ["输出战报", "我的战报预设", "备用1", "备用2", "备用3"]
         );
     }
 
@@ -2203,6 +2411,8 @@ mod tests {
                 DEFAULT_TEMPLATE.to_owned(),
                 DEFAULT_TEMPLATE_PRESET_2.to_owned(),
                 DEFAULT_TEMPLATE.to_owned(),
+                String::new(),
+                String::new(),
             ],
             active_message_template_preset: 2,
             round_report_template: VERSION_22_DEFAULT_ROUND_REPORT_TEMPLATE.to_owned(),
@@ -2210,6 +2420,8 @@ mod tests {
                 VERSION_22_DEFAULT_ROUND_REPORT_TEMPLATE.to_owned(),
                 VERSION_22_DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2.to_owned(),
                 VERSION_22_DEFAULT_ROUND_REPORT_TEMPLATE.to_owned(),
+                String::new(),
+                String::new(),
             ],
             active_round_report_template_preset: 2,
             ..AppConfig::default()
@@ -2218,13 +2430,15 @@ mod tests {
 
         assert_eq!(
             migrated.message_template_presets,
-            [DEFAULT_TEMPLATE, DEFAULT_TEMPLATE_PRESET_2, ""]
+            [DEFAULT_TEMPLATE, DEFAULT_TEMPLATE_PRESET_2, "", "", ""]
         );
         assert_eq!(
             migrated.round_report_template_presets,
             [
                 DEFAULT_ROUND_REPORT_TEMPLATE,
                 DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2,
+                "",
+                "",
                 "",
             ]
         );
@@ -2237,11 +2451,15 @@ mod tests {
                 "CUSTOM OUTPUT".to_owned(),
                 "CUSTOM TANK".to_owned(),
                 "CUSTOM BACKUP".to_owned(),
+                "CUSTOM FOUR".to_owned(),
+                "CUSTOM FIVE".to_owned(),
             ],
             round_report_template_presets: [
                 "CUSTOM OUTPUT REPORT".to_owned(),
                 "CUSTOM TANK REPORT".to_owned(),
                 "CUSTOM BACKUP REPORT".to_owned(),
+                "CUSTOM FOUR REPORT".to_owned(),
+                "CUSTOM FIVE REPORT".to_owned(),
             ],
             ..AppConfig::default()
         }
@@ -2321,12 +2539,16 @@ mod tests {
                 VERSION_13_DEFAULT_TEMPLATE.to_owned(),
                 "CUSTOM MESSAGE".to_owned(),
                 VERSION_13_DEFAULT_TEMPLATE.to_owned(),
+                String::new(),
+                String::new(),
             ],
             round_report_template: VERSION_13_DEFAULT_ROUND_REPORT_TEMPLATE.to_owned(),
             round_report_template_presets: [
                 VERSION_13_DEFAULT_ROUND_REPORT_TEMPLATE.to_owned(),
                 "CUSTOM REPORT".to_owned(),
                 VERSION_13_DEFAULT_ROUND_REPORT_TEMPLATE.to_owned(),
+                String::new(),
+                String::new(),
             ],
             alert_volume: VERSION_13_DEFAULT_ALERT_VOLUME,
             ..AppConfig::default()
@@ -2335,11 +2557,11 @@ mod tests {
 
         assert_eq!(
             migrated.message_template_presets,
-            [DEFAULT_TEMPLATE, "CUSTOM MESSAGE", ""]
+            [DEFAULT_TEMPLATE, "CUSTOM MESSAGE", "", "", ""]
         );
         assert_eq!(
             migrated.round_report_template_presets,
-            [DEFAULT_ROUND_REPORT_TEMPLATE, "CUSTOM REPORT", "",]
+            [DEFAULT_ROUND_REPORT_TEMPLATE, "CUSTOM REPORT", "", "", ""]
         );
         assert_eq!(migrated.alert_volume, 1.0);
     }
@@ -2354,6 +2576,8 @@ mod tests {
                 VERSION_16_DEFAULT_TEMPLATE_ENGLISH.to_owned(),
                 VERSION_16_DEFAULT_TEMPLATE_PRESET_2_ENGLISH.to_owned(),
                 "CUSTOM MEME".to_owned(),
+                String::new(),
+                String::new(),
             ],
             ..AppConfig::default()
         }
@@ -2365,7 +2589,9 @@ mod tests {
             [
                 DEFAULT_TEMPLATE_ENGLISH,
                 DEFAULT_TEMPLATE_PRESET_2_ENGLISH,
-                "CUSTOM MEME"
+                "CUSTOM MEME",
+                "",
+                ""
             ]
         );
     }
@@ -2386,6 +2612,8 @@ mod tests {
                 customized_first.clone(),
                 customized_second.clone(),
                 "CUSTOM MEME".to_owned(),
+                String::new(),
+                String::new(),
             ],
             ..AppConfig::default()
         }
@@ -2438,6 +2666,8 @@ mod tests {
                 VERSION_15_DEFAULT_ROUND_REPORT_TEMPLATE.to_owned(),
                 VERSION_15_DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2.to_owned(),
                 "CUSTOM {{current_step}}".to_owned(),
+                String::new(),
+                String::new(),
             ],
             active_round_report_template_preset: 0,
             ..AppConfig::default()
@@ -2451,6 +2681,8 @@ mod tests {
                 DEFAULT_ROUND_REPORT_TEMPLATE,
                 DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2,
                 "CUSTOM {{current_step}}",
+                "",
+                "",
             ]
         );
         assert_eq!(

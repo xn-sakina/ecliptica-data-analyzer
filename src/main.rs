@@ -1825,7 +1825,6 @@ impl AnalyzerApp {
                     .monospace()
                     .show(ui);
                 ui.add_space(UI_SPACE_2);
-                Typography::muted(text::LIVE_VARIABLES_HINT.get(language)).show(ui);
                 template_help_button(ui, &mut self.template_help_open, language);
                 ui.add_space(UI_SPACE_2);
                 let clipboard = &mut self.clipboard;
@@ -1916,7 +1915,6 @@ impl AnalyzerApp {
                 .monospace()
                 .show(ui);
             ui.add_space(UI_SPACE_2);
-            Typography::muted(text::REPORT_VARIABLES_HINT.get(language)).show(ui);
             template_help_button(ui, &mut self.template_help_open, language);
             ui.add_space(UI_SPACE_2);
             let clipboard = &mut self.clipboard;
@@ -2018,20 +2016,15 @@ impl AnalyzerApp {
             None,
             |ui| {
                 PropertyRow::new(text::VOLUME.get(self.draft.language)).show(ui, |ui| {
-                    Flex::row().align_center().gap(UI_SPACE_2).show(ui, |flex| {
-                        flex.ui(|ui| {
-                            ShadcnSlider::f32(&mut self.draft.alert_volume, 0.0..=1.0)
-                                .label(text::ALERT_VOLUME.get(self.draft.language))
-                                .width(240.0)
-                                .show(ui);
-                        });
-                        flex.ui(|ui| {
-                            Typography::new(format!("{:.0}%", self.draft.alert_volume * 100.0))
-                                .monospace()
-                                .color(SETTINGS_ACCENT)
-                                .show(ui);
-                        });
-                    });
+                    ShadcnSlider::f32(&mut self.draft.alert_volume, 0.0..=1.0)
+                        .label(text::ALERT_VOLUME.get(self.draft.language))
+                        .width(240.0)
+                        .show(ui);
+                    ui.add_space(UI_SPACE_2);
+                    Typography::new(format!("{:.0}%", self.draft.alert_volume * 100.0))
+                        .monospace()
+                        .color(SETTINGS_ACCENT)
+                        .show(ui);
                 });
                 PropertyRow::new(text::LOCK_SOUND.get(self.draft.language))
                     .label_width(alert_sound_label_width(self.draft.language))
@@ -2269,6 +2262,10 @@ impl AnalyzerApp {
             Typography::new(text::LEARNING_RESEARCH_ONLY.get(language))
                 .color(SETTINGS_TEXT_SECONDARY)
                 .wrap()
+                .show(ui);
+            ui.add_space(UI_SPACE_2);
+            Typography::new(text::AUTHOR_CREDIT.get(language))
+                .color(SETTINGS_TEXT_SECONDARY)
                 .show(ui);
             ui.add_space(UI_SPACE_3);
             if ShadcnButton::new("GitHub")
@@ -5999,6 +5996,31 @@ mod tests {
     }
 
     #[test]
+    fn boss_alert_volume_slider_is_vertically_centered_in_its_row() {
+        egui::__run_test_ui(|ui| {
+            ui.set_width(460.0);
+            let mut volume = 1.0;
+            let mut slider_rect = egui::Rect::NOTHING;
+
+            let row = PropertyRow::new(text::VOLUME.get(Language::Chinese)).show(ui, |ui| {
+                slider_rect = ShadcnSlider::f32(&mut volume, 0.0..=1.0)
+                    .width(240.0)
+                    .show(ui)
+                    .rect;
+            });
+
+            assert!(
+                (slider_rect.center().y - row.rect.center().y).abs() <= 0.5,
+                "slider center: {}, row center: {}, slider: {:?}, row: {:?}",
+                slider_rect.center().y,
+                row.rect.center().y,
+                slider_rect,
+                row.rect
+            );
+        });
+    }
+
+    #[test]
     fn sidebar_notice_height_follows_its_content() {
         egui::__run_test_ui(|ui| {
             ui.set_width(186.0);
@@ -6920,11 +6942,6 @@ mod tests {
                                                 .monospace()
                                                 .show(ui);
                                             checkpoints.push(("textarea", ui.min_rect().right()));
-                                            Typography::muted(
-                                                "Click a variable to copy it. “Show when” controls when text appears.",
-                                            )
-                                            .show(ui);
-                                            checkpoints.push(("hint", ui.min_rect().right()));
                                             template_help_button(
                                                 ui,
                                                 &mut template_help_open,

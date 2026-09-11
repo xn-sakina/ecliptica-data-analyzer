@@ -108,10 +108,11 @@ pub mod text {
     pair!(SYSTEM_LOGS, "System Logs", "系统日志");
     pair!(CONFIG_EXPORT, "Config Export", "配置导出");
     pair!(ABOUT, "About", "关于");
+    pair!(AUTHOR_CREDIT, "Author: Kanamio", "作者：Kanamio");
     pair!(
         LEARNING_RESEARCH_ONLY,
-        "This software is intended solely for learning and research.",
-        "本软件仅用于学习和研究使用。"
+        "This software is intended solely for learning and research",
+        "本软件仅用于学习和研究使用"
     );
     pair!(IMPORT_CONFIG, "Import config", "导入配置");
     pair!(EXPORT_CONFIG, "Export config", "导出配置");
@@ -448,18 +449,8 @@ pub mod text {
         "Up to {max} characters",
         "最多 {max} 个字符"
     );
-    pair!(
-        LIVE_VARIABLES_HINT,
-        "Click a variable to copy it. “Show when” controls when text appears.",
-        "点一下变量就会复制。“显示条件”可以让内容只在需要时出现。"
-    );
     pair!(ROUND_REPORT_TEMPLATE, "Round report", "回合战报");
     pair!(REPORT_PRESET, "Choose report", "选择战报");
-    pair!(
-        REPORT_VARIABLES_HINT,
-        "Click a variable to copy it. These are available after a round ends.",
-        "点一下变量就会复制。这些内容会在回合结束后显示。"
-    );
     pair!(LIVE_PREVIEW, "Live preview", "实时预览");
     pair!(SIMULATED_STATE, "Preview", "预览内容");
     pair!(PREVIEW_NORMAL, "Combat message", "战斗消息");

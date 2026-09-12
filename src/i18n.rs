@@ -235,6 +235,11 @@ pub mod text {
     pair!(ROUND_BURST_10S, "Best average DPS", "最佳平均 DPS");
     pair!(ROUND_DAMAGE_TAKEN, "Damage taken this round", "本回合承伤");
     pair!(BOSS_LOCK, "BOSS LOCK", "Boss 锁定");
+    pair!(ROUND_SUMMARY, "Round summary", "回合数据");
+    pair!(LIVE_ROUND_SUMMARY, "Live round", "本回合数据");
+    pair!(LIVE_UPDATING, "Live", "实时更新");
+    pair!(WAITING_FOR_ROUND, "Waiting", "等待回合");
+    pair!(FINAL_RESULT, "Final", "最终结果");
     pair!(SESSION_DPS_CHART, "DPS chart", "DPS 图表");
     pair!(
         PREVIOUS_ROUND_REPORT,

@@ -229,7 +229,19 @@ pub struct GameSnapshot {
     pub round_average_dps: u64,
     pub round_effective_dps: u64,
     pub round_burst_10s_dps: Option<u64>,
+    /// Personal outgoing damage accumulated in the active combat round.
+    #[serde(default)]
+    pub round_total_damage: u64,
+    /// Highest complete-second personal DPS in the active combat round.
+    #[serde(default)]
+    pub round_max_dps: u64,
     pub round_damage_taken: u64,
+    /// Elapsed wall-clock time since the active round's observed Stage marker.
+    #[serde(default)]
+    pub round_duration_seconds: u64,
+    /// False for a partial round recovered from the first personal signal.
+    #[serde(default)]
+    pub has_round_duration_data: bool,
     /// Highest complete-second DPS observed during the current Ecliptica visit.
     pub max_dps: u64,
     /// Whether a damage record has ever been observed during this Ecliptica
@@ -325,7 +337,11 @@ impl Default for GameSnapshot {
             round_average_dps: 0,
             round_effective_dps: 0,
             round_burst_10s_dps: None,
+            round_total_damage: 0,
+            round_max_dps: 0,
             round_damage_taken: 0,
+            round_duration_seconds: 0,
+            has_round_duration_data: false,
             max_dps: 0,
             has_max_dps_data: false,
             round_metrics_active: false,
@@ -906,7 +922,21 @@ impl Analyzer {
             self.round_first_damage_second,
             metric_end_second,
         );
+        self.snapshot.round_total_damage = self.round_damage_total;
+        self.snapshot.round_max_dps = self.round_max_dps;
         self.snapshot.round_damage_taken = self.round_damage_taken_total;
+        self.snapshot.has_round_duration_data = self.snapshot.round_metrics_active
+            && self.round_has_duration_data
+            && self.round_started_second.is_some();
+        self.snapshot.round_duration_seconds = self
+            .snapshot
+            .has_round_duration_data
+            .then(|| {
+                self.round_started_second
+                    .map(|start| now_second.saturating_sub(start) as u64)
+                    .unwrap_or(0)
+            })
+            .unwrap_or(0);
         self.snapshot.clone()
     }
 
@@ -1091,7 +1121,11 @@ impl Analyzer {
         self.snapshot.round_average_dps = 0;
         self.snapshot.round_effective_dps = 0;
         self.snapshot.round_burst_10s_dps = None;
+        self.snapshot.round_total_damage = 0;
+        self.snapshot.round_max_dps = 0;
         self.snapshot.round_damage_taken = 0;
+        self.snapshot.round_duration_seconds = 0;
+        self.snapshot.has_round_duration_data = false;
         self.snapshot.has_damage_data = false;
         self.snapshot.rapid_damage_danger = false;
         self.snapshot.no_dps_for_10s = false;
@@ -1211,6 +1245,30 @@ impl GameSnapshot {
         self.round_burst_10s_dps
             .map(|value| value.to_string())
             .unwrap_or_else(|| "-".to_owned())
+    }
+
+    pub fn round_total_damage_text(&self) -> String {
+        if self.round_metrics_active {
+            self.round_total_damage.to_string()
+        } else {
+            "-".to_owned()
+        }
+    }
+
+    pub fn round_max_dps_text(&self) -> String {
+        if self.has_damage_data {
+            self.round_max_dps.to_string()
+        } else {
+            "-".to_owned()
+        }
+    }
+
+    pub fn round_duration_text(&self) -> String {
+        if self.has_round_duration_data {
+            format_duration(self.round_duration_seconds)
+        } else {
+            "-".to_owned()
+        }
     }
 
     pub fn max_dps_text(&self) -> String {
@@ -2017,11 +2075,18 @@ mod tests {
         let snapshot = analyzer.snapshot_at(timestamp(16));
         assert_eq!(snapshot.round_effective_dps, 14);
         assert_eq!(snapshot.round_burst_10s_dps, Some(10));
+        assert_eq!(snapshot.round_total_damage, 100);
+        assert_eq!(snapshot.round_max_dps, 40);
         assert_eq!(snapshot.round_damage_taken, 55);
+        assert_eq!(snapshot.round_duration_seconds, 14);
+        assert!(snapshot.has_round_duration_data);
 
         analyzer.process_line(&line(16, "ECLIPTICA - now in intermission"));
-        let report = analyzer
-            .snapshot_at(timestamp(17))
+        let completed = analyzer.snapshot_at(timestamp(17));
+        assert_eq!(completed.round_total_damage, 0);
+        assert_eq!(completed.round_max_dps, 0);
+        assert!(!completed.has_round_duration_data);
+        let report = completed
             .round_report
             .expect("completed round should be archived");
         assert_eq!(report.effective_dps, 14);

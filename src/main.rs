@@ -34,7 +34,7 @@ use egui_shadcn::{
     Button as ShadcnButton, ButtonVariant, Collapsible, ComponentSize, Dialog, Empty, Flex, Input,
     LucideIcon, NumberInput, PropertyRow, ScrollArea as ShadcnScrollArea, SelectValue,
     ShadcnThemeExt, Slider as ShadcnSlider, Switch, Textarea, ToastState, ToastVariant,
-    ToggleGroup, ToggleVariant, Typography, TypographyVariant,
+    ToggleGroup, ToggleVariant, Typography,
 };
 use parking_lot::Mutex;
 use single_instance::SingleInstance;
@@ -1240,48 +1240,10 @@ impl AnalyzerApp {
                 }
             });
         });
-        ui.add_space(UI_SPACE_4);
-        ui.columns(3, |columns| {
-            dashboard_stat(
-                &mut columns[0],
-                text::LIVE_DPS.get(language),
-                &snapshot.realtime_dps_text(),
-                METRIC_LIVE_DPS,
-            );
-            columns[0].add_space(UI_SPACE_2);
-            dashboard_stat(
-                &mut columns[0],
-                text::AVERAGE_DPS_30S.get(language),
-                &snapshot.average_dps_text(),
-                METRIC_AVERAGE_DPS,
-            );
-            dashboard_stat(
-                &mut columns[1],
-                text::ROUND_EFFECTIVE_DPS.get(language),
-                &snapshot.round_effective_dps_text(),
-                METRIC_ACTIVE_DPS,
-            );
-            columns[1].add_space(UI_SPACE_2);
-            dashboard_stat(
-                &mut columns[1],
-                text::ROUND_BURST_10S.get(language),
-                &snapshot.round_burst_10s_dps_text(),
-                METRIC_BEST_DPS,
-            );
-            dashboard_stat(
-                &mut columns[2],
-                text::ROUND_DAMAGE_TAKEN.get(language),
-                &snapshot.round_damage_taken.to_string(),
-                METRIC_DAMAGE_TAKEN,
-            );
-            columns[2].add_space(UI_SPACE_2);
-            dashboard_stat(
-                &mut columns[2],
-                text::BOSS_LOCK.get(language),
-                snapshot.boss_lock.as_deref().unwrap_or("-"),
-                METRIC_BOSS_LOCK,
-            );
-        });
+        ui.add_space(UI_SPACE_3);
+        let (summary_title, summary_status, summary_stats) =
+            overview_round_summary(snapshot, language);
+        overview_summary_card(ui, summary_title, summary_status, &summary_stats);
         ui.add_space(UI_SPACE_3);
         let chart_round_context = dps_chart_round_context(snapshot, language);
         section_card_with_status(
@@ -1296,57 +1258,6 @@ impl AnalyzerApp {
             },
         );
         ui.add_space(UI_SPACE_3);
-        if let Some(report) = &snapshot.round_report {
-            section_card(ui, text::PREVIOUS_ROUND_REPORT.get(language), None, |ui| {
-                let stats = [
-                    ReportStatItem {
-                        label: text::DURATION.get(language),
-                        value: report.duration_text(),
-                        color: METRIC_DURATION,
-                    },
-                    ReportStatItem {
-                        label: text::TOTAL_DAMAGE.get(language),
-                        value: report.total_damage.to_string(),
-                        color: METRIC_TOTAL_DAMAGE,
-                    },
-                    ReportStatItem {
-                        label: text::EFFECTIVE_DPS.get(language),
-                        value: report.effective_dps_text(),
-                        color: METRIC_ACTIVE_DPS,
-                    },
-                    ReportStatItem {
-                        label: text::BURST_10S.get(language),
-                        value: report.burst_10s_dps_text(),
-                        color: METRIC_BEST_DPS,
-                    },
-                    ReportStatItem {
-                        label: text::EFFECTIVE_DPS_GROWTH.get(language),
-                        value: if report.has_dps_growth_rate {
-                            format!("{}%", report.dps_growth_rate_text())
-                        } else {
-                            "-".to_owned()
-                        },
-                        color: if report.dps_growth_rate >= 0.0 {
-                            METRIC_DPS_GROWTH
-                        } else {
-                            METRIC_DAMAGE_TAKEN
-                        },
-                    },
-                    ReportStatItem {
-                        label: text::DAMAGE_TAKEN.get(language),
-                        value: report.damage_taken.to_string(),
-                        color: METRIC_DAMAGE_TAKEN,
-                    },
-                    ReportStatItem {
-                        label: text::LONGEST_STANDSTILL.get(language),
-                        value: localized_standstill(report, language),
-                        color: METRIC_STANDSTILL,
-                    },
-                ];
-                report_stat_group(ui, &stats, 3);
-            });
-            ui.add_space(UI_SPACE_3);
-        }
         section_card(ui, text::GAME_LOG.get(language), None, |ui| {
             log_source_row(ui, snapshot.source.as_deref(), &self.runtime, language);
         });
@@ -4700,66 +4611,207 @@ fn section_card_with_status(
     });
 }
 
-fn dashboard_stat(ui: &mut egui::Ui, label: &str, value: &str, color: egui::Color32) {
-    let width = ui.available_width();
-    egui_shadcn::Card::new().show(ui, |ui| {
-        ui.set_min_width((width - 34.0).max(80.0));
-        ui.set_min_height(51.0);
-        Typography::new(label)
-            .color(SETTINGS_TEXT_SECONDARY)
-            .show(ui);
-        ui.add_space(UI_SPACE_1);
-        Typography::new(short_text(value, 16))
-            .variant(TypographyVariant::H4)
-            .color(color)
-            .truncate()
-            .show(ui);
-    });
-}
-
-fn report_stat(ui: &mut egui::Ui, label: &str, value: &str, color: egui::Color32) {
-    ui.allocate_ui_with_layout(
-        egui::vec2(ui.available_width(), 34.0),
-        egui::Layout::top_down(egui::Align::LEFT),
-        |ui| {
-            Typography::small(label)
-                .color(SETTINGS_TEXT_SECONDARY)
-                .wrap()
-                .show(ui);
-        },
-    );
-    Typography::new(value)
-        .variant(TypographyVariant::Large)
-        .color(color)
-        .truncate()
-        .show(ui);
-}
-
-struct ReportStatItem<'a> {
+struct OverviewStatItem<'a> {
     label: &'a str,
     value: String,
     color: egui::Color32,
 }
 
-fn report_stat_group(ui: &mut egui::Ui, items: &[ReportStatItem<'_>], max_columns: usize) {
-    let columns = report_stat_column_count(ui.available_width(), max_columns);
-    for (row_index, row) in items.chunks(columns).enumerate() {
-        if row_index > 0 {
-            ui.add_space(UI_SPACE_3);
-        }
-        ui.columns(columns, |column_uis| {
-            for (column, item) in column_uis.iter_mut().zip(row) {
-                report_stat(column, item.label, &item.value, item.color);
-            }
-        });
+fn overview_round_summary(
+    snapshot: &GameSnapshot,
+    language: Language,
+) -> (&'static str, &'static str, [OverviewStatItem<'static>; 8]) {
+    if let Some(report) = &snapshot.round_report {
+        return (
+            text::PREVIOUS_ROUND_REPORT.get(language),
+            text::FINAL_RESULT.get(language),
+            [
+                OverviewStatItem {
+                    label: text::TOTAL_DAMAGE.get(language),
+                    value: report.total_damage.to_string(),
+                    color: METRIC_TOTAL_DAMAGE,
+                },
+                OverviewStatItem {
+                    label: text::DURATION.get(language),
+                    value: report.duration_text(),
+                    color: METRIC_DURATION,
+                },
+                OverviewStatItem {
+                    label: text::EFFECTIVE_DPS.get(language),
+                    value: report.effective_dps_text(),
+                    color: METRIC_ACTIVE_DPS,
+                },
+                OverviewStatItem {
+                    label: text::BURST_10S.get(language),
+                    value: report.burst_10s_dps_text(),
+                    color: METRIC_BEST_DPS,
+                },
+                OverviewStatItem {
+                    label: text::DPS_ROUND_PEAK.get(language),
+                    value: report.max_dps_text(),
+                    color: VARIABLE_HIGHEST_DPS,
+                },
+                OverviewStatItem {
+                    label: text::DAMAGE_TAKEN.get(language),
+                    value: report.damage_taken.to_string(),
+                    color: METRIC_DAMAGE_TAKEN,
+                },
+                OverviewStatItem {
+                    label: text::EFFECTIVE_DPS_GROWTH.get(language),
+                    value: if report.has_dps_growth_rate {
+                        format!("{}%", report.dps_growth_rate_text())
+                    } else {
+                        "-".to_owned()
+                    },
+                    color: if report.dps_growth_rate >= 0.0 {
+                        METRIC_DPS_GROWTH
+                    } else {
+                        METRIC_DAMAGE_TAKEN
+                    },
+                },
+                OverviewStatItem {
+                    label: text::LONGEST_STANDSTILL.get(language),
+                    value: localized_standstill(report, language),
+                    color: METRIC_STANDSTILL,
+                },
+            ],
+        );
     }
+
+    let is_live = snapshot.phase == RoundPhase::Combat;
+    let damage_taken = snapshot
+        .round_metrics_active
+        .then(|| snapshot.round_damage_taken.to_string())
+        .unwrap_or_else(|| "-".to_owned());
+    (
+        if is_live {
+            text::LIVE_ROUND_SUMMARY.get(language)
+        } else {
+            text::ROUND_SUMMARY.get(language)
+        },
+        if is_live {
+            text::LIVE_UPDATING.get(language)
+        } else {
+            text::WAITING_FOR_ROUND.get(language)
+        },
+        [
+            OverviewStatItem {
+                label: text::TOTAL_DAMAGE.get(language),
+                value: snapshot.round_total_damage_text(),
+                color: METRIC_TOTAL_DAMAGE,
+            },
+            OverviewStatItem {
+                label: text::LIVE_DPS.get(language),
+                value: snapshot.realtime_dps_text(),
+                color: METRIC_LIVE_DPS,
+            },
+            OverviewStatItem {
+                label: text::ROUND_EFFECTIVE_DPS.get(language),
+                value: snapshot.round_effective_dps_text(),
+                color: METRIC_ACTIVE_DPS,
+            },
+            OverviewStatItem {
+                label: text::ROUND_BURST_10S.get(language),
+                value: snapshot.round_burst_10s_dps_text(),
+                color: METRIC_BEST_DPS,
+            },
+            OverviewStatItem {
+                label: text::DPS_ROUND_PEAK.get(language),
+                value: snapshot.round_max_dps_text(),
+                color: VARIABLE_HIGHEST_DPS,
+            },
+            OverviewStatItem {
+                label: text::ROUND_DAMAGE_TAKEN.get(language),
+                value: damage_taken,
+                color: METRIC_DAMAGE_TAKEN,
+            },
+            OverviewStatItem {
+                label: text::DURATION.get(language),
+                value: snapshot.round_duration_text(),
+                color: METRIC_DURATION,
+            },
+            OverviewStatItem {
+                label: text::BOSS_LOCK.get(language),
+                value: snapshot.boss_lock.clone().unwrap_or_else(|| "-".to_owned()),
+                color: METRIC_BOSS_LOCK,
+            },
+        ],
+    )
 }
 
-fn report_stat_column_count(available_width: f32, max_columns: usize) -> usize {
-    const MIN_STAT_WIDTH: f32 = 150.0;
-    const COLUMN_GAP: f32 = UI_SPACE_2;
-    (((available_width + COLUMN_GAP) / (MIN_STAT_WIDTH + COLUMN_GAP)).floor() as usize)
-        .clamp(1, max_columns.max(1))
+fn overview_stat_group(ui: &mut egui::Ui, items: &[OverviewStatItem<'_>; 8]) -> egui::Response {
+    ui.scope(|ui| {
+        const COLUMNS: usize = 4;
+        ui.spacing_mut().item_spacing.y = 0.0;
+        for (row_index, row) in items.chunks(COLUMNS).enumerate() {
+            if row_index > 0 {
+                ui.add_space(UI_SPACE_1);
+            }
+            ui.columns(COLUMNS, |columns| {
+                for (column, item) in columns.iter_mut().zip(row) {
+                    overview_stat(column, item);
+                }
+            });
+        }
+    })
+    .response
+}
+
+fn overview_summary_card(
+    ui: &mut egui::Ui,
+    title: &str,
+    status: &str,
+    items: &[OverviewStatItem<'_>; 8],
+) -> egui::Response {
+    let width = ui.available_width();
+    egui::Frame::NONE
+        .fill(SETTINGS_SURFACE)
+        .inner_margin(egui::Margin::same(10))
+        .corner_radius(8.0)
+        .stroke(egui::Stroke::new(1.0, SETTINGS_BORDER))
+        .show(ui, |ui| {
+            ui.set_min_width((width - 22.0).max(120.0));
+            ui.allocate_ui_with_layout(
+                egui::vec2(ui.available_width(), 22.0),
+                egui::Layout::left_to_right(egui::Align::Center),
+                |ui| {
+                    Typography::new(title)
+                        .font_size(15.0)
+                        .strong()
+                        .color(SETTINGS_HEADING)
+                        .show(ui);
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        Badge::new(status).variant(BadgeVariant::Secondary).show(ui);
+                    });
+                },
+            );
+            ui.add_space(UI_SPACE_1);
+            overview_stat_group(ui, items);
+        })
+        .response
+}
+
+fn overview_stat(ui: &mut egui::Ui, item: &OverviewStatItem<'_>) {
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), 48.0), egui::Sense::hover());
+    let mut content_ui = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(rect.shrink2(egui::vec2(UI_SPACE_1, UI_SPACE_1)))
+            .layout(egui::Layout::top_down(egui::Align::LEFT)),
+    );
+    Typography::small(item.label)
+        .font_size(12.0)
+        .color(SETTINGS_TEXT_SECONDARY)
+        .truncate()
+        .show(&mut content_ui);
+    content_ui.add_space(1.0);
+    Typography::new(short_text(&item.value, 16))
+        .font_size(20.0)
+        .strong()
+        .color(item.color)
+        .truncate()
+        .show(&mut content_ui);
+    response.on_hover_text(format!("{}: {}", item.label, item.value));
 }
 
 fn log_source_row(ui: &mut egui::Ui, source: Option<&str>, runtime: &Runtime, language: Language) {
@@ -6697,36 +6749,157 @@ mod tests {
     }
 
     #[test]
-    fn previous_report_uses_readable_responsive_columns() {
-        assert_eq!(report_stat_column_count(900.0, 4), 4);
-        assert_eq!(report_stat_column_count(900.0, 3), 3);
-        assert_eq!(report_stat_column_count(620.0, 4), 3);
-        assert_eq!(report_stat_column_count(420.0, 4), 2);
-        assert_eq!(report_stat_column_count(140.0, 4), 1);
+    fn live_round_summary_stays_compact_and_inside_narrow_content() {
+        let snapshot = GameSnapshot {
+            phase: RoundPhase::Combat,
+            round_metrics_active: true,
+            has_damage_data: true,
+            has_realtime_dps_data: true,
+            realtime_dps: 9_999,
+            round_effective_dps: 8_888,
+            round_burst_10s_dps: Some(9_500),
+            round_total_damage: 123_456,
+            round_max_dps: 10_000,
+            round_damage_taken: 321,
+            round_duration_seconds: 42,
+            has_round_duration_data: true,
+            boss_lock: Some("Player with a very long display name".to_owned()),
+            ..GameSnapshot::default()
+        };
+        let (title, status, items) = overview_round_summary(&snapshot, Language::English);
+        assert_eq!(title, "Live round");
+        assert_eq!(status, "Live");
+        assert_eq!(items[0].value, "123456");
+        assert_eq!(items[4].value, "10000");
 
         egui::__run_test_ui(|ui| {
             ui.set_width(420.0);
-            let items = [
-                ReportStatItem {
-                    label: "Effective DPS growth rate",
-                    value: "123.4%".to_owned(),
-                    color: SETTINGS_SUCCESS,
-                },
-                ReportStatItem {
-                    label: "Damage taken",
-                    value: "18446744073709551615".to_owned(),
-                    color: SETTINGS_DANGER,
-                },
-                ReportStatItem {
-                    label: "Longest standstill",
-                    value: "59min 59s".to_owned(),
-                    color: SETTINGS_WARNING,
-                },
-            ];
             let right_edge = ui.max_rect().right();
-            report_stat_group(ui, &items, 3);
-            assert!(ui.min_rect().right() <= right_edge + 0.5);
+            let top = ui.cursor().top();
+            let response = overview_summary_card(ui, title, status, &items);
+            assert!(response.rect.right() <= right_edge + 0.5);
+            assert!(response.rect.height() <= 154.0);
+            assert!(ui.cursor().top() - top <= 162.0);
         });
+    }
+
+    #[test]
+    fn completed_round_replaces_live_values_in_the_same_summary_slot() {
+        let snapshot = GameSnapshot {
+            phase: RoundPhase::Lobby,
+            round_report: Some(RoundReport {
+                has_duration_data: true,
+                has_output_data: true,
+                duration_seconds: 75,
+                total_damage: 12_480,
+                average_dps: 166,
+                max_dps: 650,
+                effective_dps: 208,
+                burst_10s_dps: Some(310),
+                dps_growth_rate: 12.5,
+                has_dps_growth_rate: true,
+                damage_taken: 73,
+                has_longest_standstill_data: true,
+                longest_standstill_seconds: 18,
+            }),
+            ..GameSnapshot::default()
+        };
+
+        let (title, status, items) = overview_round_summary(&snapshot, Language::Chinese);
+        assert_eq!(title, "上一回合战报");
+        assert_eq!(status, "最终结果");
+        assert_eq!(items[0].value, "12480");
+        assert_eq!(items[1].value, "01:15");
+        assert_eq!(items[6].value, "12.5%");
+        assert_eq!(items[7].value, "18秒");
+    }
+
+    #[test]
+    fn live_summary_and_full_dps_chart_fit_the_default_first_fold() {
+        let context = egui::Context::default();
+        install_theme(&context);
+        let snapshot = GameSnapshot {
+            phase: RoundPhase::Combat,
+            in_ecliptica: true,
+            combat_round_epoch: 1,
+            round_metrics_active: true,
+            has_damage_data: true,
+            has_realtime_dps_data: true,
+            dps_history: (0..30)
+                .map(|second| DpsHistoryPoint {
+                    elapsed_seconds: second,
+                    dps: second * 10,
+                    combat_round_epoch: 1,
+                    estimated_step: None,
+                })
+                .collect(),
+            ..GameSnapshot::default()
+        };
+        let mut chart_view = DpsChartViewState::default();
+        let mut chart_bottom = 0.0;
+        let mut first_fold_bottom = 0.0;
+
+        let _ = context.run(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(940.0, 692.0),
+                )),
+                ..Default::default()
+            },
+            |context| {
+                egui::SidePanel::left("overview-fold-test-sidebar")
+                    .exact_width(214.0)
+                    .show(context, |_| {});
+                egui::TopBottomPanel::top("overview-fold-test-header")
+                    .exact_height(48.0)
+                    .show(context, |_| {});
+                egui::CentralPanel::default().show(context, |ui| {
+                    first_fold_bottom = ui.max_rect().bottom();
+                    egui::Frame::NONE
+                        .inner_margin(egui::Margin::same(UI_SPACE_5 as i8))
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                Typography::h3(text::OVERVIEW.get(Language::Chinese)).show(ui);
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Center),
+                                    |ui| {
+                                        ShadcnButton::new(text::PIN_WINDOW.get(Language::Chinese))
+                                            .icon(LucideIcon::Pin)
+                                            .variant(ButtonVariant::Outline)
+                                            .show(ui);
+                                    },
+                                );
+                            });
+                            ui.add_space(UI_SPACE_3);
+                            let (title, status, items) =
+                                overview_round_summary(&snapshot, Language::Chinese);
+                            overview_summary_card(ui, title, status, &items);
+                            ui.add_space(UI_SPACE_3);
+                            section_card_with_status(
+                                ui,
+                                text::SESSION_DPS_CHART.get(Language::Chinese),
+                                None,
+                                None,
+                                |ui| {
+                                    dps_history_chart(
+                                        ui,
+                                        &snapshot,
+                                        &mut chart_view,
+                                        Language::Chinese,
+                                    );
+                                },
+                            );
+                            chart_bottom = ui.min_rect().bottom();
+                        });
+                });
+            },
+        );
+
+        assert!(
+            chart_bottom <= first_fold_bottom + 0.5,
+            "chart bottom {chart_bottom} must stay within first fold {first_fold_bottom}"
+        );
     }
 
     #[test]

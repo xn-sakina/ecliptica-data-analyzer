@@ -31,10 +31,10 @@ use egui_plot::{
 };
 use egui_shadcn::{
     Alert, AlertDialog, AlertDialogResult, AlertVariant, Badge, BadgeVariant,
-    Button as ShadcnButton, ButtonVariant, ComponentSize, Dialog, Empty, Flex, Input, LucideIcon,
-    NumberInput, PropertyRow, ScrollArea as ShadcnScrollArea, SelectValue, ShadcnThemeExt,
-    Slider as ShadcnSlider, Switch, Textarea, ToastState, ToastVariant, ToggleGroup, ToggleVariant,
-    Typography, TypographyVariant,
+    Button as ShadcnButton, ButtonVariant, Collapsible, ComponentSize, Dialog, Empty, Flex, Input,
+    LucideIcon, NumberInput, PropertyRow, ScrollArea as ShadcnScrollArea, SelectValue,
+    ShadcnThemeExt, Slider as ShadcnSlider, Switch, Textarea, ToastState, ToastVariant,
+    ToggleGroup, ToggleVariant, Typography, TypographyVariant,
 };
 use parking_lot::Mutex;
 use single_instance::SingleInstance;
@@ -381,6 +381,8 @@ struct AnalyzerApp {
     clipboard: Option<Clipboard>,
     toast_state: ToastState,
     template_help_open: bool,
+    message_variables_open: bool,
+    report_variables_open: bool,
     page: SettingsPage,
     reset_confirm_open: bool,
     template_preset_reset_confirm: Option<TemplatePresetResetKind>,
@@ -496,6 +498,8 @@ impl AnalyzerApp {
             clipboard: None,
             toast_state: ToastState::new(),
             template_help_open: false,
+            message_variables_open: false,
+            report_variables_open: false,
             page: SettingsPage::Overview,
             reset_confirm_open: false,
             template_preset_reset_confirm: None,
@@ -1832,16 +1836,22 @@ impl AnalyzerApp {
                     .layouter(&mut layouter)
                     .show(ui);
                 ui.add_space(UI_SPACE_2);
-                template_help_button(ui, &mut self.template_help_open, language);
-                ui.add_space(UI_SPACE_2);
                 let clipboard = &mut self.clipboard;
                 let toast_state = &mut self.toast_state;
-                live_variable_help(
+                Collapsible::new(text::TEMPLATE_VARIABLES.get(language)).show(
                     ui,
-                    clipboard,
-                    toast_state,
-                    language,
-                    snapshot.has_heart_rate,
+                    &mut self.message_variables_open,
+                    |ui| {
+                        template_variable_toolbar(ui, &mut self.template_help_open, language);
+                        ui.add_space(UI_SPACE_2);
+                        live_variable_help(
+                            ui,
+                            clipboard,
+                            toast_state,
+                            language,
+                            snapshot.has_heart_rate,
+                        );
+                    },
                 );
             },
         );
@@ -1926,16 +1936,22 @@ impl AnalyzerApp {
                 .layouter(&mut layouter)
                 .show(ui);
             ui.add_space(UI_SPACE_2);
-            template_help_button(ui, &mut self.template_help_open, language);
-            ui.add_space(UI_SPACE_2);
             let clipboard = &mut self.clipboard;
             let toast_state = &mut self.toast_state;
-            report_variable_help(
+            Collapsible::new(text::TEMPLATE_VARIABLES.get(language)).show(
                 ui,
-                clipboard,
-                toast_state,
-                language,
-                snapshot.has_heart_rate,
+                &mut self.report_variables_open,
+                |ui| {
+                    template_variable_toolbar(ui, &mut self.template_help_open, language);
+                    ui.add_space(UI_SPACE_2);
+                    report_variable_help(
+                        ui,
+                        clipboard,
+                        toast_state,
+                        language,
+                        snapshot.has_heart_rate,
+                    );
+                },
             );
         });
         ui.add_space(UI_SPACE_3);
@@ -4515,18 +4531,30 @@ fn open_url_in_browser(context: &egui::Context, url: &str) {
 }
 
 fn template_help_button(ui: &mut egui::Ui, template_help_open: &mut bool, language: Language) {
-    ui.add_space(UI_SPACE_2);
-    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-        if ShadcnButton::new(text::TEMPLATE_SYNTAX_HELP.get(language))
-            .icon(LucideIcon::BookOpenText)
-            .variant(ButtonVariant::Outline)
-            .size(ComponentSize::Xs)
-            .show(ui)
-            .clicked()
-        {
-            *template_help_open = true;
-        }
-    });
+    if ShadcnButton::new(text::TEMPLATE_SYNTAX_HELP.get(language))
+        .icon(LucideIcon::BookOpenText)
+        .variant(ButtonVariant::Outline)
+        .size(ComponentSize::Xs)
+        .show(ui)
+        .clicked()
+    {
+        *template_help_open = true;
+    }
+}
+
+fn template_variable_toolbar(ui: &mut egui::Ui, template_help_open: &mut bool, language: Language) {
+    ui.allocate_ui_with_layout(
+        egui::vec2(ui.available_width(), 24.0),
+        egui::Layout::left_to_right(egui::Align::Center),
+        |ui| {
+            Typography::small(text::TEMPLATE_VARIABLES_HINT.get(language))
+                .color(SETTINGS_TEXT_MUTED)
+                .show(ui);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                template_help_button(ui, template_help_open, language);
+            });
+        },
+    );
 }
 
 fn save_error_detail_dialog(ui: &mut egui::Ui, error: &str, language: Language) {

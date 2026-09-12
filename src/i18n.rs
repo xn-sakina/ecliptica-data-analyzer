@@ -451,6 +451,12 @@ pub mod text {
     );
     pair!(ROUND_REPORT_TEMPLATE, "Round report", "回合战报");
     pair!(REPORT_PRESET, "Choose report", "选择战报");
+    pair!(TEMPLATE_VARIABLES, "Template variables", "模板变量");
+    pair!(
+        TEMPLATE_VARIABLES_HINT,
+        "Click a variable to copy it",
+        "点击变量即可复制"
+    );
     pair!(LIVE_PREVIEW, "Live preview", "实时预览");
     pair!(SIMULATED_STATE, "Preview", "预览内容");
     pair!(PREVIEW_NORMAL, "Combat message", "战斗消息");

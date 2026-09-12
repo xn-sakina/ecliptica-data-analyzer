@@ -164,12 +164,12 @@ abbreviated with `万`/`亿`; hovering a value shows its full label and exact nu
 ## Data semantics
 
 - `latest_dps`: damage in the previous complete wall-clock second.
-- `avg_dps`: damage in the previous 30 complete seconds divided by 30, including zero seconds.
-- `round_avg_dps`: average DPS from the first damage of the current round.
+- `avg_dps`: damage in the previous 30 complete seconds divided by 30, including zero seconds, with any fractional part discarded.
+- `round_avg_dps`: average DPS from the first damage of the current round, with any fractional part discarded.
 - `round_effective_dps`: round damage divided by the union of three-second
-  post-hit intervals, excluding walking and long waits.
+  post-hit intervals, excluding walking and long waits, with any fractional part discarded.
 - `round_burst_10s`: highest average DPS among complete ten-second windows in
-  the current round; unavailable until the first full window exists.
+  the current round, with any fractional part discarded; unavailable until the first full window exists.
 - `dps_growth_rate`: percentage change in effective DPS from the previous
   output round. It does not use the ten-second burst metric.
 - `round_damage_taken`: cumulative personal incoming damage in the current round.

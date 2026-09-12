@@ -21,7 +21,7 @@ fn recovers_a_representative_round_from_fixture() {
         .timestamp();
     let snapshot = analyzer.snapshot_at(after_damage);
     assert_eq!(snapshot.latest_dps, 42);
-    assert_eq!(snapshot.average_dps, 1.4);
+    assert_eq!(snapshot.average_dps, 1);
 
     for line in &lines[5..8] {
         analyzer.process_line(line);

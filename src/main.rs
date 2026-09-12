@@ -2496,14 +2496,14 @@ impl AnalyzerApp {
                                     let total_compact = compact_u64(report.total_damage, language);
                                     let effective_exact = report.effective_dps_text();
                                     let effective_compact = if report.has_output_data {
-                                        compact_f64(report.effective_dps, language)
+                                        compact_dps(report.effective_dps, language)
                                     } else {
                                         effective_exact.clone()
                                     };
                                     let burst_exact = report.burst_10s_dps_text();
                                     let burst_compact = report
                                         .burst_10s_dps
-                                        .map(|value| compact_f64(value, language))
+                                        .map(|value| compact_dps(value, language))
                                         .unwrap_or_else(|| burst_exact.clone());
                                     let taken_exact = report.damage_taken.to_string();
                                     let taken_compact = compact_u64(report.damage_taken, language);
@@ -2570,20 +2570,20 @@ impl AnalyzerApp {
                                 } else {
                                     let latest_exact = snapshot.latest_dps_text();
                                     let latest_display = if snapshot.has_damage_data {
-                                        compact_u64(snapshot.latest_dps, language)
+                                        compact_dps(snapshot.latest_dps, language)
                                     } else {
                                         latest_exact.clone()
                                     };
                                     let effective_exact = snapshot.round_effective_dps_text();
                                     let effective_display = if snapshot.has_damage_data {
-                                        compact_f64(snapshot.round_effective_dps, language)
+                                        compact_dps(snapshot.round_effective_dps, language)
                                     } else {
                                         effective_exact.clone()
                                     };
                                     let burst_exact = snapshot.round_burst_10s_dps_text();
                                     let burst_display = snapshot
                                         .round_burst_10s_dps
-                                        .map(|value| compact_f64(value, language))
+                                        .map(|value| compact_dps(value, language))
                                         .unwrap_or_else(|| burst_exact.clone());
                                     let taken_exact = snapshot.round_damage_taken.to_string();
                                     let taken_display =
@@ -2750,10 +2750,10 @@ fn preview_snapshot_for_state(
             if !preview.has_damage_data {
                 preview.has_damage_data = true;
                 preview.latest_dps = 128;
-                preview.average_dps = 96.4;
-                preview.round_average_dps = 92.1;
-                preview.round_effective_dps = 104.8;
-                preview.round_burst_10s_dps = Some(146.2);
+                preview.average_dps = 96;
+                preview.round_average_dps = 92;
+                preview.round_effective_dps = 104;
+                preview.round_burst_10s_dps = Some(146);
                 preview.round_damage_taken = 24;
                 preview.max_dps = 173;
                 preview.has_max_dps_data = true;
@@ -2769,10 +2769,10 @@ fn preview_snapshot_for_state(
                 has_output_data: true,
                 duration_seconds: 367,
                 total_damage: 12_480,
-                average_dps: 38.0,
+                average_dps: 38,
                 max_dps: 146,
-                effective_dps: 82.4,
-                burst_10s_dps: Some(126.7),
+                effective_dps: 82,
+                burst_10s_dps: Some(126),
                 dps_growth_rate: 18.4,
                 has_dps_growth_rate: true,
                 damage_taken: 73,
@@ -3390,10 +3390,10 @@ fn dps_history_chart(
                                 language,
                                 &[
                                     ("time", format_chart_elapsed(hovered.point[0], language)),
-                                    ("raw", format!("{:.0}", raw_peak[1])),
-                                    ("upper", format!("{:.0}", upper_point[1])),
-                                    ("trend", format!("{:.1}", middle_point[1])),
-                                    ("lower", format!("{:.0}", lower_point[1])),
+                                    ("raw", raw_peak[1].trunc().to_string()),
+                                    ("upper", upper_point[1].trunc().to_string()),
+                                    ("trend", middle_point[1].trunc().to_string()),
+                                    ("lower", lower_point[1].trunc().to_string()),
                                 ],
                             ),
                             hovered.track,
@@ -3732,29 +3732,11 @@ fn chart_best_view_bounds(points: &[[f64; 2]]) -> ((f64, f64), (f64, f64)) {
 
 fn format_chart_y_tick(
     value: f64,
-    step_size: f64,
-    visible_range: &std::ops::RangeInclusive<f64>,
+    _step_size: f64,
+    _visible_range: &std::ops::RangeInclusive<f64>,
     language: Language,
 ) -> String {
-    let span = (*visible_range.end() - *visible_range.start()).abs();
-    if span >= 100.0 && step_size >= 1.0 {
-        return format_compact_number(value, language);
-    }
-
-    let decimals = if step_size.is_finite() && step_size > 0.0 && step_size < 1.0 {
-        ((-step_size.log10()).ceil() as usize + 1).clamp(1, 4)
-    } else {
-        0
-    };
-    let formatted = format!("{value:.decimals$}");
-    if decimals == 0 {
-        formatted
-    } else {
-        formatted
-            .trim_end_matches('0')
-            .trim_end_matches('.')
-            .to_owned()
-    }
+    compact_dps(value.max(0.0).trunc() as u64, language)
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -3793,8 +3775,9 @@ fn dps_cloud_tracks(points: &[[f64; 2]], bucket_seconds: f64) -> DpsCloudTracks 
         let (middle, lower) = if active_samples.is_empty() {
             (0.0, 0.0)
         } else {
-            let middle = active_samples.iter().map(|point| point[1]).sum::<f64>()
-                / active_samples.len() as f64;
+            let middle = (active_samples.iter().map(|point| point[1]).sum::<f64>()
+                / active_samples.len() as f64)
+                .trunc();
             let lower = active_samples
                 .iter()
                 .map(|point| point[1])
@@ -4007,10 +3990,6 @@ fn localized_standstill(report: &RoundReport, language: Language) -> String {
     } else {
         "-".to_owned()
     }
-}
-
-fn format_compact_number(value: f64, language: Language) -> String {
-    compact_metric(value, false, language)
 }
 
 fn sidebar_notice(ui: &mut egui::Ui, message: &str, tone: SidebarNoticeTone) -> egui::Response {
@@ -5113,8 +5092,34 @@ fn compact_u64(value: u64, language: Language) -> String {
     compact_metric(value as f64, false, language)
 }
 
-fn compact_f64(value: f64, language: Language) -> String {
-    compact_metric(value, true, language)
+/// Keep all five DPS digits visible. Larger values are compacted without
+/// reintroducing a fractional DPS display.
+fn compact_dps(value: u64, language: Language) -> String {
+    if value < 100_000 {
+        return value.to_string();
+    }
+    match language {
+        Language::English if value >= 1_000_000 => format!(
+            "{}{}",
+            value / 1_000_000,
+            text::COMPACT_HUNDRED_MILLION.get(language)
+        ),
+        Language::English => format!(
+            "{}{}",
+            value / 1_000,
+            text::COMPACT_TEN_THOUSAND.get(language)
+        ),
+        Language::Chinese if value >= 100_000_000 => format!(
+            "{}{}",
+            value / 100_000_000,
+            text::COMPACT_HUNDRED_MILLION.get(language)
+        ),
+        Language::Chinese => format!(
+            "{}{}",
+            value / 10_000,
+            text::COMPACT_TEN_THOUSAND.get(language)
+        ),
+    }
 }
 
 fn compact_metric(value: f64, keep_decimal: bool, language: Language) -> String {
@@ -5733,10 +5738,10 @@ mod tests {
                 has_output_data: true,
                 duration_seconds: 10,
                 total_damage: 999,
-                average_dps: 10.0,
+                average_dps: 10,
                 max_dps: 20,
-                effective_dps: 12.0,
-                burst_10s_dps: Some(15.0),
+                effective_dps: 12,
+                burst_10s_dps: Some(15),
                 dps_growth_rate: 0.0,
                 has_dps_growth_rate: false,
                 damage_taken: 2,
@@ -6171,7 +6176,7 @@ mod tests {
         let cloud = dps_cloud_tracks(&raw, 10.0);
 
         assert_eq!(cloud.upper[0], [1.0, 80.0]);
-        assert_eq!(cloud.middle[0], [1.0, 140.0 / 3.0]);
+        assert_eq!(cloud.middle[0], [1.0, 46.0]);
         assert_eq!(cloud.lower[0], [1.0, 20.0]);
         assert_eq!(cloud.upper[1], [12.0, 10.0]);
         assert_eq!(cloud.middle[1], [12.0, 10.0]);
@@ -6242,15 +6247,15 @@ mod tests {
     }
 
     #[test]
-    fn chart_y_ticks_keep_small_values_distinct() {
+    fn chart_y_ticks_never_show_fractional_dps() {
         let range = 0.0..=1.0;
         assert_eq!(
             format_chart_y_tick(0.2, 0.1, &range, Language::Chinese),
-            "0.2"
+            "0"
         );
         assert_eq!(
             format_chart_y_tick(0.75, 0.25, &range, Language::Chinese),
-            "0.75"
+            "0"
         );
         assert_eq!(
             format_chart_y_tick(1.0, 0.1, &range, Language::Chinese),
@@ -7017,8 +7022,10 @@ mod tests {
         assert_eq!(compact_u64(10_000, Language::Chinese), "1万");
         assert_eq!(compact_u64(12_800, Language::Chinese), "1.3万");
         assert_eq!(compact_u64(123_456_789, Language::Chinese), "1.2亿");
-        assert_eq!(compact_f64(38.0, Language::Chinese), "38.0");
-        assert_eq!(compact_f64(12_480.0, Language::Chinese), "1.2万");
+        assert_eq!(compact_dps(38, Language::Chinese), "38");
+        assert_eq!(compact_dps(20_000, Language::Chinese), "20000");
+        assert_eq!(compact_dps(99_999, Language::English), "99999");
+        assert_eq!(compact_dps(128_000, Language::Chinese), "12万");
     }
 
     #[test]
@@ -7131,6 +7138,24 @@ mod tests {
                 spacing.item_spacing = OVERLAY_ITEM_SPACING * scale;
                 spacing.interact_size = egui::vec2(40.0, 18.0) * scale;
 
+                let combat_column_width =
+                    (OVERLAY_CONTENT_WIDTH * scale - OVERLAY_ITEM_SPACING.x * scale * 3.0) / 4.0;
+                let combat_value_width =
+                    overlay_card_inner_width(combat_column_width, 4.0 * scale, scale);
+                let five_digit_width = ui
+                    .painter()
+                    .layout_no_wrap(
+                        "99999".to_owned(),
+                        egui::FontId::proportional(18.0 * scale),
+                        egui::Color32::WHITE,
+                    )
+                    .size()
+                    .x;
+                assert!(
+                    five_digit_width <= combat_value_width,
+                    "five-digit DPS would truncate at {scale}x: {five_digit_width} > {combat_value_width}"
+                );
+
                 ui.columns(4, |columns| {
                     for (index, column) in columns.iter_mut().enumerate() {
                         let right_edge = column.max_rect().right();
@@ -7138,7 +7163,7 @@ mod tests {
                             column,
                             ["最新", "有效", "10秒", "承伤"][index],
                             "完整指标名称",
-                            "9999",
+                            "99999",
                             "18446744073709551615",
                             egui::Color32::WHITE,
                             scale,

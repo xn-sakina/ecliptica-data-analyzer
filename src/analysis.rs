@@ -120,12 +120,12 @@ pub struct RoundReport {
     /// Full stage duration, from the stage marker to intermission/lobby.
     pub duration_seconds: u64,
     pub total_damage: u64,
-    pub average_dps: f64,
+    pub average_dps: u64,
     pub max_dps: u64,
     /// Total damage divided by the union of three-second post-hit intervals.
-    pub effective_dps: f64,
+    pub effective_dps: u64,
     /// Highest complete ten-second damage window in this round.
-    pub burst_10s_dps: Option<f64>,
+    pub burst_10s_dps: Option<u64>,
     /// Percentage change in effective DPS from the previous comparable round.
     #[serde(default)]
     pub dps_growth_rate: f64,
@@ -152,7 +152,7 @@ impl RoundReport {
 
     pub fn average_dps_text(&self) -> String {
         if self.has_output_data {
-            format!("{:.1}", self.average_dps)
+            self.average_dps.to_string()
         } else {
             "-".to_owned()
         }
@@ -160,7 +160,7 @@ impl RoundReport {
 
     pub fn effective_dps_text(&self) -> String {
         if self.has_output_data {
-            format!("{:.1}", self.effective_dps)
+            self.effective_dps.to_string()
         } else {
             "-".to_owned()
         }
@@ -176,7 +176,7 @@ impl RoundReport {
 
     pub fn burst_10s_dps_text(&self) -> String {
         self.burst_10s_dps
-            .map(|value| format!("{value:.1}"))
+            .map(|value| value.to_string())
             .unwrap_or_else(|| "-".to_owned())
     }
 
@@ -225,10 +225,10 @@ pub struct GameSnapshot {
     #[serde(default)]
     pub dps_history: Vec<DpsHistoryPoint>,
     pub latest_dps: u64,
-    pub average_dps: f64,
-    pub round_average_dps: f64,
-    pub round_effective_dps: f64,
-    pub round_burst_10s_dps: Option<f64>,
+    pub average_dps: u64,
+    pub round_average_dps: u64,
+    pub round_effective_dps: u64,
+    pub round_burst_10s_dps: Option<u64>,
     pub round_damage_taken: u64,
     /// Highest complete-second DPS observed during the current Ecliptica visit.
     pub max_dps: u64,
@@ -321,9 +321,9 @@ impl Default for GameSnapshot {
             has_realtime_dps_data: false,
             dps_history: Vec::new(),
             latest_dps: 0,
-            average_dps: 0.0,
-            round_average_dps: 0.0,
-            round_effective_dps: 0.0,
+            average_dps: 0,
+            round_average_dps: 0,
+            round_effective_dps: 0,
             round_burst_10s_dps: None,
             round_damage_taken: 0,
             max_dps: 0,
@@ -382,7 +382,7 @@ pub struct Analyzer {
     observed_stage_since_entry: bool,
     visit_started_second: Option<i64>,
     history_through_second: Option<i64>,
-    previous_round_effective_dps: Option<f64>,
+    previous_round_effective_dps: Option<u64>,
     step_estimator: StepEstimator,
     protocol_issues: BTreeMap<String, DataQualityIssue>,
     pending_protocol_diagnostics: Vec<ProtocolDiagnostic>,
@@ -887,19 +887,19 @@ impl Analyzer {
             .damage_by_second
             .range(first..=last_complete)
             .fold(0_u64, |total, (_, damage)| total.saturating_add(*damage));
-        self.snapshot.average_dps = total as f64 / 30.0;
+        self.snapshot.average_dps = total / 30;
         self.snapshot.round_average_dps = self
             .round_first_damage_second
             .map(|first| last_complete.saturating_sub(first).saturating_add(1).max(1))
-            .map(|elapsed_seconds| self.round_damage_total as f64 / elapsed_seconds as f64)
-            .unwrap_or(0.0);
+            .map(|elapsed_seconds| self.round_damage_total / elapsed_seconds as u64)
+            .unwrap_or(0);
         let metric_end_second = metric_end_exclusive(&self.round_damage_by_second, now_second);
         let effective_seconds =
             effective_output_seconds(&self.round_damage_by_second, metric_end_second);
         self.snapshot.round_effective_dps = if effective_seconds > 0 {
-            self.round_damage_total as f64 / effective_seconds as f64
+            self.round_damage_total / effective_seconds
         } else {
-            0.0
+            0
         };
         self.snapshot.round_burst_10s_dps = burst_dps(
             &self.round_damage_by_second,
@@ -1021,7 +1021,7 @@ impl Analyzer {
             let metric_end_second = metric_end_exclusive(&self.round_damage_by_second, second);
             let effective_seconds =
                 effective_output_seconds(&self.round_damage_by_second, metric_end_second).max(1);
-            let effective_dps = self.round_damage_total as f64 / effective_seconds as f64;
+            let effective_dps = self.round_damage_total / effective_seconds;
             let burst_10s_dps = burst_dps(
                 &self.round_damage_by_second,
                 self.round_first_damage_second,
@@ -1039,7 +1039,7 @@ impl Analyzer {
                 has_output_data: self.round_first_damage_second.is_some(),
                 duration_seconds,
                 total_damage: self.round_damage_total,
-                average_dps: self.round_damage_total as f64 / output_elapsed_seconds as f64,
+                average_dps: self.round_damage_total / output_elapsed_seconds,
                 max_dps: self.round_max_dps,
                 effective_dps,
                 burst_10s_dps,
@@ -1087,9 +1087,9 @@ impl Analyzer {
         self.round_damage_taken_total = 0;
         self.round_max_dps = 0;
         self.snapshot.latest_dps = 0;
-        self.snapshot.average_dps = 0.0;
-        self.snapshot.round_average_dps = 0.0;
-        self.snapshot.round_effective_dps = 0.0;
+        self.snapshot.average_dps = 0;
+        self.snapshot.round_average_dps = 0;
+        self.snapshot.round_effective_dps = 0;
         self.snapshot.round_burst_10s_dps = None;
         self.snapshot.round_damage_taken = 0;
         self.snapshot.has_damage_data = false;
@@ -1157,10 +1157,9 @@ impl Analyzer {
     }
 }
 
-fn effective_dps_growth_rate(previous: Option<f64>, current: f64) -> Option<f64> {
+fn effective_dps_growth_rate(previous: Option<u64>, current: u64) -> Option<f64> {
     let previous = previous?;
-    (previous.is_finite() && current.is_finite() && previous > f64::EPSILON)
-        .then_some((current - previous) / previous * 100.0)
+    (previous > 0).then_some((current as f64 - previous as f64) / previous as f64 * 100.0)
 }
 
 fn is_jim_final_phase(name: &str) -> bool {
@@ -1186,7 +1185,7 @@ impl GameSnapshot {
 
     pub fn average_dps_text(&self) -> String {
         if self.has_damage_data {
-            format!("{:.1}", self.average_dps)
+            self.average_dps.to_string()
         } else {
             "-".to_owned()
         }
@@ -1194,7 +1193,7 @@ impl GameSnapshot {
 
     pub fn round_average_dps_text(&self) -> String {
         if self.has_damage_data {
-            format!("{:.1}", self.round_average_dps)
+            self.round_average_dps.to_string()
         } else {
             "-".to_owned()
         }
@@ -1202,7 +1201,7 @@ impl GameSnapshot {
 
     pub fn round_effective_dps_text(&self) -> String {
         if self.has_damage_data {
-            format!("{:.1}", self.round_effective_dps)
+            self.round_effective_dps.to_string()
         } else {
             "-".to_owned()
         }
@@ -1210,7 +1209,7 @@ impl GameSnapshot {
 
     pub fn round_burst_10s_dps_text(&self) -> String {
         self.round_burst_10s_dps
-            .map(|value| format!("{value:.1}"))
+            .map(|value| value.to_string())
             .unwrap_or_else(|| "-".to_owned())
     }
 
@@ -1267,7 +1266,7 @@ fn burst_dps(
     damage_by_second: &BTreeMap<i64, u64>,
     first_damage_second: Option<i64>,
     end_exclusive: i64,
-) -> Option<f64> {
+) -> Option<u64> {
     let first = first_damage_second?;
     if end_exclusive.saturating_sub(first) < BURST_WINDOW_SECONDS {
         return None;
@@ -1294,7 +1293,7 @@ fn burst_dps(
             .clamp(first, last_start);
         maximum = maximum.max(window_damage(start));
     }
-    Some(maximum as f64 / BURST_WINDOW_SECONDS as f64)
+    Some(maximum / BURST_WINDOW_SECONDS as u64)
 }
 
 fn format_duration(total_seconds: u64) -> String {
@@ -1633,7 +1632,7 @@ mod tests {
             .timestamp();
         let snapshot = analyzer.snapshot_at(timestamp);
         assert_eq!(snapshot.latest_dps, 42);
-        assert_eq!(snapshot.average_dps, 1.4);
+        assert_eq!(snapshot.average_dps, 1);
     }
 
     #[test]
@@ -1708,9 +1707,9 @@ mod tests {
             .round_report
             .expect("a real zero-damage record should still produce a report");
         assert!(report.has_output_data);
-        assert_eq!(report.average_dps_text(), "0.0");
+        assert_eq!(report.average_dps_text(), "0");
         assert_eq!(report.max_dps_text(), "0");
-        assert_eq!(report.effective_dps_text(), "0.0");
+        assert_eq!(report.effective_dps_text(), "0");
 
         analyzer.process_line(&line(9, "[Behaviour] OnLeftRoom"));
         let outside = analyzer.snapshot_at(timestamp(10));
@@ -1802,16 +1801,43 @@ mod tests {
             .unwrap()
             .timestamp();
 
-        assert_eq!(analyzer.snapshot_at(base + 6).round_average_dps, 60.0);
-        assert_eq!(analyzer.snapshot_at(base + 8).round_average_dps, 20.0);
+        assert_eq!(analyzer.snapshot_at(base + 6).round_average_dps, 60);
+        assert_eq!(analyzer.snapshot_at(base + 8).round_average_dps, 20);
 
         analyzer.process_line(&line(8, "Dealing 20 NON-STRIKE damage"));
-        assert_eq!(analyzer.snapshot_at(base + 9).round_average_dps, 20.0);
+        assert_eq!(analyzer.snapshot_at(base + 9).round_average_dps, 20);
         analyzer.process_line(&line(10, "ECLIPTICA - now in intermission"));
         assert_eq!(
             analyzer.snapshot_at(base + 11).round_average_dps_text(),
             "-"
         );
+    }
+
+    #[test]
+    fn every_derived_dps_discards_fractional_parts_at_the_source() {
+        let mut analyzer = Analyzer::default();
+        analyzer.process_line(&line(
+            0,
+            "[Behaviour] Entering Room: Ecliptica - Demo Playtest",
+        ));
+        analyzer.process_line(&line(1, "ECLIPTICA - now in intermission"));
+        analyzer.process_line(&line(2, "ECLIPTICA - now in stage: Stage_Demo"));
+        analyzer.process_line(&line(5, "Dealing 100 STRIKE damage"));
+
+        let live = analyzer.snapshot_at(timestamp(15));
+        assert_eq!(live.average_dps, 3);
+        assert_eq!(live.round_average_dps, 10);
+        assert_eq!(live.round_effective_dps, 33);
+        assert_eq!(live.round_burst_10s_dps, Some(10));
+
+        analyzer.process_line(&line(16, "ECLIPTICA - now in intermission"));
+        let report = analyzer
+            .snapshot_at(timestamp(17))
+            .round_report
+            .expect("completed round should be archived");
+        assert_eq!(report.average_dps, 9);
+        assert_eq!(report.effective_dps, 33);
+        assert_eq!(report.burst_10s_dps, Some(10));
     }
 
     #[test]
@@ -1842,10 +1868,10 @@ mod tests {
         assert_eq!(report.duration_seconds, 49);
         assert_eq!(report.duration_text(), "00:49");
         assert_eq!(report.total_damage, 42);
-        assert!((report.average_dps - 42.0 / 45.0).abs() < f64::EPSILON);
+        assert_eq!(report.average_dps, 0);
         assert_eq!(report.max_dps, 42);
-        assert_eq!(report.effective_dps, 14.0);
-        assert_eq!(report.burst_10s_dps, Some(4.2));
+        assert_eq!(report.effective_dps, 14);
+        assert_eq!(report.burst_10s_dps, Some(4));
         assert_eq!(report.damage_taken, 0);
 
         analyzer.process_line(&line(55, "ECLIPTICA - now in stage: Stage_Next"));
@@ -1979,7 +2005,7 @@ mod tests {
         analyzer.process_line(&line(1, "ECLIPTICA - now in intermission"));
         analyzer.process_line(&line(2, "ECLIPTICA - now in stage: Stage_Demo"));
         analyzer.process_line(&line(5, "Dealing 30 STRIKE damage"));
-        assert_eq!(analyzer.snapshot_at(timestamp(5)).round_effective_dps, 30.0);
+        assert_eq!(analyzer.snapshot_at(timestamp(5)).round_effective_dps, 30);
         analyzer.process_line(&line(6, "Dealing 30 NON-STRIKE damage"));
         analyzer.process_line(&line(
             7,
@@ -1989,8 +2015,8 @@ mod tests {
         analyzer.process_line(&line(14, "damage has been taken: 35, from source: Boss"));
 
         let snapshot = analyzer.snapshot_at(timestamp(16));
-        assert!((snapshot.round_effective_dps - 100.0 / 7.0).abs() < f64::EPSILON);
-        assert_eq!(snapshot.round_burst_10s_dps, Some(10.0));
+        assert_eq!(snapshot.round_effective_dps, 14);
+        assert_eq!(snapshot.round_burst_10s_dps, Some(10));
         assert_eq!(snapshot.round_damage_taken, 55);
 
         analyzer.process_line(&line(16, "ECLIPTICA - now in intermission"));
@@ -1998,16 +2024,16 @@ mod tests {
             .snapshot_at(timestamp(17))
             .round_report
             .expect("completed round should be archived");
-        assert!((report.effective_dps - 100.0 / 7.0).abs() < f64::EPSILON);
-        assert_eq!(report.burst_10s_dps, Some(10.0));
+        assert_eq!(report.effective_dps, 14);
+        assert_eq!(report.burst_10s_dps, Some(10));
         assert_eq!(report.damage_taken, 55);
     }
 
     #[test]
     fn dps_growth_always_compares_effective_dps() {
-        let effective_growth = effective_dps_growth_rate(Some(100.0), 80.0);
+        let effective_growth = effective_dps_growth_rate(Some(100), 80);
         assert_eq!(effective_growth, Some(-20.0));
-        assert_eq!(effective_dps_growth_rate(Some(0.0), 80.0), None);
+        assert_eq!(effective_dps_growth_rate(Some(0), 80), None);
     }
 
     #[test]
@@ -2143,7 +2169,7 @@ mod tests {
         );
         assert_eq!(
             analyzer.snapshot_at(timestamp(15)).round_burst_10s_dps,
-            Some(10.0)
+            Some(10)
         );
     }
 
@@ -2175,7 +2201,7 @@ mod tests {
             .round_report
             .expect("incoming damage should produce a round report");
         assert_eq!(report.total_damage, 0);
-        assert_eq!(report.effective_dps, 0.0);
+        assert_eq!(report.effective_dps, 0);
         assert_eq!(report.burst_10s_dps, None);
         assert_eq!(report.damage_taken, 23);
     }

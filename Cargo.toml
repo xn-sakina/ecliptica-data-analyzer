@@ -34,8 +34,10 @@ tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 unicode-normalization = "0.1"
 eframe = { version = "=0.32.3", default-features = false, features = ["default_fonts", "glow"] }
+egui_extras = { version = "=0.32.3", features = ["syntect"] }
 egui_plot = "=0.33.0"
 egui-shadcn = { path = "third_party/egui-shadcn" }
+syntect = { version = "5.3", default-features = false, features = ["default-fancy"] }
 
 [build-dependencies]
 embed-resource = "3.0"

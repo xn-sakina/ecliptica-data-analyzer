@@ -11,6 +11,8 @@ pub struct Textarea<'a> {
     pub(crate) auto_resize: bool,
     pub(crate) id_salt: Option<egui::Id>,
     pub(crate) monospace: bool,
+    pub(crate) layouter:
+        Option<&'a mut dyn FnMut(&egui::Ui, &dyn egui::TextBuffer, f32) -> egui::text::LayoutJob>,
 }
 
 impl<'a> Textarea<'a> {
@@ -24,6 +26,7 @@ impl<'a> Textarea<'a> {
             auto_resize: false,
             id_salt: None,
             monospace: false,
+            layouter: None,
         }
     }
 
@@ -57,6 +60,16 @@ impl<'a> Textarea<'a> {
     /// Use a fixed-width font and keep Tab inside the editor for code/template editing.
     pub fn monospace(mut self) -> Self {
         self.monospace = true;
+        self
+    }
+
+    /// Override the text layout, for example to add syntax highlighting.
+    /// Textarea still applies its font, line height, and wrapping consistently.
+    pub fn layouter(
+        mut self,
+        layouter: &'a mut dyn FnMut(&egui::Ui, &dyn egui::TextBuffer, f32) -> egui::text::LayoutJob,
+    ) -> Self {
+        self.layouter = Some(layouter);
         self
     }
 

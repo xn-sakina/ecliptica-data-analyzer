@@ -1,5 +1,7 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
+mod template_highlighting;
+
 use std::{
     collections::VecDeque,
     path::{Path, PathBuf},
@@ -1816,6 +1818,10 @@ impl AnalyzerApp {
                     });
                 ui.add_space(UI_SPACE_2);
                 let width = ui.available_width();
+                let mut layouter =
+                    |ui: &egui::Ui, text: &dyn egui::TextBuffer, _wrap_width: f32| {
+                        template_highlighting::highlight(ui, text.as_str())
+                    };
                 Textarea::new(&mut self.draft.message_template)
                     .id_salt("osc-message-template")
                     .desired_width(width)
@@ -1823,6 +1829,7 @@ impl AnalyzerApp {
                     .auto_resize()
                     .max_height(360.0)
                     .monospace()
+                    .layouter(&mut layouter)
                     .show(ui);
                 ui.add_space(UI_SPACE_2);
                 template_help_button(ui, &mut self.template_help_open, language);
@@ -1906,6 +1913,9 @@ impl AnalyzerApp {
                 });
             ui.add_space(UI_SPACE_2);
             let width = ui.available_width();
+            let mut layouter = |ui: &egui::Ui, text: &dyn egui::TextBuffer, _wrap_width: f32| {
+                template_highlighting::highlight(ui, text.as_str())
+            };
             Textarea::new(&mut self.draft.round_report_template)
                 .id_salt("osc-round-report-template")
                 .desired_width(width)
@@ -1913,6 +1923,7 @@ impl AnalyzerApp {
                 .auto_resize()
                 .max_height(360.0)
                 .monospace()
+                .layouter(&mut layouter)
                 .show(ui);
             ui.add_space(UI_SPACE_2);
             template_help_button(ui, &mut self.template_help_open, language);

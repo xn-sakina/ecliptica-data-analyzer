@@ -100,24 +100,33 @@ impl egui::Widget for super::textarea::Textarea<'_> {
             .unwrap_or_else(|| outer_response.id.with("textarea-scroll"));
         let editor_id = scroll_id.with("editor");
         let editor_focused = ui.memory(|memory| memory.has_focus(editor_id));
+        let mut custom_layouter = self.layouter;
         let scroll_resp = egui::ScrollArea::vertical()
             .id_salt(scroll_id)
             .max_height(inner_rect.height())
             .scroll_source(textarea_scroll_source(editor_focused))
             .show(&mut child_ui, |ui| {
                 let mut layouter = |ui: &egui::Ui, text: &dyn egui::TextBuffer, wrap_width: f32| {
-                    let mut job = egui::text::LayoutJob::default();
+                    let mut job = if let Some(layouter) = custom_layouter.as_deref_mut() {
+                        layouter(ui, text, wrap_width)
+                    } else {
+                        egui::text::LayoutJob::default()
+                    };
                     job.wrap.max_width = wrap_width;
-                    job.append(
-                        text.as_str(),
-                        0.0,
-                        egui::TextFormat {
-                            font_id: font_id.clone(),
-                            color: theme.foreground,
-                            line_height: Some(line_height),
-                            ..Default::default()
-                        },
-                    );
+                    if job.sections.is_empty() {
+                        job.append(
+                            text.as_str(),
+                            0.0,
+                            egui::TextFormat {
+                                color: theme.foreground,
+                                ..Default::default()
+                            },
+                        );
+                    }
+                    for section in &mut job.sections {
+                        section.format.font_id = font_id.clone();
+                        section.format.line_height = Some(line_height);
+                    }
                     ui.fonts(|fonts| fonts.layout_job(job))
                 };
                 let text_edit = egui::TextEdit::multiline(self.text)

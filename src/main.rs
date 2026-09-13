@@ -56,8 +56,7 @@ const UI_SPACE_3: f32 = 12.0;
 const UI_SPACE_4: f32 = 16.0;
 const UI_SPACE_5: f32 = 20.0;
 const CJK_FONT_FAMILY: &str = "system-cjk";
-const EXTENDED_TEXT_FONT_FAMILY: &str = "system-extended-text";
-const SYMBOL_FONT_FAMILY: &str = "system-symbols";
+const SYSTEM_FONT_PREFIX: &str = "system-fallback";
 const MAX_LOG_ROWS: usize = 200;
 const LOG_TERMINAL_MIN_HEIGHT: f32 = 360.0;
 const LOG_TERMINAL_MAX_HEIGHT: f32 = 520.0;
@@ -202,7 +201,7 @@ fn main() -> anyhow::Result<()> {
         &window_title,
         options,
         Box::new(move |creation| {
-            install_cjk_font(&creation.egui_ctx);
+            install_system_font_fallbacks(&creation.egui_ctx);
             install_theme(&creation.egui_ctx);
             Ok(Box::new(AnalyzerApp::new(
                 &creation.egui_ctx,
@@ -5634,79 +5633,146 @@ fn install_theme(ctx: &egui::Context) {
     ctx.set_shadcn_theme(shadcn);
 }
 
-fn install_cjk_font(ctx: &egui::Context) {
-    let cjk_candidates: &[&str] = if cfg!(target_os = "windows") {
-        &["C:/Windows/Fonts/msyh.ttc", "C:/Windows/Fonts/simhei.ttf"]
-    } else {
-        &[
-            "/System/Library/Fonts/PingFang.ttc",
-            "/System/Library/Fonts/STHeiti Light.ttc",
-        ]
-    };
-    let extended_text_candidates: &[&str] = if cfg!(target_os = "windows") {
-        &["C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/arial.ttf"]
-    } else {
-        &[
-            "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
-            "/System/Library/Fonts/Helvetica.ttc",
-        ]
-    };
-    let symbol_candidates: &[&str] = if cfg!(target_os = "windows") {
-        &[
-            "C:/Windows/Fonts/seguisym.ttf",
-            "C:/Windows/Fonts/seguiemj.ttf",
-        ]
-    } else {
-        &[
-            "/System/Library/Fonts/Apple Symbols.ttf",
-            "/System/Library/Fonts/CJKSymbolsFallback.ttc",
-        ]
-    };
+#[derive(Clone, Copy)]
+struct SystemFontChoice {
+    aliases: &'static [&'static str],
+    cjk_primary: bool,
+}
+
+impl SystemFontChoice {
+    const fn fallback(aliases: &'static [&'static str]) -> Self {
+        Self {
+            aliases,
+            cjk_primary: false,
+        }
+    }
+
+    const fn cjk(aliases: &'static [&'static str]) -> Self {
+        Self {
+            aliases,
+            cjk_primary: true,
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+const SYSTEM_FONT_CHOICES: &[SystemFontChoice] = &[
+    SystemFontChoice::fallback(&["Segoe UI"]),
+    SystemFontChoice::cjk(&["Microsoft YaHei UI", "Microsoft YaHei"]),
+    SystemFontChoice::fallback(&["Microsoft JhengHei UI", "Microsoft JhengHei"]),
+    SystemFontChoice::fallback(&["Yu Gothic UI", "Yu Gothic"]),
+    SystemFontChoice::fallback(&["Malgun Gothic"]),
+    SystemFontChoice::fallback(&["Nirmala UI"]),
+    SystemFontChoice::fallback(&["Leelawadee UI"]),
+    SystemFontChoice::fallback(&["Ebrima"]),
+    SystemFontChoice::fallback(&["Gadugi"]),
+    SystemFontChoice::fallback(&["Segoe UI Symbol"]),
+    SystemFontChoice::fallback(&["Segoe UI Historic"]),
+    // Segoe UI Emoji has vector outlines on Windows. Keep it after the
+    // monochrome symbol fonts because egui does not render COLR color layers.
+    SystemFontChoice::fallback(&["Segoe UI Emoji"]),
+];
+
+#[cfg(target_os = "macos")]
+const SYSTEM_FONT_CHOICES: &[SystemFontChoice] = &[
+    SystemFontChoice::fallback(&["Arial Unicode MS"]),
+    SystemFontChoice::cjk(&["Hiragino Sans GB", "PingFang SC", "STHeiti"]),
+    SystemFontChoice::fallback(&["Apple SD Gothic Neo", "AppleGothic"]),
+    SystemFontChoice::fallback(&["Apple Symbols"]),
+    SystemFontChoice::fallback(&[".CJK Symbols Fallback SC"]),
+    // Apple Color Emoji is intentionally omitted: it is an sbix bitmap font,
+    // while egui 0.32 rasterizes TrueType outlines and cannot paint its glyphs.
+];
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+const SYSTEM_FONT_CHOICES: &[SystemFontChoice] = &[
+    SystemFontChoice::fallback(&["Noto Sans", "DejaVu Sans"]),
+    SystemFontChoice::cjk(&["Noto Sans CJK SC", "Noto Sans SC"]),
+    SystemFontChoice::fallback(&["Noto Sans CJK TC", "Noto Sans TC"]),
+    SystemFontChoice::fallback(&["Noto Sans CJK JP", "Noto Sans JP"]),
+    SystemFontChoice::fallback(&["Noto Sans CJK KR", "Noto Sans KR"]),
+    SystemFontChoice::fallback(&["Noto Sans Symbols 2", "Noto Sans Symbols", "Symbola"]),
+];
+
+fn install_system_font_fallbacks(ctx: &egui::Context) {
+    let mut database = fontdb::Database::new();
+    database.load_system_fonts();
 
     let mut fonts = egui::FontDefinitions::default();
-    if !install_font_fallback(&mut fonts, CJK_FONT_FAMILY, cjk_candidates) {
-        tracing::warn!("未找到系统 CJK 字体，中文可能显示为方框");
+    let mut installed = Vec::new();
+    let mut cjk_primary = None;
+
+    for (index, choice) in SYSTEM_FONT_CHOICES.iter().enumerate() {
+        let Some((font_data, family)) = load_system_font(&database, choice.aliases) else {
+            tracing::debug!(aliases = ?choice.aliases, "未找到候选系统字体");
+            continue;
+        };
+        let name = format!("{SYSTEM_FONT_PREFIX}-{index}-{family}");
+        fonts.font_data.insert(name.clone(), font_data.into());
+        append_font_fallback(&mut fonts, &name);
+        if choice.cjk_primary && cjk_primary.is_none() {
+            cjk_primary = Some(name.clone());
+        }
+        installed.push(name);
     }
-    if !install_font_fallback(
-        &mut fonts,
-        EXTENDED_TEXT_FONT_FAMILY,
-        extended_text_candidates,
-    ) {
-        tracing::warn!("未找到扩展字符字体，玩家名中的特殊字符可能显示为方框");
+
+    let mut cjk_fonts = installed.clone();
+    if let Some(cjk_primary) = cjk_primary {
+        cjk_fonts.retain(|name| name != &cjk_primary);
+        cjk_fonts.insert(0, cjk_primary);
     }
-    if !install_font_fallback(&mut fonts, SYMBOL_FONT_FAMILY, symbol_candidates) {
-        tracing::warn!("未找到系统符号字体，玩家名中的装饰符号可能显示为方框");
+    if cjk_fonts.is_empty() {
+        tracing::warn!("未找到系统字体 fallback，部分玩家名可能显示为方框");
+        if let Some(defaults) = fonts.families.get(&egui::FontFamily::Proportional) {
+            fonts.families.insert(
+                egui::FontFamily::Name(CJK_FONT_FAMILY.into()),
+                defaults.clone(),
+            );
+        }
+    } else {
+        fonts
+            .families
+            .insert(egui::FontFamily::Name(CJK_FONT_FAMILY.into()), cjk_fonts);
     }
+
+    tracing::info!(count = installed.len(), "已加载系统字体 fallback");
     ctx.set_fonts(fonts);
 }
 
-fn install_font_fallback(
-    fonts: &mut egui::FontDefinitions,
-    family_name: &'static str,
-    candidates: &[&str],
-) -> bool {
-    let Some(bytes) = candidates.iter().find_map(|path| std::fs::read(path).ok()) else {
-        return false;
-    };
-    fonts.font_data.insert(
-        family_name.to_owned(),
-        egui::FontData::from_owned(bytes).into(),
-    );
-    append_font_fallback(fonts, family_name);
-    true
+fn load_system_font(
+    database: &fontdb::Database,
+    aliases: &[&str],
+) -> Option<(egui::FontData, String)> {
+    let families = aliases
+        .iter()
+        .map(|family| fontdb::Family::Name(family))
+        .collect::<Vec<_>>();
+    let id = database.query(&fontdb::Query {
+        families: &families,
+        weight: fontdb::Weight::NORMAL,
+        stretch: fontdb::Stretch::Normal,
+        style: fontdb::Style::Normal,
+    })?;
+    let family = database
+        .face(id)?
+        .families
+        .first()
+        .map(|(name, _)| name.clone())?;
+    let data = database.with_face_data(id, |bytes, face_index| {
+        let mut data = egui::FontData::from_owned(bytes.to_vec());
+        data.index = face_index;
+        data
+    })?;
+    Some((data, family))
 }
 
-fn append_font_fallback(fonts: &mut egui::FontDefinitions, family_name: &'static str) {
-    fonts.families.insert(
-        egui::FontFamily::Name(family_name.into()),
-        vec![family_name.to_owned()],
-    );
+fn append_font_fallback(fonts: &mut egui::FontDefinitions, font_name: &str) {
     for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
         fonts
             .families
             .entry(family)
             .or_default()
-            .push(family_name.to_owned());
+            .push(font_name.to_owned());
     }
 }
 
@@ -7419,17 +7485,63 @@ mod tests {
     #[test]
     fn player_name_fonts_include_extended_text_and_symbol_fallbacks() {
         let mut fonts = egui::FontDefinitions::default();
-        append_font_fallback(&mut fonts, CJK_FONT_FAMILY);
-        append_font_fallback(&mut fonts, EXTENDED_TEXT_FONT_FAMILY);
-        append_font_fallback(&mut fonts, SYMBOL_FONT_FAMILY);
+        append_font_fallback(&mut fonts, "system-cjk");
+        append_font_fallback(&mut fonts, "system-korean");
+        append_font_fallback(&mut fonts, "system-symbols");
 
         for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
             let fallbacks = &fonts.families[&family];
             assert!(fallbacks.ends_with(&[
-                CJK_FONT_FAMILY.to_owned(),
-                EXTENDED_TEXT_FONT_FAMILY.to_owned(),
-                SYMBOL_FONT_FAMILY.to_owned(),
+                "system-cjk".to_owned(),
+                "system-korean".to_owned(),
+                "system-symbols".to_owned(),
             ]));
         }
+    }
+
+    #[test]
+    fn platform_fallbacks_cover_korean_and_symbols() {
+        let aliases = SYSTEM_FONT_CHOICES
+            .iter()
+            .flat_map(|choice| choice.aliases.iter().copied())
+            .collect::<Vec<_>>();
+
+        #[cfg(target_os = "windows")]
+        {
+            assert!(aliases.contains(&"Malgun Gothic"));
+            assert!(aliases.contains(&"Segoe UI Symbol"));
+            assert!(aliases.contains(&"Segoe UI Emoji"));
+        }
+        #[cfg(target_os = "macos")]
+        {
+            assert!(aliases.contains(&"Apple SD Gothic Neo"));
+            assert!(aliases.contains(&"Apple Symbols"));
+        }
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+        {
+            assert!(aliases.contains(&"Noto Sans CJK KR"));
+            assert!(aliases.contains(&"Noto Sans Symbols 2"));
+        }
+    }
+
+    #[test]
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    fn installed_system_fallbacks_render_mixed_player_name_glyphs() {
+        let ctx = egui::Context::default();
+        install_system_font_fallbacks(&ctx);
+        let mut missing = Vec::new();
+
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            ctx.fonts(|fonts| {
+                let font = egui::FontId::proportional(16.0);
+                for character in "Player玩家이름プレイヤー✿❀♛☯😀".chars() {
+                    if !fonts.has_glyph(&font, character) {
+                        missing.push(character);
+                    }
+                }
+            });
+        });
+
+        assert!(missing.is_empty(), "missing fallback glyphs: {missing:?}");
     }
 }

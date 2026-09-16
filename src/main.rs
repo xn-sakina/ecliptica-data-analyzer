@@ -405,7 +405,6 @@ struct OverlayPositionState {
 
 #[derive(Debug, Clone, Copy, Default)]
 struct DpsChartViewState {
-    selected_epoch: Option<u64>,
     last_user_interaction: Option<Instant>,
     last_auto_fit: Option<Instant>,
     interaction_rect: Option<egui::Rect>,
@@ -3008,44 +3007,22 @@ fn dps_history_chart(
         return;
     }
 
-    let Some((selected_epoch, round_title)) = dps_chart_round_context(snapshot, language) else {
-        Empty::show(ui, |ui| {
-            Typography::new(text::CHART_WAITING_ROUND.get(language))
-                .strong()
-                .color(SETTINGS_HEADING)
-                .show(ui);
-        });
-        return;
-    };
-    if Some(selected_epoch) != view.selected_epoch {
-        view.selected_epoch = Some(selected_epoch);
-    }
+    let chart_round_context = dps_chart_round_context(snapshot, language);
+    let current_anchor = chart_round_context.as_ref().and_then(|(epoch, _)| {
+        snapshot
+            .dps_history
+            .iter()
+            .rev()
+            .filter(|point| point.combat_round_epoch == *epoch)
+            .find_map(|point| point.estimated_step)
+            .or_else(|| snapshot.has_step_estimate.then_some(snapshot.current_step))
+            .map(|step| (*epoch, step))
+    });
 
-    let selected_points = snapshot
-        .dps_history
-        .iter()
-        .filter(|point| point.combat_round_epoch == selected_epoch)
-        .collect::<Vec<_>>();
-    if selected_points.is_empty() {
-        Empty::show(ui, |ui| {
-            Typography::new(text::CHART_WAITING_DATA.get(language))
-                .strong()
-                .color(SETTINGS_HEADING)
-                .show(ui);
-        });
-        return;
-    }
-
-    let estimated_step = selected_points
-        .iter()
-        .rev()
-        .find_map(|point| point.estimated_step)
-        .or_else(|| snapshot.has_step_estimate.then_some(snapshot.current_step));
-
-    let raw = selected_points
-        .iter()
-        .map(|point| [point.elapsed_seconds as f64, point.dps as f64])
-        .collect::<Vec<_>>();
+    // The chart is visit-wide: lobby gaps and every observed combat round
+    // share the same session timeline. Round identity is metadata for the
+    // x-axis markers, never a filter for the plotted samples.
+    let raw = dps_chart_raw_points(&snapshot.dps_history);
     let cloud = dps_cloud_tracks(&raw, DPS_CHART_CLOUD_BUCKET_SECONDS);
     let reduced_cloud = downsample_dps_cloud(&cloud, DPS_CHART_MAX_TREND_POINTS);
     let smooth_upper = smooth_chart_points(&reduced_cloud.upper, DPS_CHART_CURVE_SUBDIVISIONS);
@@ -3097,15 +3074,12 @@ fn dps_history_chart(
         text::DPS_CHART_ACCESSIBILITY,
         language,
         &[
-            ("round", round_title),
+            ("round", text::SESSION_DPS_CHART.get(language).to_owned()),
             ("peak", format!("{:.0}", raw_peak[1])),
             ("time", format_chart_elapsed(raw_peak[0], language)),
         ],
     );
-    let round_markers = chart_round_markers(
-        &snapshot.dps_history,
-        estimated_step.map(|step| (selected_epoch, step)),
-    );
+    let round_markers = chart_round_markers(&snapshot.dps_history, current_anchor);
 
     egui::Frame::NONE
         .fill(SETTINGS_CHART_BG)
@@ -3516,8 +3490,16 @@ fn format_chart_x_tick_localized(
     language: Language,
     axis_width: f32,
 ) -> String {
+    if !seconds.is_finite() || seconds < 0.0 {
+        return String::new();
+    }
+    let whole_second = seconds.round();
+    if (seconds - whole_second).abs() > 1e-6 {
+        return String::new();
+    }
+    let seconds = whole_second;
     let span = (*visible_range.end() - *visible_range.start()).abs();
-    let is_origin = seconds.abs() < 0.5;
+    let is_origin = seconds == 0.0;
     let elapsed = format_chart_elapsed(seconds, language);
     let label = chart_round_at(seconds, round_markers).map_or(elapsed.clone(), |step| {
         format!(
@@ -3646,7 +3628,21 @@ fn format_chart_y_tick(
     _visible_range: &std::ops::RangeInclusive<f64>,
     language: Language,
 ) -> String {
-    compact_dps(value.max(0.0).trunc() as u64, language)
+    if !value.is_finite() || value < 0.0 {
+        return String::new();
+    }
+    let whole_dps = value.round();
+    if (value - whole_dps).abs() > 1e-6 {
+        return String::new();
+    }
+    compact_dps(whole_dps as u64, language)
+}
+
+fn dps_chart_raw_points(history: &[DpsHistoryPoint]) -> Vec<[f64; 2]> {
+    history
+        .iter()
+        .map(|point| [point.elapsed_seconds as f64, point.dps as f64])
+        .collect()
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -6259,6 +6255,35 @@ mod tests {
     }
 
     #[test]
+    fn dps_chart_keeps_samples_from_every_round_on_one_session_timeline() {
+        let history = [
+            DpsHistoryPoint {
+                elapsed_seconds: 10,
+                dps: 100,
+                combat_round_epoch: 1,
+                estimated_step: Some(7),
+            },
+            DpsHistoryPoint {
+                elapsed_seconds: 20,
+                dps: 0,
+                combat_round_epoch: 0,
+                estimated_step: None,
+            },
+            DpsHistoryPoint {
+                elapsed_seconds: 30,
+                dps: 200,
+                combat_round_epoch: 2,
+                estimated_step: Some(8),
+            },
+        ];
+
+        assert_eq!(
+            dps_chart_raw_points(&history),
+            vec![[10.0, 100.0], [20.0, 0.0], [30.0, 200.0]]
+        );
+    }
+
+    #[test]
     fn chart_round_badge_does_not_add_a_vertical_layout_row() {
         egui::__run_test_ui(|ui| {
             ui.set_width(640.0);
@@ -6365,14 +6390,19 @@ mod tests {
     }
 
     #[test]
-    fn chart_y_ticks_never_show_fractional_dps() {
+    fn chart_y_ticks_hide_negative_and_fractional_dps() {
         let range = 0.0..=1.0;
         assert_eq!(
-            format_chart_y_tick(0.2, 0.1, &range, Language::Chinese),
-            "0"
+            format_chart_y_tick(-1.0, 1.0, &range, Language::Chinese),
+            ""
         );
+        assert_eq!(format_chart_y_tick(0.2, 0.1, &range, Language::Chinese), "");
         assert_eq!(
             format_chart_y_tick(0.75, 0.25, &range, Language::Chinese),
+            ""
+        );
+        assert_eq!(
+            format_chart_y_tick(0.0, 0.1, &range, Language::Chinese),
             "0"
         );
         assert_eq!(
@@ -6497,6 +6527,8 @@ mod tests {
         assert_eq!(format_chart_x_tick(300.0, &range, &markers), "");
         assert_eq!(format_chart_x_tick(60.0, &range, &markers), "1分 · 8 回合");
         assert_eq!(format_chart_x_tick(30.0, &range, &[]), "30秒");
+        assert_eq!(format_chart_x_tick(-1.0, &range, &markers), "");
+        assert_eq!(format_chart_x_tick(0.25, &range, &markers), "");
     }
 
     #[test]

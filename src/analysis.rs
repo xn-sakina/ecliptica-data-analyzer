@@ -199,7 +199,7 @@ impl RoundReport {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DpsHistoryPoint {
-    /// Whole seconds since this Ecliptica visit started.
+    /// Whole seconds since the current Ecliptica run started.
     pub elapsed_seconds: u64,
     /// Personal outgoing damage recorded in that second.
     pub dps: u64,
@@ -221,7 +221,7 @@ pub struct GameSnapshot {
     /// Whether the visit-wide real-time stream has observed a damage record.
     #[serde(default)]
     pub has_realtime_dps_data: bool,
-    /// Complete visit-wide one-second DPS series for the overview chart.
+    /// Complete current-run one-second DPS series for the overview chart.
     #[serde(default)]
     pub dps_history: Vec<DpsHistoryPoint>,
     pub latest_dps: u64,
@@ -397,6 +397,7 @@ pub struct Analyzer {
     /// can also expose the world combat phase before any Stage is seen.
     observed_stage_since_entry: bool,
     visit_started_second: Option<i64>,
+    run_history_started_second: Option<i64>,
     history_through_second: Option<i64>,
     previous_round_effective_dps: Option<u64>,
     step_estimator: StepEstimator,
@@ -435,6 +436,16 @@ impl StepEstimator {
         self.observations.clear();
         self.saw_run_origin = false;
         self.total_observed_stages = 0;
+    }
+
+    fn starts_new_run(&self, phase: Option<f64>) -> bool {
+        phase
+            .filter(|value| (0.0..=RUN_ORIGIN_PHASE_MAX).contains(value))
+            .is_some_and(|phase| {
+                self.observations
+                    .last()
+                    .is_none_or(|last| (last.phase - phase).abs() >= 0.000_001)
+            })
     }
 
     fn observe_stage(&mut self, second: i64, phase: Option<f64>) {
@@ -620,6 +631,7 @@ impl Analyzer {
                 self.snapshot.in_ecliptica = true;
                 self.snapshot.phase = RoundPhase::Syncing;
                 self.visit_started_second = Some(second);
+                self.run_history_started_second = Some(second);
             }
             ParsedEvent::LeaveRoom { second } => {
                 self.finish_visit(second);
@@ -627,6 +639,9 @@ impl Analyzer {
             ParsedEvent::Stage { second, phase } => {
                 self.update_dps_history(second.saturating_sub(1));
                 let phase_before_stage = self.snapshot.phase;
+                if self.step_estimator.starts_new_run(phase) {
+                    self.reset_run_history(second);
+                }
                 if phase_before_stage == RoundPhase::Combat && self.round_started_second.is_some() {
                     self.record_protocol_diagnostic(ProtocolDiagnostic {
                         code: "intermission_missing",
@@ -960,6 +975,7 @@ impl Analyzer {
         self.round_baseline_ready = false;
         self.observed_stage_since_entry = false;
         self.visit_started_second = None;
+        self.run_history_started_second = None;
         self.history_through_second = None;
         self.previous_round_effective_dps = None;
         self.protocol_issues.clear();
@@ -1159,8 +1175,14 @@ impl Analyzer {
         self.pending_protocol_diagnostics = pending_diagnostics;
     }
 
+    fn reset_run_history(&mut self, second: i64) {
+        self.snapshot.dps_history.clear();
+        self.run_history_started_second = Some(second);
+        self.history_through_second = None;
+    }
+
     fn update_dps_history(&mut self, through_second: i64) {
-        let Some(start) = self.visit_started_second else {
+        let Some(start) = self.run_history_started_second else {
             return;
         };
         // Reject synthetic/far-future snapshot times used by recovery tests;
@@ -2214,6 +2236,36 @@ mod tests {
             current
                 .iter()
                 .all(|point| { point.estimated_step == Some(snapshot.current_step) })
+        );
+    }
+
+    #[test]
+    fn dps_history_keeps_all_rounds_in_one_run_but_drops_the_previous_run() {
+        let mut analyzer = Analyzer::default();
+        analyzer.process_line(&timeline_line(0, "[Behaviour] Entering Room: Ecliptica"));
+        analyzer.process_line(&timeline_line(1, "ECLIPTICA - now in intermission"));
+        analyzer.process_line(&timeline_stage(2, 0.0));
+        analyzer.process_line(&timeline_line(3, "Dealing 100 STRIKE damage"));
+        analyzer.process_line(&timeline_line(4, "ECLIPTICA - now in intermission"));
+        analyzer.process_line(&timeline_stage(5, 0.0604));
+        analyzer.process_line(&timeline_line(6, "Dealing 150 STRIKE damage"));
+
+        let first_run = analyzer.snapshot_at(timeline_timestamp(8));
+        assert!(first_run.dps_history.iter().any(|point| point.dps == 100));
+        assert!(first_run.dps_history.iter().any(|point| point.dps == 150));
+
+        analyzer.process_line(&timeline_line(8, "ECLIPTICA - now in intermission"));
+        analyzer.process_line(&timeline_stage(10, 0.0));
+        analyzer.process_line(&timeline_line(11, "Dealing 200 STRIKE damage"));
+
+        let second_run = analyzer.snapshot_at(timeline_timestamp(13));
+        assert_eq!(
+            second_run
+                .dps_history
+                .iter()
+                .map(|point| (point.elapsed_seconds, point.dps))
+                .collect::<Vec<_>>(),
+            vec![(0, 0), (1, 200), (2, 0)]
         );
     }
 

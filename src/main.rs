@@ -3019,7 +3019,7 @@ fn dps_history_chart(
             .map(|step| (*epoch, step))
     });
 
-    // The chart is visit-wide: lobby gaps and every observed combat round
+    // The chart is run-wide: lobby gaps and every observed combat round
     // share the same session timeline. Round identity is metadata for the
     // x-axis markers, never a filter for the plotted samples.
     let raw = dps_chart_raw_points(&snapshot.dps_history);
@@ -6255,7 +6255,7 @@ mod tests {
     }
 
     #[test]
-    fn dps_chart_keeps_samples_from_every_round_on_one_session_timeline() {
+    fn dps_chart_keeps_samples_from_every_round_on_one_run_timeline() {
         let history = [
             DpsHistoryPoint {
                 elapsed_seconds: 10,

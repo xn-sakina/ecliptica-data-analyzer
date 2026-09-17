@@ -61,13 +61,12 @@ fn run(shared: SharedState) {
         let template_state_changed = if snapshot.in_ecliptica
             && snapshot.status == DataStatus::Live
             && context.is_some()
-            && (selected_template(&config, &snapshot).contains("cooldown_ready")
-                || selected_template(&config, &snapshot).contains("traffic_light"))
+            && selected_template(&config, &snapshot).contains("cooldown_ready")
         {
             let revision = template_runtime.revision();
             // Observe stateful helpers independently from the Chatbox send
-            // interval so short triggers cannot be missed and helper deadlines
-            // can wake the sender promptly.
+            // interval so a short trigger cannot be missed and a cooldown
+            // deadline can wake the sender promptly.
             let _ = render_configured_message_with_runtime(
                 &config,
                 &snapshot,

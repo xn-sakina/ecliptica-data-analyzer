@@ -34,15 +34,7 @@ pub(crate) struct TemplateRuntimeState {
 #[derive(Debug, Default)]
 struct TemplateRuntimeStateInner {
     cooldowns: HashMap<String, CooldownState>,
-    traffic_light: Option<TrafficLightState>,
     revision: u64,
-}
-
-#[derive(Debug)]
-struct TrafficLightState {
-    started_at: Instant,
-    period: Duration,
-    is_green: bool,
 }
 
 #[derive(Debug)]
@@ -89,44 +81,14 @@ impl TemplateRuntimeState {
         ready
     }
 
-    fn traffic_light(&self, period: Duration, now: Instant) -> &'static str {
-        let mut inner = self.inner.lock();
-        let state = inner
-            .traffic_light
-            .get_or_insert_with(|| TrafficLightState {
-                started_at: now,
-                period,
-                is_green: false,
-            });
-
-        // Changing the template argument starts a fresh red-light cycle. This
-        // keeps the experimental helper self-contained and predictable while
-        // the user tunes its period.
-        if state.period != period {
-            state.started_at = now;
-            state.period = period;
-        }
-
-        let completed_periods =
-            now.saturating_duration_since(state.started_at).as_nanos() / period.as_nanos();
-        let is_green = completed_periods % 2 == 1;
-        if is_green != state.is_green {
-            state.is_green = is_green;
-            inner.revision = inner.revision.wrapping_add(1);
-        }
-
-        if is_green { "green" } else { "red" }
-    }
-
     pub(crate) fn revision(&self) -> u64 {
         self.inner.lock().revision
     }
 
     pub(crate) fn clear(&self) {
         let mut inner = self.inner.lock();
-        if !inner.cooldowns.is_empty() || inner.traffic_light.is_some() {
+        if !inner.cooldowns.is_empty() {
             inner.cooldowns.clear();
-            inner.traffic_light = None;
             inner.revision = inner.revision.wrapping_add(1);
         }
     }
@@ -176,61 +138,9 @@ pub(crate) fn engine_with_cooldowns(
     handlebars.register_helper("random", Box::new(RandomHelper { random_mode }));
     handlebars.register_helper(
         "cooldown_ready",
-        Box::new(CooldownReadyHelper {
-            cooldown_mode: cooldown_mode.clone(),
-        }),
-    );
-    handlebars.register_helper(
-        "traffic_light",
-        Box::new(TrafficLightHelper {
-            runtime_mode: cooldown_mode,
-        }),
+        Box::new(CooldownReadyHelper { cooldown_mode }),
     );
     handlebars
-}
-
-#[derive(Debug, Clone)]
-struct TrafficLightHelper {
-    runtime_mode: CooldownMode,
-}
-
-impl HelperDef for TrafficLightHelper {
-    fn call_inner<'reg: 'rc, 'rc>(
-        &self,
-        helper: &Helper<'rc>,
-        _: &'reg Handlebars<'reg>,
-        _: &'rc Context,
-        _: &mut RenderContext<'reg, 'rc>,
-    ) -> Result<ScopedJson<'rc>, RenderError> {
-        if helper.params().len() > 1 {
-            return Err(RenderErrorReason::Other(
-                "traffic_light accepts at most one period in seconds".to_owned(),
-            )
-            .into());
-        }
-        let seconds = match helper.param(0) {
-            Some(parameter) => parameter.value().as_f64().ok_or_else(|| {
-                RenderError::from(RenderErrorReason::Other(
-                    "traffic_light seconds must be a number".to_owned(),
-                ))
-            })?,
-            None => 20.0,
-        };
-        if !seconds.is_finite() || !(10.0..=20.0).contains(&seconds) {
-            return Err(RenderErrorReason::Other(
-                "traffic_light seconds must be between 10 and 20".to_owned(),
-            )
-            .into());
-        }
-
-        let color = match &self.runtime_mode {
-            CooldownMode::Stateless => "red",
-            CooldownMode::Live { state, now } => {
-                state.traffic_light(Duration::from_secs_f64(seconds), *now)
-            }
-        };
-        Ok(ScopedJson::Derived(JsonValue::String(color.to_owned())))
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -508,99 +418,6 @@ mod tests {
             "{{cooldown_ready \"x\" 0 false}}",
             "{{cooldown_ready \"x\" \"ten\" false}}",
             "{{cooldown_ready \"x\" 10 \"false\"}}",
-        ] {
-            assert!(
-                engine(RandomMode::First)
-                    .render_template(template, &json!({}))
-                    .is_err(),
-                "{template} should fail"
-            );
-        }
-    }
-
-    fn render_traffic_light(
-        state: &TemplateRuntimeState,
-        now: Instant,
-        seconds: Option<f64>,
-    ) -> String {
-        let template = seconds.map_or_else(
-            || "{{traffic_light}}".to_owned(),
-            |seconds| format!("{{{{traffic_light {seconds}}}}}"),
-        );
-        engine_with_cooldowns(
-            RandomMode::First,
-            CooldownMode::Live {
-                state: state.clone(),
-                now,
-            },
-        )
-        .render_template(&template, &json!({}))
-        .unwrap()
-    }
-
-    #[test]
-    fn traffic_light_starts_red_and_alternates_each_period() {
-        let state = TemplateRuntimeState::default();
-        let start = Instant::now();
-
-        assert_eq!(render_traffic_light(&state, start, Some(10.0)), "red");
-        assert_eq!(
-            render_traffic_light(&state, start + Duration::from_secs(9), Some(10.0)),
-            "red"
-        );
-        assert_eq!(
-            render_traffic_light(&state, start + Duration::from_secs(10), Some(10.0)),
-            "green"
-        );
-        assert_eq!(
-            render_traffic_light(&state, start + Duration::from_secs(20), Some(10.0)),
-            "red"
-        );
-        assert_eq!(
-            render_traffic_light(&state, start + Duration::from_secs(30), Some(10.0)),
-            "green"
-        );
-        assert_eq!(state.revision(), 3);
-    }
-
-    #[test]
-    fn traffic_light_defaults_to_twenty_seconds_and_preview_is_red() {
-        let state = TemplateRuntimeState::default();
-        let start = Instant::now();
-
-        assert_eq!(render_traffic_light(&state, start, None), "red");
-        assert_eq!(
-            render_traffic_light(&state, start + Duration::from_secs(19), None),
-            "red"
-        );
-        assert_eq!(
-            render_traffic_light(&state, start + Duration::from_secs(20), None),
-            "green"
-        );
-        assert_eq!(
-            engine(RandomMode::First)
-                .render_template("{{traffic_light}}", &json!({}))
-                .unwrap(),
-            "red"
-        );
-        assert_eq!(
-            engine(RandomMode::First)
-                .render_template(
-                    "{{#if (eq (traffic_light) \"green\")}}GO{{else}}STOP{{/if}}",
-                    &json!({}),
-                )
-                .unwrap(),
-            "STOP"
-        );
-    }
-
-    #[test]
-    fn traffic_light_rejects_invalid_arguments() {
-        for template in [
-            "{{traffic_light 9}}",
-            "{{traffic_light 21}}",
-            "{{traffic_light \"twenty\"}}",
-            "{{traffic_light 10 20}}",
         ] {
             assert!(
                 engine(RandomMode::First)

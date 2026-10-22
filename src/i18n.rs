@@ -1250,8 +1250,8 @@ pub const REPORT_VARIABLE_GROUPS: &[VariableCopyGroup] = &[
                 "Show when",
                 "显示条件",
                 "has_step_estimate",
-                "Show this content when the remaining rounds to Jim can be estimated.",
-                "能算出距离 Jim 还有几回合时显示这段内容。"
+                "Show this content when the remaining rounds to the final Boss can be estimated.",
+                "能算出距离最终 Boss 还有几回合时显示这段内容。"
             ),
             variable!(
                 "Value",
@@ -1264,8 +1264,8 @@ pub const REPORT_VARIABLE_GROUPS: &[VariableCopyGroup] = &[
                 "Value",
                 "数值",
                 "until_boss_step",
-                "Estimated rounds until Jim; 0 means the next combat is expected to be Jim.",
-                "预计还要打几回合才到 Jim。0 表示下一战预计就是 Jim。"
+                "Estimated rounds until the final Boss; 0 means the next combat is expected to be the final Boss.",
+                "预计还要打几回合才到最终 Boss。0 表示下一战预计就是最终 Boss。"
             ),
         ],
     },
@@ -1426,8 +1426,8 @@ pub const TEMPLATE_SYNTAX_EXAMPLES: &[SyntaxCopy] = &[
     SyntaxCopy {
         title: p("4 · Compare or combine conditions", "4 · 比较或组合条件"),
         code: p(
-            "{{#if (eq until_boss_step \"0\")}}Jim is next{{/if}}\n{{#if (gt round_damage_taken 50)}}Damage taken exceeds 50{{/if}}\n{{#if (or rapid_damage_danger no_dps_for_10s)}}⚠ Check combat status{{/if}}",
-            "{{#if (eq until_boss_step \"0\")}}下一战是 Jim{{/if}}\n{{#if (gt round_damage_taken 50)}}承伤超过 50{{/if}}\n{{#if (or rapid_damage_danger no_dps_for_10s)}}⚠ 注意战斗状态{{/if}}",
+            "{{#if (eq until_boss_step \"0\")}}The final Boss is next{{/if}}\n{{#if (gt round_damage_taken 50)}}Damage taken exceeds 50{{/if}}\n{{#if (or rapid_damage_danger no_dps_for_10s)}}⚠ Check combat status{{/if}}",
+            "{{#if (eq until_boss_step \"0\")}}下一战是最终 Boss{{/if}}\n{{#if (gt round_damage_taken 50)}}承伤超过 50{{/if}}\n{{#if (or rapid_damage_danger no_dps_for_10s)}}⚠ 注意战斗状态{{/if}}",
         ),
     },
     SyntaxCopy {

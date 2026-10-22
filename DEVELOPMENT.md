@@ -156,6 +156,12 @@ the same requirement, while `has_round_report_burst_10s` additionally requires
 a complete ten-second window.
 The default compact report remains comfortably below the VRChat Chatbox limit for
 normal numeric values; rendered output still passes through the existing final limit.
+Final-Boss terminal forms are listed in `src/log_protocol.rs`: both
+`JimBringerPhase3` and `GilgameshPhase3` finish the round at their death timestamp,
+so the gathering scene immediately uses the report template. The delayed initial-lobby
+marker preserves that report. Earlier forms and stale death lines cannot finish a run
+unless the defeated object is the currently active terminal Boss.
+See `resources/rules/log-compatibility.md` for the October log audit and regression coverage.
 The normal Overlay keeps its compact single-row four-metric layout and 204px height.
 Short labels, constrained card widths, and tighter padding prevent the empty/no-damage
 state from overflowing. Round reports use a compact two-row grid. Large values are

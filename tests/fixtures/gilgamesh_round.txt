@@ -1,0 +1,690 @@
+2026.10.23 02:30:08 Debug      -  [Behaviour] Entering Room: Ecliptica - Demo Playtest
+2026.10.23 02:30:09 Debug      -  ECLIPTICA - now in intermission
+2026.10.23 02:31:37 Debug      -  Dealing 211 STRIKE damage
+2026.10.23 02:31:39 Debug      -  Dealing 338 STRIKE damage
+2026.10.23 02:31:40 Debug      -  Dealing 211 STRIKE damage
+2026.10.23 02:31:43 Debug      -  Dealing 211 STRIKE damage
+2026.10.23 02:35:12 Debug      -  ECLIPTICA - now in stage: Stage_Gilgamesh on phase: 1 as class: Spellhammer
+2026.10.23 02:35:46 Debug      -  ECLIPTICA - now fighting boss: Gilgamesh(Clone) on phase: 1
+2026.10.23 02:37:33 Debug      -  ownership of Gilgamesh transferred to Fixture Player
+2026.10.23 02:38:00 Debug      -  ownership of Gilgamesh transferred to Fixture Player
+2026.10.23 02:38:03 Debug      -  Dealing 359 STRIKE damage
+2026.10.23 02:38:07 Debug      -  Dealing 1637 STRIKE damage
+2026.10.23 02:38:07 Debug      -  Dealing 40 STRIKE damage
+2026.10.23 02:38:10 Debug      -  ownership of Gilgamesh transferred to Fixture Player
+2026.10.23 02:38:12 Debug      -  Dealing 1637 STRIKE damage
+2026.10.23 02:38:12 Debug      -  Dealing 25 STRIKE damage
+2026.10.23 02:38:12 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:38:13 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:38:14 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:38:15 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:38:16 Debug      -  Dealing 1637 STRIKE damage
+2026.10.23 02:38:16 Debug      -  Dealing 25 STRIKE damage
+2026.10.23 02:38:17 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:38:17 Debug      -  ownership of Gilgamesh transferred to Fixture Player
+2026.10.23 02:38:18 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:38:19 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:38:20 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:38:21 Debug      -  Dealing 3430 STRIKE damage
+2026.10.23 02:38:21 Debug      -  Dealing 32 STRIKE damage
+2026.10.23 02:38:35 Debug      -  damage has been taken: 24, from source: lightningCast
+2026.10.23 02:38:36 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:38:36 Debug      -  ownership of Gilgamesh transferred to Fixture Player
+2026.10.23 02:38:36 Debug      -  Dealing 476 STRIKE damage
+2026.10.23 02:38:37 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:38:38 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:38:40 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:38:41 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:38:42 Debug      -  Dealing 1715 STRIKE damage
+2026.10.23 02:38:42 Debug      -  Dealing 26 STRIKE damage
+2026.10.23 02:38:42 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:38:42 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:38:43 Debug      -  damage has been taken: 24, from source: lightningCast
+2026.10.23 02:38:43 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:38:43 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:38:44 Debug      -  damage has been taken: 24, from source: lightningCast
+2026.10.23 02:38:44 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:38:45 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:38:46 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:38:47 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:38:48 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:38:49 Debug      -  Dealing 2130 STRIKE damage
+2026.10.23 02:38:49 Debug      -  Dealing 26 STRIKE damage
+2026.10.23 02:38:49 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:38:51 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:38:52 Debug      -  damage has been taken: 24, from source: lightningCast
+2026.10.23 02:38:54 Debug      -  Dealing 1715 STRIKE damage
+2026.10.23 02:38:54 Debug      -  Dealing 26 STRIKE damage
+2026.10.23 02:39:01 Debug      -  ownership of Gilgamesh transferred to Fixture Player
+2026.10.23 02:39:18 Debug      -  ownership of Gilgamesh transferred to Fixture Player
+2026.10.23 02:39:20 Debug      -  Dealing 476 STRIKE damage
+2026.10.23 02:39:25 Debug      -  Dealing 3430 STRIKE damage
+2026.10.23 02:39:25 Debug      -  Dealing 32 STRIKE damage
+2026.10.23 02:39:25 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:39:26 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:39:27 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:39:29 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:39:30 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:39:31 Debug      -  Dealing 0 STRIKE damage
+2026.10.23 02:39:31 Debug      -  Dealing 0 STRIKE damage
+2026.10.23 02:39:31 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:39:32 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:39:34 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:39:36 Debug      -  ownership of Gilgamesh transferred to Fixture Player
+2026.10.23 02:39:51 Debug      -  Dealing 724 STRIKE damage
+2026.10.23 02:39:55 Debug      -  Dealing 2869 STRIKE damage
+2026.10.23 02:39:55 Debug      -  Dealing 27 STRIKE damage
+2026.10.23 02:39:56 Debug      -  ownership of Gilgamesh transferred to Fixture Player
+2026.10.23 02:40:00 Debug      -  Dealing 0 STRIKE damage
+2026.10.23 02:40:00 Debug      -  Dealing 27 STRIKE damage
+2026.10.23 02:40:00 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:40:01 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:40:02 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:40:04 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:40:05 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:40:05 Debug      -  Dealing 0 STRIKE damage
+2026.10.23 02:40:05 Debug      -  Dealing 44 STRIKE damage
+2026.10.23 02:40:06 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:40:07 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:40:09 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:40:09 Debug      -  ownership of Gilgamesh transferred to Fixture Player
+2026.10.23 02:40:09 Debug      -  Dealing 1715 STRIKE damage
+2026.10.23 02:40:09 Debug      -  Dealing 26 STRIKE damage
+2026.10.23 02:40:10 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:40:11 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:40:12 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:40:14 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:40:14 Debug      -  Dealing 2144 STRIKE damage
+2026.10.23 02:40:14 Debug      -  Dealing 32 STRIKE damage
+2026.10.23 02:40:15 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:40:16 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:40:17 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:40:18 Debug      -  Dealing 2744 STRIKE damage
+2026.10.23 02:40:18 Debug      -  Dealing 0 STRIKE damage
+2026.10.23 02:40:19 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:40:23 Debug      -  damage has been taken: 12, from source: lightningCast
+2026.10.23 02:40:23 Debug      -  Dealing 2144 STRIKE damage
+2026.10.23 02:40:23 Debug      -  Dealing 32 STRIKE damage
+2026.10.23 02:40:24 Debug      -  damage has been taken: 24, from source: lightningCast
+2026.10.23 02:40:28 Debug      -  Dealing 2144 STRIKE damage
+2026.10.23 02:40:28 Debug      -  Dealing 52 STRIKE damage
+2026.10.23 02:40:29 Debug      -  ownership of Gilgamesh transferred to Fixture Player
+2026.10.23 02:40:32 Debug      -  Dealing 0 STRIKE damage
+2026.10.23 02:40:32 Debug      -  Dealing 26 STRIKE damage
+2026.10.23 02:40:37 Debug      -  Dealing 1715 STRIKE damage
+2026.10.23 02:40:37 Debug      -  Dealing 26 STRIKE damage
+2026.10.23 02:40:41 Debug      -  Dealing 2744 STRIKE damage
+2026.10.23 02:40:41 Debug      -  Dealing 26 STRIKE damage
+2026.10.23 02:40:46 Debug      -  Dealing 1715 STRIKE damage
+2026.10.23 02:40:46 Debug      -  Dealing 26 STRIKE damage
+2026.10.23 02:40:50 Debug      -  ownership of Gilgamesh transferred to Fixture Player
+2026.10.23 02:40:50 Debug      -  Dealing 1715 STRIKE damage
+2026.10.23 02:40:50 Debug      -  Dealing 42 STRIKE damage
+2026.10.23 02:40:55 Debug      -  Dealing 2144 STRIKE damage
+2026.10.23 02:40:55 Debug      -  Dealing 32 STRIKE damage
+2026.10.23 02:40:55 Debug      -  damage has been taken: 12, from source: lightningCast
+2026.10.23 02:40:59 Debug      -  Dealing 2144 STRIKE damage
+2026.10.23 02:40:59 Debug      -  Dealing 32 STRIKE damage
+2026.10.23 02:40:59 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:41:00 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:41:02 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:41:03 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:41:03 Debug      -  Dealing 2744 STRIKE damage
+2026.10.23 02:41:03 Debug      -  Dealing 26 STRIKE damage
+2026.10.23 02:41:04 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:41:05 Debug      -  damage has been taken: 24, from source: lightningCast
+2026.10.23 02:41:05 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:41:06 Debug      -  Boss Gilgamesh dead, personal damage dealt:
+2026.10.23 02:41:06 Debug      -  ECLIPTICA - now fighting boss: GilgameshPhase2(Clone) on phase: 1
+2026.10.23 02:41:06 Debug      -  ECLIPTICA - now fighting boss: GilgameshPhase2(Clone) on phase: 1
+2026.10.23 02:41:52 Debug      -  ownership of GilgameshPhase2 transferred to Fixture Player
+2026.10.23 02:42:10 Debug      -  ownership of GilgameshPhase2 transferred to Fixture Player
+2026.10.23 02:42:10 Debug      -  Dealing 1349 STRIKE damage
+2026.10.23 02:42:10 Debug      -  Dealing 25 STRIKE damage
+2026.10.23 02:42:10 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:42:11 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:42:12 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:42:14 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:42:15 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:42:16 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:42:17 Debug      -  ownership of GilgameshPhase2 transferred to Fixture Player
+2026.10.23 02:42:17 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:42:19 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:42:20 Debug      -  Dealing 1455 STRIKE damage
+2026.10.23 02:42:20 Debug      -  Dealing 40 STRIKE damage
+2026.10.23 02:42:20 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:42:20 Debug      -  Dealing 305 STRIKE damage
+2026.10.23 02:42:21 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:42:22 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:42:23 Debug      -  ownership of GilgameshPhase2 transferred to Fixture Player
+2026.10.23 02:42:23 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:42:25 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:42:26 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:42:27 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:42:29 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:42:30 Debug      -  damage has been taken: 6, from source: attack_Spit (1)
+2026.10.23 02:42:31 Debug      -  ownership of GilgameshPhase2 transferred to Fixture Player
+2026.10.23 02:42:46 Debug      -  ownership of GilgameshPhase2 transferred to Fixture Player
+2026.10.23 02:42:51 Debug      -  ownership of GilgameshPhase2 transferred to Fixture Player
+2026.10.23 02:42:56 Debug      -  damage has been taken: 12, from source: attack_Spit (5)
+2026.10.23 02:43:03 Debug      -  ownership of GilgameshPhase2 transferred to Fixture Player
+2026.10.23 02:43:11 Debug      -  ownership of GilgameshPhase2 transferred to Fixture Player
+2026.10.23 02:43:14 Debug      -  Dealing 1450 STRIKE damage
+2026.10.23 02:43:14 Debug      -  Dealing 25 STRIKE damage
+2026.10.23 02:43:15 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:43:16 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:43:17 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:43:18 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:43:19 Debug      -  ownership of GilgameshPhase2 transferred to Fixture Player
+2026.10.23 02:43:20 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:43:21 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:43:22 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:43:22 Debug      -  Dealing 342 STRIKE damage
+2026.10.23 02:43:23 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:43:25 Debug      -  ownership of GilgameshPhase2 transferred to Fixture Player
+2026.10.23 02:43:27 Debug      -  Dealing 2620 STRIKE damage
+2026.10.23 02:43:27 Debug      -  Dealing 25 STRIKE damage
+2026.10.23 02:43:36 Debug      -  Dealing 1375 STRIKE damage
+2026.10.23 02:43:36 Debug      -  Dealing 25 STRIKE damage
+2026.10.23 02:43:37 Debug      -  ownership of GilgameshPhase2 transferred to Fixture Player
+2026.10.23 02:43:46 Debug      -  ownership of GilgameshPhase2 transferred to Fixture Player
+2026.10.23 02:43:49 Debug      -  Dealing 0 STRIKE damage
+2026.10.23 02:43:49 Debug      -  Dealing 40 STRIKE damage
+2026.10.23 02:43:49 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:43:50 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:43:51 Debug      -  damage has been taken: 2, from source: (maurice) attack_Thunderclap
+2026.10.23 02:43:51 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:43:52 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:43:52 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:43:53 Debug      -  ownership of GilgameshPhase2 transferred to Fixture Player
+2026.10.23 02:43:53 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:43:54 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:43:54 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:43:55 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:43:56 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:43:56 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:43:57 Debug      -  Dealing 1459 STRIKE damage
+2026.10.23 02:43:57 Debug      -  Dealing 25 STRIKE damage
+2026.10.23 02:43:57 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:43:58 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:43:58 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:43:59 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:43:59 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:44:00 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:44:01 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:44:01 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:44:02 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:44:03 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:44:03 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:44:04 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:44:05 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:44:05 Debug      -  Dealing 1447 STRIKE damage
+2026.10.23 02:44:05 Debug      -  Dealing 0 STRIKE damage
+2026.10.23 02:44:05 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:44:06 Debug      -  damage has been taken: 7, from source: (maurice) attack_Thunderclap
+2026.10.23 02:44:06 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:44:07 Debug      -  ownership of GilgameshPhase2 transferred to Fixture Player
+2026.10.23 02:44:07 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:44:08 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:44:08 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:44:09 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:44:09 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:44:10 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:44:11 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:44:11 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:44:12 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:44:13 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:44:13 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:44:14 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:44:14 Debug      -  ownership of GilgameshPhase2 transferred to Fixture Player
+2026.10.23 02:44:14 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:44:15 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:44:16 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:44:16 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:44:17 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:44:18 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:44:18 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:44:19 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:44:20 Debug      -  ownership of GilgameshPhase2 transferred to Fixture Player
+2026.10.23 02:44:21 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:44:22 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:44:23 Debug      -  Dealing 2316 STRIKE damage
+2026.10.23 02:44:23 Debug      -  Dealing 25 STRIKE damage
+2026.10.23 02:44:31 Debug      -  ownership of GilgameshPhase2 transferred to Fixture Player
+2026.10.23 02:44:32 Debug      -  Dealing 1812 STRIKE damage
+2026.10.23 02:44:33 Debug      -  Dealing 31 STRIKE damage
+2026.10.23 02:44:33 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:44:33 Debug      -  Dealing 381 STRIKE damage
+2026.10.23 02:44:34 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:44:35 Debug      -  ownership of GilgameshPhase2 transferred to Fixture Player
+2026.10.23 02:44:35 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:44:36 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:44:38 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:44:39 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:44:40 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:44:41 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:44:43 Debug      -  ownership of GilgameshPhase2 transferred to Fixture Player
+2026.10.23 02:44:47 Debug      -  Dealing 2620 STRIKE damage
+2026.10.23 02:44:47 Debug      -  Dealing 25 STRIKE damage
+2026.10.23 02:45:48 Debug      -  ECLIPTICA - now fighting boss: GilgameshPhase3(Clone) on phase: 1
+2026.10.23 02:45:49 Debug      -  Boss GilgameshPhase2 dead, personal damage dealt:
+2026.10.23 02:46:37 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:46:46 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:47:07 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:47:16 Debug      -  Dealing 359 STRIKE damage
+2026.10.23 02:47:20 Debug      -  Dealing 1715 STRIKE damage
+2026.10.23 02:47:20 Debug      -  Dealing 26 STRIKE damage
+2026.10.23 02:47:23 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:47:26 Debug      -  Dealing 2744 STRIKE damage
+2026.10.23 02:47:26 Debug      -  Dealing 26 STRIKE damage
+2026.10.23 02:47:26 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:47:27 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:47:28 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:47:29 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:47:30 Debug      -  Dealing 2144 STRIKE damage
+2026.10.23 02:47:30 Debug      -  Dealing 32 STRIKE damage
+2026.10.23 02:47:31 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:47:32 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:47:33 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:47:34 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:47:35 Debug      -  Dealing 1715 STRIKE damage
+2026.10.23 02:47:35 Debug      -  Dealing 42 STRIKE damage
+2026.10.23 02:47:36 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:47:40 Debug      -  Dealing 1715 STRIKE damage
+2026.10.23 02:47:40 Debug      -  Dealing 26 STRIKE damage
+2026.10.23 02:47:53 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:48:01 Debug      -  Dealing 0 STRIKE damage
+2026.10.23 02:48:03 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:48:06 Debug      -  Dealing 1715 STRIKE damage
+2026.10.23 02:48:06 Debug      -  Dealing 42 STRIKE damage
+2026.10.23 02:48:07 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:48:11 Debug      -  Dealing 1715 STRIKE damage
+2026.10.23 02:48:11 Debug      -  Dealing 26 STRIKE damage
+2026.10.23 02:48:22 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:48:23 Debug      -  Dealing 1186 STRIKE damage
+2026.10.23 02:48:23 Debug      -  Dealing 26 STRIKE damage
+2026.10.23 02:48:28 Debug      -  Dealing 2869 STRIKE damage
+2026.10.23 02:48:28 Debug      -  Dealing 27 STRIKE damage
+2026.10.23 02:48:33 Debug      -  Dealing 1793 STRIKE damage
+2026.10.23 02:48:33 Debug      -  Dealing 27 STRIKE damage
+2026.10.23 02:48:33 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:48:35 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:48:36 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:48:37 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:48:38 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:48:40 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:48:41 Debug      -  damage has been taken: 42, from source:
+2026.10.23 02:48:41 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:48:42 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:48:45 Debug      -  Dealing 359 STRIKE damage
+2026.10.23 02:48:49 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:48:50 Debug      -  damage has been taken: 33, from source: lightningCast
+2026.10.23 02:48:50 Debug      -  Dealing 2744 STRIKE damage
+2026.10.23 02:48:50 Debug      -  Dealing 26 STRIKE damage
+2026.10.23 02:48:55 Debug      -  Dealing 1715 STRIKE damage
+2026.10.23 02:48:55 Debug      -  Dealing 26 STRIKE damage
+2026.10.23 02:49:00 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:49:06 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:49:07 Debug      -  Dealing 1652 STRIKE damage
+2026.10.23 02:49:07 Debug      -  Dealing 44 STRIKE damage
+2026.10.23 02:49:07 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:49:09 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:49:09 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:49:10 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:49:11 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:49:11 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:49:12 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:49:14 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:49:15 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:49:16 Debug      -  Dealing 375 STRIKE damage
+2026.10.23 02:49:16 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:49:21 Debug      -  Dealing 0 STRIKE damage
+2026.10.23 02:49:21 Debug      -  Dealing 0 STRIKE damage
+2026.10.23 02:49:21 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:49:22 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:49:23 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:49:24 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:49:26 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:49:27 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:49:28 Debug      -  Dealing 1280 STRIKE damage
+2026.10.23 02:49:28 Debug      -  Dealing 44 STRIKE damage
+2026.10.23 02:49:28 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:49:29 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:49:29 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:49:33 Debug      -  Dealing 1871 STRIKE damage
+2026.10.23 02:49:33 Debug      -  Dealing 0 STRIKE damage
+2026.10.23 02:49:37 Debug      -  Dealing 1871 STRIKE damage
+2026.10.23 02:49:37 Debug      -  Dealing 28 STRIKE damage
+2026.10.23 02:49:42 Debug      -  Dealing 2994 STRIKE damage
+2026.10.23 02:49:42 Debug      -  Dealing 28 STRIKE damage
+2026.10.23 02:49:44 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:49:47 Debug      -  Dealing 1871 STRIKE damage
+2026.10.23 02:49:47 Debug      -  Dealing 28 STRIKE damage
+2026.10.23 02:49:57 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:49:58 Debug      -  damage has been taken: 33, from source: lightningCast
+2026.10.23 02:50:06 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:50:07 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:50:10 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:50:11 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:50:16 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:50:16 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:50:21 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:50:22 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:50:25 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:50:25 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:50:30 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:50:31 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:50:34 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:50:39 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:50:41 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:50:42 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:50:43 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:50:46 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:50:47 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:50:50 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:50:54 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:50:55 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:50:58 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:51:07 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:51:07 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:51:08 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:51:11 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:51:13 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:51:15 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:51:15 Debug      -  Dealing 251 STRIKE damage
+2026.10.23 02:51:16 Debug      -  Dealing 652 STRIKE damage
+2026.10.23 02:51:16 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:51:17 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:51:20 Debug      -  Dealing 0 STRIKE damage
+2026.10.23 02:51:20 Debug      -  Dealing 29 STRIKE damage
+2026.10.23 02:51:23 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:51:24 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:51:25 Debug      -  Dealing 1949 STRIKE damage
+2026.10.23 02:51:25 Debug      -  Dealing 0 STRIKE damage
+2026.10.23 02:51:28 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:51:30 Debug      -  Dealing 0 STRIKE damage
+2026.10.23 02:51:30 Debug      -  Dealing 29 STRIKE damage
+2026.10.23 02:51:35 Debug      -  Dealing 2027 STRIKE damage
+2026.10.23 02:51:35 Debug      -  Dealing 30 STRIKE damage
+2026.10.23 02:51:35 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:51:36 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:51:37 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:51:37 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:51:37 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:51:39 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:51:40 Debug      -  Dealing 2027 STRIKE damage
+2026.10.23 02:51:40 Debug      -  Dealing 48 STRIKE damage
+2026.10.23 02:51:40 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:51:41 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:51:42 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:51:44 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:51:44 Debug      -  Dealing 0 STRIKE damage
+2026.10.23 02:51:44 Debug      -  Dealing 30 STRIKE damage
+2026.10.23 02:51:45 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:51:47 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:51:49 Debug      -  Dealing 2027 STRIKE damage
+2026.10.23 02:51:49 Debug      -  Dealing 30 STRIKE damage
+2026.10.23 02:51:52 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:51:54 Debug      -  Dealing 3244 STRIKE damage
+2026.10.23 02:51:54 Debug      -  Dealing 0 STRIKE damage
+2026.10.23 02:51:58 Debug      -  Dealing 2534 STRIKE damage
+2026.10.23 02:51:58 Debug      -  Dealing 38 STRIKE damage
+2026.10.23 02:51:59 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:52:01 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:52:03 Debug      -  Dealing 2534 STRIKE damage
+2026.10.23 02:52:03 Debug      -  Dealing 60 STRIKE damage
+2026.10.23 02:52:04 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:52:08 Debug      -  Dealing 2534 STRIKE damage
+2026.10.23 02:52:08 Debug      -  Dealing 38 STRIKE damage
+2026.10.23 02:52:08 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:52:09 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:52:10 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:52:10 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:52:11 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:52:13 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:52:14 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:52:15 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:52:16 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:52:18 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:52:19 Debug      -  damage has been taken: 14, from source:
+2026.10.23 02:52:27 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:52:30 Debug      -  Dealing 489 STRIKE damage
+2026.10.23 02:52:30 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:52:30 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:52:32 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:52:38 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:52:38 Debug      -  Dealing 1871 STRIKE damage
+2026.10.23 02:52:38 Debug      -  Dealing 45 STRIKE damage
+2026.10.23 02:52:43 Debug      -  Dealing 1871 STRIKE damage
+2026.10.23 02:52:43 Debug      -  Dealing 28 STRIKE damage
+2026.10.23 02:52:44 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:52:47 Debug      -  Dealing 1949 STRIKE damage
+2026.10.23 02:52:47 Debug      -  Dealing 29 STRIKE damage
+2026.10.23 02:52:50 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:52:52 Debug      -  Dealing 3119 STRIKE damage
+2026.10.23 02:52:52 Debug      -  Dealing 29 STRIKE damage
+2026.10.23 02:52:52 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:52:54 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:52:54 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:52:55 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:52:56 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:52:57 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:52:59 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:53:00 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:53:01 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:53:02 Debug      -  damage has been taken: 85, from source: (Gilgamesh) airNuke
+2026.10.23 02:53:03 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:53:06 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:53:18 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:53:29 Debug      -  Dealing 424 STRIKE damage
+2026.10.23 02:53:30 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:53:30 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:53:33 Debug      -  Dealing 2027 STRIKE damage
+2026.10.23 02:53:33 Debug      -  Dealing 30 STRIKE damage
+2026.10.23 02:53:37 Debug      -  damage has been taken: 33, from source: lightningCast
+2026.10.23 02:53:39 Debug      -  Dealing 3244 STRIKE damage
+2026.10.23 02:53:39 Debug      -  Dealing 30 STRIKE damage
+2026.10.23 02:53:46 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:53:52 Debug      -  ownership of BabyGilgamesh transferred to Fixture Player
+2026.10.23 02:54:13 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:54:18 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:54:19 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:54:23 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:54:27 Debug      -  Dealing 0 STRIKE damage
+2026.10.23 02:54:29 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:54:30 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:54:32 Debug      -  Dealing 1793 STRIKE damage
+2026.10.23 02:54:32 Debug      -  Dealing 27 STRIKE damage
+2026.10.23 02:54:35 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:54:36 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:54:37 Debug      -  Dealing 1520 STRIKE damage
+2026.10.23 02:54:41 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:54:41 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:54:42 Debug      -  Dealing 1793 STRIKE damage
+2026.10.23 02:54:42 Debug      -  Dealing 27 STRIKE damage
+2026.10.23 02:54:47 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:54:47 Debug      -  Dealing 1715 STRIKE damage
+2026.10.23 02:54:47 Debug      -  Dealing 26 STRIKE damage
+2026.10.23 02:54:48 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:54:52 Debug      -  Dealing 2620 STRIKE damage
+2026.10.23 02:54:52 Debug      -  Dealing 25 STRIKE damage
+2026.10.23 02:54:53 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:54:53 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:54:57 Debug      -  Dealing 1637 STRIKE damage
+2026.10.23 02:54:57 Debug      -  Dealing 25 STRIKE damage
+2026.10.23 02:54:59 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:55:02 Debug      -  Dealing 1637 STRIKE damage
+2026.10.23 02:55:02 Debug      -  Dealing 40 STRIKE damage
+2026.10.23 02:55:05 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:55:06 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:55:06 Debug      -  Dealing 1637 STRIKE damage
+2026.10.23 02:55:06 Debug      -  Dealing 25 STRIKE damage
+2026.10.23 02:55:11 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:55:11 Debug      -  Dealing 1637 STRIKE damage
+2026.10.23 02:55:11 Debug      -  Dealing 25 STRIKE damage
+2026.10.23 02:55:11 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:55:16 Debug      -  Dealing 2620 STRIKE damage
+2026.10.23 02:55:16 Debug      -  Dealing 25 STRIKE damage
+2026.10.23 02:55:16 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:55:17 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:55:21 Debug      -  Dealing 0 STRIKE damage
+2026.10.23 02:55:21 Debug      -  Dealing 25 STRIKE damage
+2026.10.23 02:55:21 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:55:22 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:55:22 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:55:23 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:55:23 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:55:24 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:55:25 Debug      -  Dealing 1637 STRIKE damage
+2026.10.23 02:55:25 Debug      -  Dealing 40 STRIKE damage
+2026.10.23 02:55:26 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:55:27 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:55:27 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:55:28 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:55:29 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:55:29 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:55:30 Debug      -  Dealing 2046 STRIKE damage
+2026.10.23 02:55:30 Debug      -  Dealing 31 STRIKE damage
+2026.10.23 02:55:30 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:55:31 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:55:32 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:55:33 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:55:35 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:55:35 Debug      -  Dealing 1637 STRIKE damage
+2026.10.23 02:55:35 Debug      -  Dealing 25 STRIKE damage
+2026.10.23 02:55:35 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:55:35 Debug      -  damage has been taken: 16, from source: lightningCast
+2026.10.23 02:55:36 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:55:36 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:55:37 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:55:38 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:55:40 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:55:40 Debug      -  Dealing 2620 STRIKE damage
+2026.10.23 02:55:40 Debug      -  Dealing 0 STRIKE damage
+2026.10.23 02:55:40 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:55:41 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:55:42 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:55:43 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:55:45 Debug      -  Dealing 23 NON-STRIKE damage
+2026.10.23 02:55:45 Debug      -  Dealing 1637 STRIKE damage
+2026.10.23 02:55:45 Debug      -  Dealing 25 STRIKE damage
+2026.10.23 02:55:46 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:55:46 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:55:47 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:55:47 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:55:48 Debug      -  damage has been taken: 8, from source: (Gilgamesh) consumeAOESmall
+2026.10.23 02:55:48 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:55:49 Debug      -  Dealing 2046 STRIKE damage
+2026.10.23 02:55:49 Debug      -  Dealing 50 STRIKE damage
+2026.10.23 02:55:50 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:55:51 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:55:52 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:55:52 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:55:53 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:55:53 Debug      -  damage has been taken: 57, from source: lightningCast
+2026.10.23 02:55:54 Debug      -  Dealing 2046 STRIKE damage
+2026.10.23 02:55:54 Debug      -  Dealing 31 STRIKE damage
+2026.10.23 02:55:55 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:55:55 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:55:56 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:55:56 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:55:57 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:55:57 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:55:57 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:55:58 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:55:58 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:55:58 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:55:59 Debug      -  Dealing 1871 STRIKE damage
+2026.10.23 02:55:59 Debug      -  Dealing 31 STRIKE damage
+2026.10.23 02:56:00 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:00 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:56:01 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:56:01 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:56:02 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:02 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:56:03 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:56:03 Debug      -  damage has been taken: 1, from source:
+2026.10.23 02:56:04 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:56:04 Debug      -  Dealing 3275 STRIKE damage
+2026.10.23 02:56:04 Debug      -  Dealing 0 STRIKE damage
+2026.10.23 02:56:05 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:06 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:07 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:08 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:56:09 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:09 Debug      -  Dealing 2046 STRIKE damage
+2026.10.23 02:56:09 Debug      -  Dealing 31 STRIKE damage
+2026.10.23 02:56:09 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:56:10 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:10 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:56:11 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:12 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:13 Debug      -  damage has been taken: 8, from source: (Gilgamesh) consumeAOESmall
+2026.10.23 02:56:13 Debug      -  damage has been taken: 8, from source: (Gilgamesh) consumeAOESmall
+2026.10.23 02:56:14 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:15 Debug      -  Dealing 2046 STRIKE damage
+2026.10.23 02:56:15 Debug      -  Dealing 50 STRIKE damage
+2026.10.23 02:56:15 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:15 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:56:16 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:16 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:56:17 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:19 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:20 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:20 Debug      -  Dealing 2046 STRIKE damage
+2026.10.23 02:56:20 Debug      -  Dealing 31 STRIKE damage
+2026.10.23 02:56:21 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:56:22 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:56:23 Debug      -  damage has been taken: 33, from source: lightningCast
+2026.10.23 02:56:25 Debug      -  Dealing 0 STRIKE damage
+2026.10.23 02:56:25 Debug      -  Dealing 0 STRIKE damage
+2026.10.23 02:56:28 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:56:29 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:56:30 Debug      -  Dealing 0 STRIKE damage
+2026.10.23 02:56:30 Debug      -  Dealing 31 STRIKE damage
+2026.10.23 02:56:30 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:32 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:33 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:34 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:56:34 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:34 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:56:35 Debug      -  Dealing 2046 STRIKE damage
+2026.10.23 02:56:35 Debug      -  Dealing 31 STRIKE damage
+2026.10.23 02:56:35 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:37 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:38 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:39 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:39 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:56:40 Debug      -  Dealing 2046 STRIKE damage
+2026.10.23 02:56:40 Debug      -  Dealing 50 STRIKE damage
+2026.10.23 02:56:40 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:56:40 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:42 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:43 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:44 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:44 Debug      -  Dealing 2046 STRIKE damage
+2026.10.23 02:56:44 Debug      -  Dealing 31 STRIKE damage
+2026.10.23 02:56:45 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:47 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:56:48 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:49 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:56:50 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:56:50 Debug      -  Dealing 0 STRIKE damage
+2026.10.23 02:56:50 Debug      -  Dealing 31 STRIKE damage
+2026.10.23 02:56:50 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:52 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:53 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:54 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:55 Debug      -  Dealing 3275 STRIKE damage
+2026.10.23 02:56:55 Debug      -  Dealing 31 STRIKE damage
+2026.10.23 02:56:55 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:56:56 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:56:57 Debug      -  Dealing 0 NON-STRIKE damage
+2026.10.23 02:56:58 Debug      -  Dealing 29 NON-STRIKE damage
+2026.10.23 02:58:10 Debug      -  ownership of BabyGilgamesh transferred to Summon Owner
+2026.10.23 02:58:10 Debug      -  ownership of BabyGilgamesh transferred to Summon Owner
+2026.10.23 02:58:10 Debug      -  ownership of BabyGilgamesh transferred to Summon Owner
+2026.10.23 02:58:10 Debug      -  ownership of BabyGilgamesh transferred to Summon Owner
+2026.10.23 02:58:16 Debug      -  Boss GilgameshPhase3 dead, personal damage dealt:
+2026.10.23 02:59:11 Debug      -  ownership of GilgameshPhase3 transferred to Fixture Player
+2026.10.23 02:59:17 Debug      -  ECLIPTICA - now in lobby

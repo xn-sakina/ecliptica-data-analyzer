@@ -39,10 +39,13 @@ pub const AUTHENTICATED_PLAYER_MARKER: &str = "User Authenticated:";
 pub const LOCAL_IS_MASTER_MARKER: &str = "[Behaviour] I am MASTER";
 pub const LOCAL_IS_NOT_MASTER_MARKER: &str = "[Behaviour] I am *NOT* MASTER";
 pub const MASTER_CLIENT_SWITCHED_MARKER: &str = "[Behaviour] OnMasterClientSwitched";
+/// Terminal forms whose death enters the gathering scene before any lobby log.
+/// Earlier forms and ordinary multi-phase bosses must never finish the run.
+pub const FINAL_BOSS_NAMES: [&str; 2] = ["JimBringerPhase3", "GilgameshPhase3"];
 
 /// Inventory used by diagnostics and by developers reviewing compatibility.
 /// All strings that recognize game/VRChat log input must live in this module.
-pub const LOG_PATTERN_INVENTORY: [(&str, &str); 18] = [
+pub const LOG_PATTERN_INVENTORY: [(&str, &str); 19] = [
     ("timestamp", TIMESTAMP_PATTERN),
     ("enter_ecliptica", ENTER_ECLIPTICA_MARKER),
     ("enter_room", ENTER_ROOM_MARKER),
@@ -58,6 +61,7 @@ pub const LOG_PATTERN_INVENTORY: [(&str, &str); 18] = [
     ("damage_taken", DAMAGE_TAKEN_PATTERN),
     ("boss", BOSS_PATTERN),
     ("boss_defeated", BOSS_DEFEATED_PATTERN),
+    ("final_boss", "JimBringerPhase3 | GilgameshPhase3"),
     ("ownership", OWNERSHIP_PATTERN),
     ("ownership_marker", "ownership of ... transferred to ..."),
     ("authenticated_player", AUTHENTICATED_PLAYER_PATTERN),

@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use unicode_normalization::UnicodeNormalization;
 
-use crate::log_protocol::{LogParser, ParsedEvent, ProtocolDiagnostic};
+use crate::log_protocol::{FINAL_BOSS_NAMES, LogParser, ParsedEvent, ProtocolDiagnostic};
 
 /// Keep the last non-zero complete-second DPS visible briefly so it can be read
 /// without changing the real 30-second or round averages.
@@ -37,14 +37,14 @@ const MAX_STEP_CYCLE_SECONDS: i64 = 1_800;
 const STEP_TIME_PRIOR_REJECTION_DELTA: f64 = 0.025;
 const MAX_STEP_TIME_PRIOR_WEIGHT: f64 = 0.2;
 /// Near-final target used only to calibrate the weak full-run duration prior.
-/// It must not be used to decide whether the next stage is Jim.
+/// It must not be used to decide whether the next stage is the final Boss.
 const STEP_TIME_PRIOR_TARGET_PHASE: f64 = 0.995;
-/// Jim starts only when the phase modifier reaches the game's exact final
+/// The final Boss starts only when the phase modifier reaches the game's exact final
 /// value. A near-final value can still belong to one last ordinary stage.
 const FINAL_PHASE: f64 = 1.0;
 /// A full run is normally a little over two hours.  Reserve twenty minutes
-/// for Jim and use the remaining time only as a weak prior for the number of
-/// pre-Jim stage transitions.  This is never interpreted as time played since
+/// for the final Boss and use the remaining time only as a weak prior for the number of
+/// preceding stage transitions.  This is never interpreted as time played since
 /// the local user joined.
 const FULL_RUN_PRIOR_SECONDS: f64 = 135.0 * 60.0;
 const FINAL_BOSS_PRIOR_SECONDS: f64 = 20.0 * 60.0;
@@ -687,7 +687,7 @@ impl Analyzer {
             }
             ParsedEvent::Intermission { second } => {
                 self.update_dps_history(second.saturating_sub(1));
-                // Repeated lobby markers are common after Jim. Preserve the
+                // Repeated lobby markers are common after the final Boss. Preserve the
                 // report already archived by the final-boss death marker and
                 // do not reactivate its completed step estimate.
                 if self.snapshot.round_metrics_active {
@@ -749,15 +749,15 @@ impl Analyzer {
                         .boss
                         .as_deref()
                         .is_some_and(|boss| boss_object_matches(boss, &name));
-                // Jim Phase 3 is the actual end of the run. The game's lobby
+                // A terminal final-Boss form is the actual end of the run. The game's lobby
                 // marker arrives much later, while the party is already in the
                 // ending/gathering scene, so publish the report immediately.
-                // The destroyed Jim object can keep emitting stale death logs
+                // The destroyed Boss object can keep emitting stale death logs
                 // after a new phase-zero run has started in the same room. Only
-                // end the run when Jim is still the currently active Boss.
+                // end the run when it is still the currently active Boss.
                 if self.snapshot.phase == RoundPhase::Combat
                     && is_current_boss
-                    && is_jim_final_phase(&name)
+                    && is_final_boss_phase(&name)
                 {
                     self.update_dps_history(second.saturating_sub(1));
                     if self.snapshot.round_metrics_active {
@@ -1218,8 +1218,10 @@ fn effective_dps_growth_rate(previous: Option<u64>, current: u64) -> Option<f64>
     (previous > 0).then_some((current as f64 - previous as f64) / previous as f64 * 100.0)
 }
 
-fn is_jim_final_phase(name: &str) -> bool {
-    normalized_name(name) == normalized_name("JimBringerPhase3")
+fn is_final_boss_phase(name: &str) -> bool {
+    FINAL_BOSS_NAMES
+        .iter()
+        .any(|boss| boss_object_matches(boss, name))
 }
 
 impl GameSnapshot {

@@ -1481,12 +1481,12 @@ mod tests {
             crate::config::DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2,
         ] {
             let final_round = render_message(template, &snapshot).unwrap();
-            assert!(final_round.contains("最终战，和我一起打爆 Jim"));
+            assert!(final_round.contains("最终战，和我一起打爆 Boss"));
             assert!(!final_round.contains("还有 0 回合"));
 
             snapshot.until_boss_step = 3;
             let remaining = render_message(template, &snapshot).unwrap();
-            assert!(remaining.contains("距 Jim 还有 3 回合"));
+            assert!(remaining.contains("距最终 Boss 还有 3 回合"));
             assert!(!remaining.contains("最终战"));
             snapshot.until_boss_step = 0;
         }
@@ -1494,11 +1494,11 @@ mod tests {
         let english = AppConfig::defaults_for_language(crate::i18n::Language::English);
         for template in &english.round_report_template_presets[..2] {
             let final_round = render_message(template, &snapshot).unwrap();
-            assert!(final_round.contains("Final battle—let's take down Jim together"));
+            assert!(final_round.contains("Final battle—let's take down the final Boss together"));
 
             snapshot.until_boss_step = 3;
             let remaining = render_message(template, &snapshot).unwrap();
-            assert!(remaining.contains("3 rounds until Jim"));
+            assert!(remaining.contains("3 rounds until the final Boss"));
             snapshot.until_boss_step = 0;
         }
     }

@@ -16,7 +16,7 @@ use tempfile::NamedTempFile;
 use crate::APP_ID;
 use crate::i18n::Language;
 
-pub const CONFIG_VERSION: u32 = 27;
+pub const CONFIG_VERSION: u32 = 28;
 pub const CONFIG_EXPORT_FORMAT: &str = "ecliptica-config-export";
 pub const CONFIG_EXPORT_FORMAT_VERSION: u32 = 1;
 pub const MESSAGE_TEMPLATE_PRESET_COUNT: usize = 5;
@@ -37,6 +37,13 @@ const VERSION_22_DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2: &str = "【回合战报
 const VERSION_22_DEFAULT_ROUND_REPORT_TEMPLATE_ENGLISH: &str = "【Round Report】\nTime {{round_duration}} | Damage {{round_total_damage}}\nAverage {{round_report_effective_dps}} DPS | Peak {{round_max_dps}} DPS\n{{#if has_step_estimate}}\nAbout {{until_boss_step}} rounds until Jim\n{{/if}}\n";
 const VERSION_22_DEFAULT_ROUND_REPORT_TEMPLATE_PRESET_2_ENGLISH: &str = "【Round Report】\nTime {{round_duration}} | Damage taken {{round_report_damage_taken}}\nLongest standstill {{round_longest_standstill}}s\n{{#if has_step_estimate}}\nAbout {{until_boss_step}} rounds until Jim\n{{/if}}\n";
 const VERSION_13_DEFAULT_ALERT_VOLUME: f32 = 0.35;
+// Exact previous built-ins: customized templates must survive this upgrade.
+const VERSION_27_REPORT_TEMPLATES: [&str; 4] = [
+    "【回合战报】\nYou are not sigma\n用时 {{round_duration}}｜我打了 {{round_total_damage}}\n平均 {{round_report_effective_dps}} DPS｜最高 {{round_max_dps}} DPS\n{{#if has_step_estimate}}\n  {{#if (eq until_boss_step \"0\")}}\n最终战，和我一起打爆 Jim\n  {{else}}\n距 Jim 还有 {{until_boss_step}} 回合\n  {{/if}}\n{{/if}}\n",
+    "【回合战报】\nYou are not sigma\n用时 {{round_duration}}｜被草 {{round_report_damage_taken}}\n最长站桩 {{round_longest_standstill}}秒\n{{#if has_step_estimate}}\n  {{#if (eq until_boss_step \"0\")}}\n最终战，和我一起打爆 Jim\n  {{else}}\n距 Jim 还有 {{until_boss_step}} 回合\n  {{/if}}\n{{/if}}\n",
+    "【Round Report】\nYou are not sigma\nTime {{round_duration}} | Damage {{round_total_damage}}\nAverage {{round_report_effective_dps}} DPS | Peak {{round_max_dps}} DPS\n{{#if has_step_estimate}}\n  {{#if (eq until_boss_step \"0\")}}\nFinal battle—let's take down Jim together\n  {{else}}\nAbout {{until_boss_step}} rounds until Jim\n  {{/if}}\n{{/if}}\n",
+    "【Round Report】\nYou are not sigma\nTime {{round_duration}} | Damage taken {{round_report_damage_taken}}\nLongest standstill {{round_longest_standstill}}s\n{{#if has_step_estimate}}\n  {{#if (eq until_boss_step \"0\")}}\nFinal battle—let's take down Jim together\n  {{else}}\nAbout {{until_boss_step}} rounds until Jim\n  {{/if}}\n{{/if}}\n",
+];
 pub const DEFAULT_TEMPLATE: &str = include_str!("../resources/presets/zh/combat1.txt");
 pub const DEFAULT_TEMPLATE_PRESET_2: &str = include_str!("../resources/presets/zh/combat2.txt");
 pub const DEFAULT_ROUND_REPORT_TEMPLATE: &str = include_str!("../resources/presets/zh/report1.txt");
@@ -902,6 +909,23 @@ impl AppConfig {
                     [&old_chinese_reports[offset], &old_english_reports[offset]],
                     &report_names[index],
                 );
+            }
+        }
+        if self.version < 28 {
+            let reports = default_round_report_template_presets(self.language);
+            for template in &mut self.round_report_template_presets {
+                if let Some(index) = VERSION_27_REPORT_TEMPLATES
+                    .iter()
+                    .position(|old| *old == template.as_str())
+                {
+                    *template = reports[index % 2].clone();
+                }
+            }
+            if let Some(template) = self
+                .round_report_template_presets
+                .get(self.active_round_report_template_preset)
+            {
+                self.round_report_template.clone_from(template);
             }
         }
         self.version = CONFIG_VERSION;
@@ -2689,6 +2713,56 @@ mod tests {
             migrated.round_report_template,
             DEFAULT_ROUND_REPORT_TEMPLATE
         );
+    }
+
+    #[test]
+    fn version_twenty_seven_reports_upgrade_only_exact_builtins_in_every_slot() {
+        for language in [Language::Chinese, Language::English] {
+            let defaults = AppConfig::defaults_for_language(language);
+            let offset = if language == Language::Chinese { 0 } else { 2 };
+            let custom = format!("{} custom Jim text", VERSION_27_REPORT_TEMPLATES[offset]);
+            let old = AppConfig {
+                version: 27,
+                active_round_report_template_preset: 3,
+                round_report_template_presets: [
+                    VERSION_27_REPORT_TEMPLATES[offset + 1].to_owned(),
+                    custom.clone(),
+                    String::new(),
+                    VERSION_27_REPORT_TEMPLATES[offset].to_owned(),
+                    VERSION_27_REPORT_TEMPLATES[offset + 1].to_owned(),
+                ],
+                ..defaults.clone()
+            };
+            let migrated = old.migrated();
+            assert_eq!(migrated.version, CONFIG_VERSION);
+            assert_eq!(
+                migrated.round_report_template_presets[0],
+                defaults.round_report_template_presets[1]
+            );
+            assert_eq!(migrated.round_report_template_presets[1], custom);
+            assert!(migrated.round_report_template_presets[2].is_empty());
+            assert_eq!(
+                migrated.round_report_template_presets[3],
+                defaults.round_report_template_presets[0]
+            );
+            assert_eq!(
+                migrated.round_report_template_presets[4],
+                defaults.round_report_template_presets[1]
+            );
+            assert_eq!(
+                migrated.round_report_template,
+                defaults.round_report_template_presets[0]
+            );
+            assert_eq!(
+                migrated.message_template_presets,
+                defaults.message_template_presets
+            );
+            migrated.validate().unwrap();
+            assert_eq!(
+                serde_json::to_value(migrated.clone().migrated()).unwrap(),
+                serde_json::to_value(migrated).unwrap()
+            );
+        }
     }
 
     #[test]

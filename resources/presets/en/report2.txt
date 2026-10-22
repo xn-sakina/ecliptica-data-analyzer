@@ -4,8 +4,8 @@ Time {{round_duration}} | Damage taken {{round_report_damage_taken}}
 Longest standstill {{round_longest_standstill}}s
 {{#if has_step_estimate}}
   {{#if (eq until_boss_step "0")}}
-Final battle—let's take down Jim together
+Final battle—let's take down the final Boss together
   {{else}}
-About {{until_boss_step}} rounds until Jim
+About {{until_boss_step}} rounds until the final Boss
   {{/if}}
 {{/if}}

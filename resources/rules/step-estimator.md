@@ -6,6 +6,11 @@
 实现位于 `src/analysis.rs` 的 `StepEstimator`。游戏 phase 的原始规则见
 [`steps.md`](steps.md)。
 
+2026-10 日志兼容说明：最终战也可能是 `Stage_Gilgamesh`，其 phase 仍为 `1`。
+下文中的 Jim 是历史样本的最终 Boss；`until_boss_step` 对 Jim 和 Gilgamesh
+都表示距离最终战的普通回合数，不预测最终 Boss 的身份，估算公式不变。
+最终形态死亡后即结束本局并隐藏估算；不能等约一分钟后的初始大厅日志才结算。
+
 ## 1. 指标语义
 
 | 字段 | 语义 |

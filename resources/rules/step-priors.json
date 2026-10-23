@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "features": [
+    "phase_band_0",
+    "phase_band_1",
+    "phase_band_2",
+    "phase_band_3",
+    "phase_band_4",
+    "log_combat_seconds_over_420"
+  ],
+  "models": [
+    {
+      "name": "historical",
+      "coefficients": [
+        0.06289868262579774,
+        0.08613869410909149,
+        0.09441095981652785,
+        0.10346438571895622,
+        0.1114445400744045,
+        -0.007799946716864571
+      ],
+      "combat_seconds_range": [
+        268,
+        727
+      ]
+    },
+    {
+      "name": "updated",
+      "coefficients": [
+        0.0657723130222174,
+        0.09101239798780257,
+        0.08933749532384797,
+        0.07597897963109763,
+        0.0779936433981,
+        -0.04636104440232167
+      ],
+      "combat_seconds_range": [
+        298,
+        693
+      ]
+    }
+  ],
+  "training_runs": 9,
+  "training_transitions": 63
+}

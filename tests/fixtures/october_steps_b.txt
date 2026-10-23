@@ -1,0 +1,46 @@
+2026.10.23 06:10:05 Debug      -  [Behaviour] Entering Room: Ecliptica - Demo Playtest
+2026.10.23 06:19:24 Debug      -  ECLIPTICA - now in stage: Stage_LostElysia on phase: 0.3996918 as class: Spellhammer
+2026.10.23 06:20:09 Debug      -  Dealing 404 STRIKE damage
+2026.10.23 06:22:19 Debug      -  ECLIPTICA - now fighting boss: Steven(Clone) on phase: 0.3996918
+2026.10.23 06:25:03 Debug      -  ECLIPTICA - now in intermission
+2026.10.23 06:29:01 Debug      -  ECLIPTICA - now in stage: Stage_VRCHub on phase: 0.4977301 as class: Spellhammer
+2026.10.23 06:29:24 Debug      -  Dealing 390 STRIKE damage
+2026.10.23 06:32:50 Debug      -  ECLIPTICA - now fighting boss: Hakli(Clone) on phase: 0.4977301
+2026.10.23 06:35:57 Debug      -  ECLIPTICA - now in intermission
+2026.10.23 06:38:41 Debug      -  ECLIPTICA - now in stage: Stage_GMBigcity on phase: 0.5821126 as class: Spellhammer
+2026.10.23 06:39:37 Debug      -  Dealing 947 STRIKE damage
+2026.10.23 06:42:13 Debug      -  ECLIPTICA - now fighting boss: JackedPumpkin(Clone) on phase: 0.5821126
+2026.10.23 06:45:46 Debug      -  ECLIPTICA - now in intermission
+2026.10.23 06:50:22 Debug      -  ECLIPTICA - now in stage: Stage_LostElysia on phase: 0.6663938 as class: Spellhammer
+2026.10.23 06:54:02 Debug      -  ECLIPTICA - now fighting boss: Yuki(Clone) on phase: 0.6663938
+2026.10.23 06:54:20 Debug      -  Dealing 2140 STRIKE damage
+2026.10.23 06:54:58 Debug      -  ECLIPTICA - now fighting boss: YukiPhase2(Clone) on phase: 0.6663938
+2026.10.23 06:54:58 Debug      -  ECLIPTICA - now fighting boss: YukiPhase2(Clone) on phase: 0.6663938
+2026.10.23 06:56:45 Debug      -  ECLIPTICA - now in intermission
+2026.10.23 06:59:23 Debug      -  ECLIPTICA - now in stage: Stage_VRCHub on phase: 0.7443991 as class: Spellhammer
+2026.10.23 06:59:49 Debug      -  Dealing 383 STRIKE damage
+2026.10.23 07:02:19 Debug      -  ECLIPTICA - now fighting boss: Corus(Clone) on phase: 0.7443991
+2026.10.23 07:03:54 Debug      -  ECLIPTICA - now fighting boss: CorusPhase2(Clone) on phase: 0.7443991
+2026.10.23 07:03:54 Debug      -  ECLIPTICA - now fighting boss: CorusPhase2(Clone) on phase: 0.7443991
+2026.10.23 07:05:39 Debug      -  ECLIPTICA - now in intermission
+2026.10.23 07:07:59 Debug      -  ECLIPTICA - now in stage: Stage_GMBigcity on phase: 0.8395436 as class: Spellhammer
+2026.10.23 07:08:31 Debug      -  Dealing 1254 STRIKE damage
+2026.10.23 07:10:38 Debug      -  ECLIPTICA - now fighting boss: Pandora(Clone) on phase: 0.8395436
+2026.10.23 07:12:57 Debug      -  ECLIPTICA - now in intermission
+2026.10.23 07:14:59 Debug      -  ECLIPTICA - now in stage: Stage_OuterHeven on phase: 0.9054043 as class: Spellhammer
+2026.10.23 07:15:20 Debug      -  Dealing 2072 STRIKE damage
+2026.10.23 07:19:35 Debug      -  ECLIPTICA - now fighting boss: Oone(Clone) on phase: 0.9054043
+2026.10.23 07:25:12 Debug      -  ECLIPTICA - now in intermission
+2026.10.23 07:28:12 Debug      -  ECLIPTICA - now in stage: Stage_ProtoColony on phase: 0.9503832 as class: Spellhammer
+2026.10.23 07:28:28 Debug      -  Dealing 1772 STRIKE damage
+2026.10.23 07:31:25 Debug      -  ECLIPTICA - now fighting boss: ManalyteAncient(Clone) on phase: 0.9503832
+2026.10.23 07:32:45 Debug      -  ECLIPTICA - now fighting boss: ManalyteAncientPhase2(Clone) on phase: 0.9503832
+2026.10.23 07:32:45 Debug      -  ECLIPTICA - now fighting boss: ManalyteAncientPhase2(Clone) on phase: 0.9503832
+2026.10.23 07:34:56 Debug      -  ECLIPTICA - now in intermission
+2026.10.23 07:39:53 Debug      -  ECLIPTICA - now in stage: Stage_Gilgamesh on phase: 1 as class: Spellhammer
+2026.10.23 07:41:20 Debug      -  ECLIPTICA - now fighting boss: Gilgamesh(Clone) on phase: 1
+2026.10.23 07:43:33 Debug      -  Dealing 373 STRIKE damage
+2026.10.23 07:50:00 Debug      -  ECLIPTICA - now fighting boss: GilgameshPhase2(Clone) on phase: 1
+2026.10.23 07:50:00 Debug      -  ECLIPTICA - now fighting boss: GilgameshPhase2(Clone) on phase: 1
+2026.10.23 07:53:52 Debug      -  ECLIPTICA - now fighting boss: GilgameshPhase3(Clone) on phase: 1
+2026.10.23 08:09:02 Debug      -  ECLIPTICA - now in lobby

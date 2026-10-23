@@ -167,6 +167,16 @@ Short labels, constrained card widths, and tighter padding prevent the empty/no-
 state from overflowing. Round reports use a compact two-row grid. Large values are
 abbreviated with `万`/`亿`; hovering a value shows its full label and exact number.
 
+## Round estimation
+
+The estimator keeps the existing template API and two-transition visibility gate.
+It combines phase-based fallback with offline-trained version priors, robust online
+Bayesian updates, measured combat duration, and fast/central/slow future pace rollouts.
+Lobby time is excluded from the learned progression features. See
+[`resources/rules/step-estimator.md`](resources/rules/step-estimator.md) for the
+model contract, anonymized training corpus, whole-run holdout results, and commands
+to reproduce priors with `python3 scripts/train-step-model.py --check`.
+
 ## Data semantics
 
 - `latest_dps`: damage in the previous complete wall-clock second.

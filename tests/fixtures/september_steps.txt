@@ -1,0 +1,42 @@
+2026.09.10 02:14:02 Debug      -  [Behaviour] Entering Room: Ecliptica - Fixture
+2026.09.10 02:15:02 Debug      -  ECLIPTICA - now in stage: Stage_Bringer on phase: 1 as class: Spellhammer
+2026.09.10 02:20:10 Debug      -  Dealing 371 STRIKE damage
+2026.09.10 02:45:07 Debug      -  ECLIPTICA - now in lobby
+2026.09.10 03:03:51 Debug      -  ECLIPTICA - now in stage: Stage_Hall of Beginnings on phase: 0 as class: Shieldmage
+2026.09.10 03:10:28 Debug      -  ECLIPTICA - now in intermission
+2026.09.10 03:12:34 Debug      -  ECLIPTICA - now in stage: Stage_GMFuncFlat on phase: 0.05748478 as class: Shieldmage
+2026.09.10 03:13:47 Debug      -  Dealing 124 STRIKE damage
+2026.09.10 03:22:28 Debug      -  ECLIPTICA - now in intermission
+2026.09.10 03:24:33 Debug      -  ECLIPTICA - now in stage: Stage_ProtoColony on phase: 0.1148972 as class: Shieldmage
+2026.09.10 03:25:01 Debug      -  Dealing 72 STRIKE damage
+2026.09.10 03:32:42 Debug      -  ECLIPTICA - now in intermission
+2026.09.10 03:34:08 Debug      -  ECLIPTICA - now in stage: Stage_BalboaRuins on phase: 0.1774914 as class: Shieldmage
+2026.09.10 03:35:18 Debug      -  Dealing 124 STRIKE damage
+2026.09.10 03:46:09 Debug      -  ECLIPTICA - now in intermission
+2026.09.10 03:48:47 Debug      -  ECLIPTICA - now in stage: Stage_Hallow on phase: 0.2364874 as class: Shieldmage
+2026.09.10 03:49:34 Debug      -  Dealing 124 STRIKE damage
+2026.09.10 03:59:20 Debug      -  ECLIPTICA - now in intermission
+2026.09.10 04:01:10 Debug      -  ECLIPTICA - now in stage: Stage_CopiedCity on phase: 0.3147725 as class: Shieldmage
+2026.09.10 04:01:29 Debug      -  Dealing 675 STRIKE damage
+2026.09.10 04:07:19 Debug      -  ECLIPTICA - now in intermission
+2026.09.10 04:10:06 Debug      -  ECLIPTICA - now in stage: Stage_VRCHub on phase: 0.4019482 as class: Shieldmage
+2026.09.10 04:15:31 Debug      -  Dealing 996 STRIKE damage
+2026.09.10 04:16:19 Debug      -  ECLIPTICA - now in intermission
+2026.09.10 04:18:59 Debug      -  ECLIPTICA - now in stage: Stage_GMBigcity on phase: 0.4935244 as class: Shieldmage
+2026.09.10 04:19:38 Debug      -  Dealing 2507 STRIKE damage
+2026.09.10 04:25:08 Debug      -  ECLIPTICA - now in intermission
+2026.09.10 04:27:16 Debug      -  ECLIPTICA - now in stage: Stage_LostElysia on phase: 0.5833232 as class: Shieldmage
+2026.09.10 04:28:50 Debug      -  Dealing 1922 STRIKE damage
+2026.09.10 04:33:14 Debug      -  ECLIPTICA - now in intermission
+2026.09.10 04:35:49 Debug      -  ECLIPTICA - now in stage: Stage_VRCHub on phase: 0.6801758 as class: Shieldmage
+2026.09.10 04:36:03 Debug      -  Dealing 24 STRIKE damage
+2026.09.10 04:44:10 Debug      -  ECLIPTICA - now in intermission
+2026.09.10 04:46:11 Debug      -  ECLIPTICA - now in stage: Stage_GMBigcity on phase: 0.7775688 as class: Shieldmage
+2026.09.10 04:46:36 Debug      -  Dealing 31 STRIKE damage
+2026.09.10 04:53:25 Debug      -  ECLIPTICA - now in intermission
+2026.09.10 04:55:51 Debug      -  ECLIPTICA - now in stage: Stage_LostElysia on phase: 0.887341 as class: Shieldmage
+2026.09.10 04:56:10 Debug      -  Dealing 26 STRIKE damage
+2026.09.10 05:02:06 Debug      -  ECLIPTICA - now in intermission
+2026.09.10 05:04:16 Debug      -  ECLIPTICA - now in stage: Stage_VRCHub on phase: 0.9994387 as class: Shieldmage
+2026.09.10 05:04:34 Debug      -  Dealing 51 STRIKE damage
+2026.09.10 05:11:57 Debug      -  ECLIPTICA - now in lobby

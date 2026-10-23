@@ -1,5 +1,8 @@
 use std::collections::BTreeMap;
 
+mod progress_model;
+use progress_model::{ProgressEnsemble, ProgressSample};
+
 use serde::{Deserialize, Serialize};
 use unicode_normalization::UnicodeNormalization;
 
@@ -29,8 +32,13 @@ const BURST_WINDOW_SECONDS: i64 = 10;
 const STEP_PHASE_ACCELERATION: f64 = 0.05;
 const MIN_STEP_PHASE_DELTA: f64 = 0.025;
 const MAX_STEP_PHASE_DELTA: f64 = 0.16;
-const MIN_STEP_CYCLE_SECONDS: i64 = 180;
+const MIN_STEP_CYCLE_SECONDS: i64 = 30;
 const MAX_STEP_CYCLE_SECONDS: i64 = 1_800;
+const MAX_PROJECTED_STEPS: u32 = 64;
+const ADAPTIVE_STEP_PHASE: f64 = 0.6;
+const ADAPTIVE_INTERCEPT_DROP: f64 = 0.015;
+const ADAPTIVE_LOW_INTERCEPT: f64 = 0.035;
+const UNOBSERVED_PREFIX_INTERCEPT: f64 = 0.06;
 /// Time may regularize the learned phase curve when it agrees with the room's
 /// observed phase deltas.  Once the implied intercept differs by this much,
 /// the duration prior is treated as incompatible and receives zero weight.
@@ -263,8 +271,9 @@ pub struct GameSnapshot {
     /// rounds observed since a late join).
     #[serde(default)]
     pub current_step: u32,
-    /// Estimated number of ordinary combat rounds before the Jim round.  Zero
-    /// in the lobby means the next combat entry is expected to be Jim.
+    /// Estimated number of non-final stages before the final Boss. Includes
+    /// observed stages regardless of whether they spawn a Boss. Zero in the
+    /// lobby means the next stage is expected to be the final Boss.
     #[serde(default)]
     pub until_boss_step: u32,
     /// Whether at least one damage record has been observed in this combat.
@@ -416,6 +425,7 @@ pub struct Analyzer {
 struct PhaseObservation {
     second: i64,
     phase: f64,
+    combat_seconds: Option<f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -424,18 +434,26 @@ struct StepEstimate {
     until_boss: u32,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct StepSample {
+    phase: f64,
+    intercept: f64,
+    seconds: f64,
+    combat_seconds: Option<f64>,
+}
+
 #[derive(Debug, Default)]
 struct StepEstimator {
     observations: Vec<PhaseObservation>,
     saw_run_origin: bool,
     total_observed_stages: u32,
+    intermission_since_stage: bool,
+    first_observed_phase: Option<f64>,
 }
 
 impl StepEstimator {
     fn reset(&mut self) {
-        self.observations.clear();
-        self.saw_run_origin = false;
-        self.total_observed_stages = 0;
+        *self = Self::default();
     }
 
     fn starts_new_run(&self, phase: Option<f64>) -> bool {
@@ -448,100 +466,211 @@ impl StepEstimator {
             })
     }
 
-    fn observe_stage(&mut self, second: i64, phase: Option<f64>) {
-        let Some(phase) = phase.filter(|value| value.is_finite() && (0.0..=1.0).contains(value))
-        else {
-            return;
-        };
-        if self
-            .observations
-            .last()
-            .is_some_and(|last| (last.phase - phase).abs() < 0.000_001)
-        {
-            return;
-        }
-        // A lower phase means a fresh run/session was encountered without a
-        // dependable room-leave marker.  Do not blend two runs.
-        if self
-            .observations
-            .last()
-            .is_some_and(|last| phase + 0.01 < last.phase)
-        {
-            self.reset();
-        }
-        if phase <= 0.001 {
-            self.saw_run_origin = true;
-        }
-        self.total_observed_stages = self.total_observed_stages.saturating_add(1);
-        self.observations.push(PhaseObservation { second, phase });
-        if self.observations.len() > 24 {
-            self.observations.remove(0);
+    // A lobby is evidence of a new round even when phase has not advanced.
+    // Boss presence is deliberately irrelevant to this counter.
+    fn observe_intermission(&mut self) {
+        self.intermission_since_stage = true;
+    }
+
+    fn observe_intermission_at(&mut self, second: i64, complete_start: bool) {
+        self.observe_intermission();
+        if complete_start {
+            if let Some(last) = self.observations.last_mut() {
+                let duration = second.saturating_sub(last.second);
+                if last.combat_seconds.is_none()
+                    && (30..=MAX_STEP_CYCLE_SECONDS).contains(&duration)
+                {
+                    last.combat_seconds = Some(duration as f64);
+                }
+            }
         }
     }
 
-    fn estimate(&self) -> Option<StepEstimate> {
-        let latest = *self.observations.last()?;
-        let samples: Vec<(f64, f64)> = self
-            .observations
+    /// False means a duplicate restoration, which must not restart metrics.
+    fn observe_stage(&mut self, second: i64, phase: Option<f64>) -> bool {
+        let Some(phase) = phase.filter(|value| value.is_finite() && (0.0..=1.0).contains(value))
+        else {
+            // Never republish an estimate for the preceding, valid Stage.
+            self.reset();
+            return true;
+        };
+        if let Some(last) = self.observations.last() {
+            let delta = phase - last.phase;
+            if delta.abs() < 0.000_001 {
+                if !self.intermission_since_stage {
+                    return false;
+                }
+            } else if delta < -0.01 {
+                self.reset();
+            } else if delta < 0.0 {
+                return false; // rounding jitter is not a new round
+            }
+        }
+        self.intermission_since_stage = false;
+        if phase <= RUN_ORIGIN_PHASE_MAX {
+            self.saw_run_origin = true;
+        }
+        self.first_observed_phase.get_or_insert(phase);
+        self.total_observed_stages = self.total_observed_stages.saturating_add(1);
+        self.observations.push(PhaseObservation {
+            second,
+            phase,
+            combat_seconds: None,
+        });
+        if self.observations.len() > 24 {
+            self.observations.remove(0);
+        }
+        true
+    }
+
+    fn samples(&self) -> Vec<StepSample> {
+        self.phase_samples(false)
+    }
+
+    fn phase_samples(&self, include_terminal: bool) -> Vec<StepSample> {
+        self.observations
             .windows(2)
             .filter_map(|pair| {
                 let elapsed = pair[1].second.saturating_sub(pair[0].second);
                 let delta = pair[1].phase - pair[0].phase;
-                ((MIN_STEP_CYCLE_SECONDS..=MAX_STEP_CYCLE_SECONDS).contains(&elapsed)
+                // The final delta is clipped at 1.0, so it cannot describe
+                // the room's normal progression speed.
+                ((include_terminal || pair[1].phase < FINAL_PHASE)
+                    && (MIN_STEP_CYCLE_SECONDS..=MAX_STEP_CYCLE_SECONDS).contains(&elapsed)
                     && (MIN_STEP_PHASE_DELTA..=MAX_STEP_PHASE_DELTA).contains(&delta))
-                .then(|| {
-                    (
-                        delta - STEP_PHASE_ACCELERATION * pair[0].phase,
-                        elapsed as f64,
-                    )
+                .then_some(StepSample {
+                    phase: pair[0].phase,
+                    intercept: delta - STEP_PHASE_ACCELERATION * pair[0].phase,
+                    seconds: elapsed as f64,
+                    combat_seconds: pair[0]
+                        .combat_seconds
+                        .filter(|combat| *combat <= elapsed as f64),
                 })
             })
-            .collect();
+            .collect()
+    }
 
-        // Two completed transitions are the minimum needed to distinguish a
-        // local late-join counter from a stable full-run estimate.
-        if samples.len() < 2 {
+    fn uses_adaptive_tail(samples: &[StepSample]) -> bool {
+        let tail: Vec<_> = samples
+            .iter()
+            .filter(|s| s.phase >= ADAPTIVE_STEP_PHASE)
+            .collect();
+        if tail.len() < 2 {
+            return false;
+        }
+        let early: Vec<_> = samples
+            .iter()
+            .filter(|s| s.phase < ADAPTIVE_STEP_PHASE)
+            .collect();
+        let tail_mean = tail.iter().map(|s| s.intercept).sum::<f64>() / tail.len() as f64;
+        tail.iter()
+            .filter(|s| s.intercept < ADAPTIVE_LOW_INTERCEPT)
+            .count()
+            >= 2
+            || tail.windows(2).last().is_some_and(|pair| {
+                pair[1].intercept < ADAPTIVE_LOW_INTERCEPT
+                    && pair[0].intercept - pair[1].intercept >= ADAPTIVE_INTERCEPT_DROP
+            })
+            || (!early.is_empty()
+                && early.iter().map(|s| s.intercept).sum::<f64>() / early.len() as f64 - tail_mean
+                    >= ADAPTIVE_INTERCEPT_DROP)
+    }
+
+    #[cfg(test)]
+    fn estimate(&self) -> Option<StepEstimate> {
+        self.estimate_at(self.observations.last()?.second)
+    }
+
+    fn estimate_at(&self, now_second: i64) -> Option<StepEstimate> {
+        let latest = *self.observations.last()?;
+        let samples = self.samples();
+        // Preserve the original two-transition display contract, including
+        // a terminal transition. Its censored delta is visibility evidence,
+        // but must not train the normal progression curve.
+        let evidence = self.phase_samples(true);
+        if evidence.len() < 2 {
             return None;
         }
-        let mean_intercept =
-            samples.iter().map(|(value, _)| value).sum::<f64>() / samples.len() as f64;
-        let mean_cycle =
-            samples.iter().map(|(_, seconds)| seconds).sum::<f64>() / samples.len() as f64;
-        let spread = (samples
+        let evidence_mean =
+            evidence.iter().map(|s| s.intercept).sum::<f64>() / evidence.len() as f64;
+        let mean_intercept = if samples.is_empty() {
+            evidence_mean
+        } else {
+            samples.iter().map(|s| s.intercept).sum::<f64>() / samples.len() as f64
+        };
+        let spread = (evidence
             .iter()
-            .map(|(value, _)| (value - mean_intercept).powi(2))
+            .map(|s| (s.intercept - evidence_mean).powi(2))
             .sum::<f64>()
-            / samples.len() as f64)
+            / evidence.len() as f64)
             .sqrt();
+        // Preserve the existing contract: two valid transitions, spread <=0.035.
+        // Alternative trajectories explain uncertainty internally, not by
+        // withholding estimates for additional rounds.
         if spread > 0.035 {
             return None;
         }
+        let adaptive = Self::uses_adaptive_tail(&samples);
+        let intercept = if adaptive {
+            // Local progression wins over the old 135/20-minute prior. Keep
+            // chronology: weights 1,2,3 give recent slowdown more influence.
+            let recent: Vec<_> = samples.iter().rev().take(3).rev().collect();
+            let weight = (recent.len() * (recent.len() + 1) / 2) as f64;
+            (recent
+                .iter()
+                .enumerate()
+                .map(|(i, s)| (i + 1) as f64 * s.intercept)
+                .sum::<f64>()
+                / weight)
+                .clamp(0.035, 0.095)
+        } else {
+            // Very short stages are phase evidence but not a full-run clock.
+            let cycles: Vec<_> = samples.iter().filter(|s| s.seconds >= 180.0).collect();
+            let time_weight_and_prior = (!cycles.is_empty()).then(|| {
+                let mean_cycle =
+                    cycles.iter().map(|s| s.seconds).sum::<f64>() / cycles.len() as f64;
+                let transitions = ((FULL_RUN_PRIOR_SECONDS - FINAL_BOSS_PRIOR_SECONDS) / mean_cycle)
+                    .round()
+                    .clamp(8.0, 16.0) as u32;
+                let prior = intercept_for_transitions(transitions);
+                (step_time_prior_weight(mean_intercept, prior), prior)
+            });
+            let (weight, prior) = time_weight_and_prior.unwrap_or((0.0, mean_intercept));
+            (mean_intercept * (1.0 - weight) + prior * weight).clamp(0.035, 0.095)
+        };
 
-        // The two-hour prior describes a complete run, not this user's local
-        // session. Convert it to an expected transition count using only
-        // observed stage-to-stage cycle duration. It remains useful only while
-        // its implied phase curve agrees with the directly observed deltas;
-        // extreme fast/slow rooms automatically reduce its weight to zero.
-        let prior_transitions = ((FULL_RUN_PRIOR_SECONDS - FINAL_BOSS_PRIOR_SECONDS) / mean_cycle)
-            .round()
-            .clamp(8.0, 16.0) as u32;
-        let prior_intercept = intercept_for_transitions(prior_transitions);
-        let time_prior_weight = step_time_prior_weight(mean_intercept, prior_intercept);
-        let intercept = (mean_intercept * (1.0 - time_prior_weight)
-            + prior_intercept * time_prior_weight)
-            .clamp(0.035, 0.095);
-
+        let progress_samples: Vec<_> = samples
+            .iter()
+            .map(|sample| ProgressSample {
+                phase: sample.phase,
+                delta: sample.intercept + STEP_PHASE_ACCELERATION * sample.phase,
+                combat_seconds: sample.combat_seconds,
+            })
+            .collect();
+        let ensemble = ProgressEnsemble::fit(&progress_samples);
         let current = if self.saw_run_origin {
-            // All stages since phase zero are present, so this ordinal is
-            // authoritative even though the remaining-round projection is not.
             self.total_observed_stages
         } else {
-            nearest_step_for_phase(latest.phase, intercept)
+            // Only the unobserved prefix needs extrapolation. The suffix is
+            // counted, including zero-progress and Boss-free stages. A slow
+            // late tail is not evidence that the unseen early game was slow.
+            let prefix_intercept = if adaptive || ensemble.is_some() {
+                UNOBSERVED_PREFIX_INTERCEPT
+            } else {
+                intercept
+            };
+            nearest_step_for_phase(self.first_observed_phase?, prefix_intercept)
+                .saturating_add(self.total_observed_stages.saturating_sub(1))
         };
-        let transitions_to_final = transitions_until_final(latest.phase, intercept);
+        let until_boss = if let Some(ensemble) = ensemble {
+            let elapsed = now_second.saturating_sub(latest.second).max(0) as f64;
+            ensemble.remaining(latest.phase, latest.combat_seconds, elapsed)
+        } else {
+            transitions_until_final(latest.phase, intercept).saturating_sub(1)
+        };
         Some(StepEstimate {
             current,
-            until_boss: transitions_to_final.saturating_sub(1),
+            until_boss,
         })
     }
 }
@@ -579,14 +708,14 @@ fn nearest_step_for_phase(target: f64, intercept: f64) -> u32 {
     let mut best_step = 1;
     let mut best_distance = target.abs();
     let mut phase = 0.0;
-    for step in 2..=24 {
+    for step in 2..=MAX_PROJECTED_STEPS {
         phase = next_estimated_phase(phase, intercept);
         let distance = (phase - target).abs();
         if distance < best_distance {
             best_distance = distance;
             best_step = step;
         }
-        if phase >= 1.0 {
+        if phase >= FINAL_PHASE {
             break;
         }
     }
@@ -595,7 +724,7 @@ fn nearest_step_for_phase(target: f64, intercept: f64) -> u32 {
 
 fn transitions_until_final(mut phase: f64, intercept: f64) -> u32 {
     let mut transitions = 0;
-    while phase < FINAL_PHASE && transitions < 24 {
+    while phase < FINAL_PHASE && transitions < MAX_PROJECTED_STEPS {
         phase = next_estimated_phase(phase, intercept);
         transitions += 1;
     }
@@ -637,9 +766,13 @@ impl Analyzer {
                 self.finish_visit(second);
             }
             ParsedEvent::Stage { second, phase } => {
+                let new_run = self.step_estimator.starts_new_run(phase);
+                if !self.step_estimator.observe_stage(second, phase) {
+                    return;
+                }
                 self.update_dps_history(second.saturating_sub(1));
                 let phase_before_stage = self.snapshot.phase;
-                if self.step_estimator.starts_new_run(phase) {
+                if new_run {
                     self.reset_run_history(second);
                 }
                 if phase_before_stage == RoundPhase::Combat && self.round_started_second.is_some() {
@@ -648,7 +781,6 @@ impl Analyzer {
                         message: "战斗中直接观察到下一阶段，未观察到 intermission/lobby 日志；上一回合按不完整数据丢弃并安全开始新回合".to_owned(),
                     });
                 }
-                self.step_estimator.observe_stage(second, phase);
                 let is_initial_run_stage = phase_before_stage == RoundPhase::Syncing
                     && phase.is_some_and(|value| value <= RUN_ORIGIN_PHASE_MAX);
                 // A Stage-to-Stage transition is a usable boundary even when
@@ -675,7 +807,7 @@ impl Analyzer {
                     // claim a complete personal round boundary yet.
                     self.start_untracked_round();
                 }
-                if let Some(estimate) = self.step_estimator.estimate() {
+                if let Some(estimate) = self.step_estimator.estimate_at(second) {
                     self.snapshot.has_step_estimate = true;
                     self.snapshot.current_step = estimate.current;
                     self.snapshot.until_boss_step = estimate.until_boss;
@@ -686,13 +818,15 @@ impl Analyzer {
                 self.round_baseline_ready = false;
             }
             ParsedEvent::Intermission { second } => {
+                self.step_estimator
+                    .observe_intermission_at(second, self.round_has_duration_data);
                 self.update_dps_history(second.saturating_sub(1));
                 // Repeated lobby markers are common after the final Boss. Preserve the
                 // report already archived by the final-boss death marker and
                 // do not reactivate its completed step estimate.
                 if self.snapshot.round_metrics_active {
                     self.finish_round(second);
-                    if let Some(estimate) = self.step_estimator.estimate() {
+                    if let Some(estimate) = self.step_estimator.estimate_at(second) {
                         self.snapshot.has_step_estimate = true;
                         self.snapshot.current_step = estimate.current;
                         self.snapshot.until_boss_step = estimate.until_boss;
@@ -846,6 +980,12 @@ impl Analyzer {
     }
 
     pub fn snapshot_at(&mut self, now_second: i64) -> GameSnapshot {
+        if self.snapshot.phase == RoundPhase::Combat {
+            let estimate = self.step_estimator.estimate_at(now_second);
+            self.snapshot.has_step_estimate = estimate.is_some();
+            self.snapshot.current_step = estimate.map_or(0, |e| e.current);
+            self.snapshot.until_boss_step = estimate.map_or(0, |e| e.until_boss);
+        }
         // Do not publish the master-based fallback during the Boss creation
         // second. A definitive ownership line can race it within that second,
         // and publishing early could trigger a false self-lock notification.
@@ -1671,6 +1811,168 @@ mod tests {
 
         let estimate = estimator.estimate().expect("complete path stays converged");
         assert_eq!((estimate.current, estimate.until_boss), (13, 0));
+    }
+
+    #[test]
+    fn boss_free_zero_progress_stage_counts_after_lobby_without_learning_a_zero_step() {
+        let mut analyzer = Analyzer::default();
+        analyzer.process_line(&timeline_line(0, "[Behaviour] Entering Room: Ecliptica"));
+        for (second, phase) in [(30, 0.0), (630, 0.06), (1230, 0.123)] {
+            analyzer.process_line(&timeline_stage(second, phase));
+            analyzer.process_line(&timeline_line(
+                second + 400,
+                "ECLIPTICA - now in intermission",
+            ));
+        }
+        let previous = analyzer.snapshot_at(timeline_timestamp(1630));
+        assert!(previous.has_step_estimate);
+        assert_eq!(previous.current_step, 3);
+        analyzer.process_line(&timeline_stage(1830, 0.123));
+        let reward = analyzer.snapshot_at(timeline_timestamp(1830));
+        assert_eq!(reward.current_step, 4);
+        assert_eq!(reward.until_boss_step, previous.until_boss_step);
+        assert!(reward.boss.is_none());
+        assert_eq!(analyzer.step_estimator.samples().len(), 2);
+        analyzer.process_line(&timeline_line(1890, "ECLIPTICA - now in intermission"));
+        analyzer.process_line(&timeline_stage(1950, 0.19));
+        assert_eq!(
+            analyzer.snapshot_at(timeline_timestamp(1950)).current_step,
+            5
+        );
+    }
+
+    #[test]
+    fn duplicate_stage_preserves_damage_round_identity_and_confidence() {
+        let mut analyzer = Analyzer::default();
+        analyzer.process_line(&timeline_line(0, "[Behaviour] Entering Room: Ecliptica"));
+        for (second, phase) in [(30, 0.0), (630, 0.06), (1230, 0.123)] {
+            analyzer.process_line(&timeline_stage(second, phase));
+        }
+        analyzer.process_line(&timeline_line(1240, "Dealing 100 STRIKE damage"));
+        let before = analyzer.snapshot_at(timeline_timestamp(1241));
+        analyzer.process_line(&timeline_stage(1242, 0.123));
+        let after = analyzer.snapshot_at(timeline_timestamp(1242));
+        assert_eq!(after.combat_round_epoch, before.combat_round_epoch);
+        assert_eq!(after.round_total_damage, 100);
+        assert_eq!(after.current_step, 3);
+        assert_eq!(after.has_step_estimate, before.has_step_estimate);
+    }
+
+    #[test]
+    fn invalid_phase_cannot_restore_a_stale_estimate_at_the_next_lobby() {
+        for phase in [None, Some(f64::NAN), Some(-0.1), Some(1.1)] {
+            let mut estimator = StepEstimator::default();
+            for (second, phase) in [(0, 0.0), (600, 0.06), (1200, 0.123)] {
+                estimator.observe_stage(second, Some(phase));
+            }
+            assert!(estimator.estimate().is_some());
+            estimator.observe_stage(1800, phase);
+            estimator.observe_intermission();
+            assert!(estimator.estimate().is_none());
+            estimator.observe_stage(2400, Some(0.25));
+            assert!(estimator.estimate().is_none());
+        }
+    }
+
+    #[test]
+    fn final_clipped_transition_does_not_train_a_false_slowdown() {
+        let mut estimator = StepEstimator::default();
+        for (second, phase) in [(0, 0.736401), (600, 0.8420269), (1200, 0.952785)] {
+            estimator.observe_stage(second, Some(phase));
+        }
+        let before = estimator.estimate().unwrap();
+        let samples = estimator.samples();
+        estimator.observe_stage(1800, Some(1.0));
+        assert_eq!(estimator.samples().len(), samples.len());
+        assert!(!StepEstimator::uses_adaptive_tail(&estimator.samples()));
+        let final_boss = estimator.estimate().unwrap();
+        assert_eq!(final_boss.current, before.current + 1);
+        assert_eq!(final_boss.until_boss, 0);
+    }
+
+    #[test]
+    fn short_stages_supply_phase_evidence_without_becoming_a_full_run_clock() {
+        let mut estimator = StepEstimator::default();
+        for (second, phase) in [(0, 0.0), (60, 0.06), (120, 0.123)] {
+            estimator.observe_stage(second, Some(phase));
+        }
+        assert_eq!(estimator.estimate().unwrap().current, 3);
+    }
+
+    #[test]
+    fn long_lobby_does_not_erase_the_origin_or_delay_existing_estimates() {
+        let mut estimator = StepEstimator::default();
+        for (second, phase) in [(0, 0.0), (600, 0.06), (1200, 0.123)] {
+            estimator.observe_stage(second, Some(phase));
+        }
+        estimator.observe_intermission_at(1600, true);
+        estimator.observe_stage(5000, Some(0.19));
+        assert!(estimator.estimate().is_some());
+        assert_eq!(estimator.estimate().unwrap().current, 4);
+    }
+
+    #[test]
+    fn shop_duration_is_not_a_progression_feature() {
+        fn replay(shop: i64) -> StepEstimate {
+            let mut estimator = StepEstimator::default();
+            for (i, phase) in [0.3, 0.39, 0.47, 0.55, 0.63].into_iter().enumerate() {
+                let start = i as i64 * (400 + shop);
+                estimator.observe_stage(start, Some(phase));
+                estimator.observe_intermission_at(start + 400, true);
+            }
+            estimator.estimate().unwrap()
+        }
+        assert_eq!(replay(60), replay(660));
+    }
+
+    #[test]
+    fn ordinal_survives_history_trimming_and_resets_for_a_new_run() {
+        let mut estimator = StepEstimator::default();
+        for i in 0..30 {
+            if i > 0 {
+                estimator.observe_intermission();
+            }
+            estimator.observe_stage(
+                i * 60,
+                Some(if i < 28 { 0.0 } else { 0.03 * (i - 27) as f64 }),
+            );
+        }
+        assert_eq!(estimator.observations.len(), 24);
+        assert_eq!(estimator.estimate().unwrap().current, 30);
+        estimator.observe_stage(2400, Some(0.0));
+        assert!(estimator.estimate().is_none());
+        assert_eq!(estimator.total_observed_stages, 1);
+    }
+
+    #[test]
+    fn adaptive_tail_is_independent_of_join_time_and_cycle_duration() {
+        let phases = [
+            0.3996918, 0.4977301, 0.5821126, 0.6663938, 0.7443991, 0.8395436, 0.9054043, 0.9503832,
+        ];
+        for cycle in [60, 240, 600, 1500] {
+            let mut estimator = StepEstimator::default();
+            for (i, phase) in phases.into_iter().enumerate() {
+                estimator.observe_stage(10000 + i as i64 * cycle, Some(phase));
+                if i == 6 {
+                    let estimate = estimator.estimate().unwrap();
+                    assert_eq!((estimate.current, estimate.until_boss), (13, 1));
+                }
+            }
+            let estimate = estimator.estimate().unwrap();
+            assert_eq!((estimate.current, estimate.until_boss), (14, 0));
+        }
+    }
+
+    #[test]
+    fn terminal_transition_keeps_original_visibility_without_training_its_clipped_delta() {
+        let mut estimator = StepEstimator::default();
+        estimator.observe_stage(0, Some(0.82));
+        estimator.observe_stage(600, Some(0.93));
+        assert!(estimator.estimate().is_none());
+        estimator.observe_stage(1200, Some(1.0));
+        assert!(estimator.estimate().is_some());
+        assert_eq!(estimator.samples().len(), 1);
+        assert_eq!(estimator.estimate().unwrap().until_boss, 0);
     }
 
     fn timestamp(second: u32) -> i64 {
